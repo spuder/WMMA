@@ -63,7 +63,7 @@ export function Settings() {
         <div class="card span-6 stack">
           <div>
             <h2>Jev categorization</h2>
-            <div class="sub">Suggests categories for new transactions; confident picks are applied automatically.</div>
+            <div class="sub">Suggests categories for new transactions; confident picks are applied automatically. Get your Jev API key from <a href="https://console.typesafe.ai/home" target="_blank" rel="noreferrer" style={{ color: "var(--accent)", fontWeight: 650 }}>TypeSafe AI ↗</a>.</div>
           </div>
           {s.loading ? (
             <Loading h={80} />
