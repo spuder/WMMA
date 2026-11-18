@@ -484,50 +484,91 @@ mark.fz { background: transparent; color: var(--accent); font-weight: 750; text-
 .asset-stat { font-size: 22px; font-weight: 750; letter-spacing: -0.02em; }
 
 /* ---------- review game ---------- */
-.quest { width: 100%; max-width: 600px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; }
-.quest-top { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
-.quest-title { font-size: 20px; font-weight: 760; letter-spacing: -0.015em; }
-.quest-count { font-size: 26px; font-weight: 780; letter-spacing: -0.02em; }
-.quest-count span { font-size: 15px; color: var(--muted); font-weight: 650; }
-.quest-bar { position: relative; height: 14px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.quest { width: 100%; max-width: 600px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px; padding: 10px 14px 8px; }
+.quest-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.quest-title { display: flex; align-items: baseline; gap: 7px; min-width: 0; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.quest-title strong { font-weight: 780; }
+.quest-left { font-size: 24px; font-weight: 820; letter-spacing: -0.03em; color: var(--accent); line-height: 1; animation: count-tick 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.6); }
+@keyframes count-tick { from { transform: translateY(-6px) scale(1.25); } }
+.quest-meta { display: flex; flex: none; gap: 10px; font-size: 13px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+.quest-meta .streak { color: var(--warn); animation: count-tick 0.35s; }
+.quest-bar { position: relative; height: 16px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
 .quest-bar > div {
-  height: 100%; border-radius: 999px; transition: width 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  height: 100%; border-radius: 999px; transition: width 0.55s cubic-bezier(0.2, 0.9, 0.3, 1.2);
   background: linear-gradient(90deg, #16a874, #3b82f6 55%, #a855f7);
-  background-size: 200% 100%; animation: quest-flow 3s linear infinite;
+  background-size: 200% 100%; animation: quest-flow 3s linear infinite, bar-in 0.6s ease-out;
   box-shadow: 0 0 12px color-mix(in srgb, #3b82f6 45%, transparent);
 }
+.quest-bar-label { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 10.5px; font-weight: 800; color: var(--ink); mix-blend-mode: difference; filter: invert(1); opacity: 0.75; }
 @keyframes quest-flow { to { background-position: -200% 0; } }
-.milestones { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+@keyframes bar-in { from { opacity: 0.3; } }
+
+.milestones { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x proximity; padding: 4px 2px 2px; }
 .milestones::-webkit-scrollbar { display: none; }
-.ms { display: flex; flex: 1 0 auto; flex-direction: column; align-items: center; gap: 4px; min-width: 54px; }
+.ms { display: flex; flex: 1 0 auto; flex-direction: column; align-items: center; gap: 3px; min-width: 58px; scroll-snap-align: center; }
 .ms-dot {
-  display: grid; place-items: center; min-width: 30px; height: 30px; padding: 0 6px; border-radius: 999px;
-  border: 2px solid var(--line); background: var(--surface); color: var(--muted); font-size: 12px; font-weight: 750; font-variant-numeric: tabular-nums;
-  transition: background 0.3s, border-color 0.3s, color 0.3s, transform 0.3s;
+  display: grid; place-items: center; min-width: 30px; height: 30px; padding: 0 7px; border-radius: 999px;
+  border: 2px solid var(--line); background: var(--surface); color: var(--muted); font-size: 12px; font-weight: 780; font-variant-numeric: tabular-nums;
+  transition: transform 0.3s, box-shadow 0.3s;
 }
 .ms-label { font-size: 10.5px; font-weight: 650; color: var(--muted); white-space: nowrap; }
-.ms.done .ms-dot { background: var(--in); border-color: var(--in); color: #fff; animation: ms-pop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.6); }
-.ms.done .ms-label { color: var(--in); }
-.ms.now .ms-dot { border-color: var(--accent); color: var(--accent); transform: scale(1.12); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent); }
-.ms.now .ms-label { color: var(--ink); }
-@keyframes ms-pop { 0% { transform: scale(0.6); } 60% { transform: scale(1.25); } 100% { transform: scale(1); } }
-.quest-meta { display: flex; flex-wrap: wrap; gap: 6px 14px; }
-.quest-meta .streak { color: var(--warn); font-weight: 750; animation: ms-pop 0.4s; }
-
-.celebrate { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; pointer-events: none; animation: fade 0.2s; }
-.celebrate-card {
-  display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 18px 26px; border-radius: 22px;
-  background: var(--surface); box-shadow: var(--shadow-lg); text-align: center; animation: celebrate-in 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.5);
+.ms-now .ms-dot { border-color: var(--accent); color: var(--accent); transform: scale(1.1); animation: now-pulse 1.8s ease-in-out infinite; }
+.ms-now .ms-label { color: var(--ink); font-weight: 750; }
+@keyframes now-pulse { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 14%, transparent); } }
+/* Cleared: a big shiny badge. */
+.ms-cleared .ms-dot {
+  position: relative; overflow: hidden; width: 38px; height: 38px; min-width: 38px; margin-top: -4px; padding: 0; font-size: 21px;
+  border: 0; background: radial-gradient(circle at 30% 25%, #fff6c8, #facc15 45%, #f59e0b);
+  box-shadow: 0 3px 10px color-mix(in srgb, #f59e0b 45%, transparent), inset 0 -2px 0 rgba(0, 0, 0, 0.12);
+  animation: badge-pop 0.7s cubic-bezier(0.2, 0.9, 0.3, 1.7);
 }
-.celebrate-card strong { font-size: 22px; letter-spacing: -0.015em; }
-.celebrate-card span { color: var(--muted); font-size: 13px; }
-@keyframes celebrate-in { from { transform: scale(0.6); opacity: 0; } }
-.burst { position: absolute; left: 50%; top: 50%; }
-.burst span { position: absolute; font-size: 26px; transform: translate(-50%, -50%); animation: burst 1.2s cubic-bezier(0.15, 0.8, 0.3, 1) var(--d) both; }
-@keyframes burst {
-  0% { transform: translate(-50%, -50%) rotate(var(--a)) translateY(0) scale(0.4); opacity: 1; }
-  100% { transform: translate(-50%, -50%) rotate(var(--a)) translateY(-150px) scale(1.1); opacity: 0; }
+.ms-cleared .ms-dot::after {
+  content: ""; position: absolute; inset: -40%; background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, 0.75) 50%, transparent 60%);
+  animation: badge-shine 2.8s ease-in-out 0.6s infinite;
+}
+.ms-cleared .ms-label { color: #d99a06; font-weight: 780; }
+@keyframes badge-pop { 0% { transform: scale(0.3) rotate(-30deg); } 60% { transform: scale(1.35) rotate(8deg); } 100% { transform: scale(1) rotate(0); } }
+@keyframes badge-shine { 0%, 60% { transform: translateX(-60%); } 100% { transform: translateX(60%); } }
+
+.celebrate { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; pointer-events: none; overflow: hidden; animation: celebrate-fade 2.6s ease forwards; }
+@keyframes celebrate-fade { 0%, 85% { opacity: 1; } 100% { opacity: 0; } }
+.confetti i {
+  position: absolute; top: -16px; width: 9px; height: 14px; border-radius: 2px; opacity: 0.95;
+  animation-name: confetti-fall; animation-timing-function: cubic-bezier(0.25, 0.6, 0.4, 1); animation-fill-mode: both;
+}
+.confetti i.round-bit { width: 10px; height: 10px; border-radius: 50%; }
+@keyframes confetti-fall {
+  from { transform: translate(0, 0) rotate(0); }
+  to { transform: translate(var(--drift), 105vh) rotate(var(--rot)); }
+}
+.celebrate-card {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 22px 30px 20px; border-radius: 26px;
+  background: var(--surface); box-shadow: var(--shadow-lg); text-align: center; animation: celebrate-in 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.5);
+}
+.celebrate-card strong { font-size: 24px; letter-spacing: -0.02em; }
+.celebrate-card > span { color: var(--muted); font-size: 14px; }
+@keyframes celebrate-in { from { transform: scale(0.4) translateY(30px); opacity: 0; } }
+.celebrate-badge { position: relative; display: grid; place-items: center; width: 96px; height: 96px; margin-top: -60px; }
+.celebrate-badge .badge-emoji {
+  position: relative; display: grid; place-items: center; width: 84px; height: 84px; border-radius: 50%; font-size: 46px;
+  background: radial-gradient(circle at 30% 25%, #fff6c8, #facc15 45%, #f59e0b); box-shadow: 0 8px 26px color-mix(in srgb, #f59e0b 55%, transparent);
+  animation: badge-pop 0.8s cubic-bezier(0.2, 0.9, 0.3, 1.7) 0.15s both;
+}
+.celebrate-badge .rays {
+  position: absolute; inset: -34px; border-radius: 50%;
+  background: repeating-conic-gradient(from 0deg, color-mix(in srgb, #facc15 55%, transparent) 0 10deg, transparent 10deg 30deg);
+  mask: radial-gradient(circle, #000 35%, transparent 70%); -webkit-mask: radial-gradient(circle, #000 35%, transparent 70%);
+  animation: rays-spin 6s linear infinite, fade 0.4s;
+}
+@keyframes rays-spin { to { transform: rotate(360deg); } }
+@media (min-width: 700px) {
+  .quest { padding: 14px 18px 10px; gap: 10px; }
+  .quest-title { font-size: 17px; }
+  .quest-left { font-size: 30px; }
+  .ms-dot { min-width: 34px; height: 34px; font-size: 13px; }
+  .ms-cleared .ms-dot { width: 44px; height: 44px; min-width: 44px; font-size: 24px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .quest-bar > div, .ms.done .ms-dot, .burst span, .celebrate-card { animation: none; }
+  .quest-bar > div, .ms-cleared .ms-dot, .ms-cleared .ms-dot::after, .ms-now .ms-dot, .confetti, .celebrate-card, .celebrate-badge .rays, .celebrate-badge .badge-emoji, .quest-left { animation: none; }
+  .confetti { display: none; }
 }

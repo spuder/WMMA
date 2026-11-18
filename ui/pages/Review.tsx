@@ -25,13 +25,13 @@ const THRESHOLD = 96;
 
 /** Rolling windows, so each milestone contains the one before it. */
 const MILESTONES = [
-  { id: "today", label: "Today", days: 0 },
-  { id: "week", label: "This week", days: 6 },
-  { id: "2weeks", label: "2 weeks", days: 13 },
-  { id: "month", label: "This month", days: 29 },
-  { id: "quarter", label: "This quarter", days: 89 },
-  { id: "year", label: "This year", days: 364 },
-  { id: "all", label: "Everything", days: Infinity },
+  { id: "today", label: "Today", days: 0, badge: "☀️" },
+  { id: "week", label: "This week", days: 6, badge: "⭐" },
+  { id: "2weeks", label: "2 weeks", days: 13, badge: "🌟" },
+  { id: "month", label: "This month", days: 29, badge: "🏅" },
+  { id: "quarter", label: "This quarter", days: 89, badge: "🥇" },
+  { id: "year", label: "This year", days: 364, badge: "🏆" },
+  { id: "all", label: "Everything", days: Infinity, badge: "👑" },
 ] as const;
 type Milestone = (typeof MILESTONES)[number];
 
@@ -70,7 +70,7 @@ export function Review() {
   const [learned, setLearned] = useState(0);
   const [later, setLater] = useState<string[]>(loadLater);
   const [streak, setStreak] = useState(0);
-  const [celebrate, setCelebrate] = useState<string | null>(null);
+  const [celebrate, setCelebrate] = useState<{ title: string; badge: string; key: number } | null>(null);
   const [picker, setPicker] = useState(false);
   const [editingEntity, setEditingEntity] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string | null>>({});
@@ -123,9 +123,10 @@ export function Review() {
       const fresh = tiers.filter((t) => now.has(t.id) && !clearedBefore.current!.has(t.id) && t.done > 0);
       const biggest = fresh[fresh.length - 1];
       if (biggest) {
-        setCelebrate(biggest.id === "all" ? "Inbox zero" : `${biggest.label} cleared`);
-        navigator.vibrate?.([30, 40, 60]);
-        setTimeout(() => setCelebrate(null), 1900);
+        const key = Date.now();
+        setCelebrate({ title: biggest.id === "all" ? "Inbox zero" : `${biggest.label} cleared`, badge: biggest.badge, key });
+        navigator.vibrate?.([30, 40, 60, 40, 90]);
+        setTimeout(() => setCelebrate((c) => (c?.key === key ? null : c)), 2600);
       }
     }
     clearedBefore.current = now;
@@ -346,19 +347,7 @@ export function Review() {
         </div>
       )}
 
-      {celebrate && (
-        <div class="celebrate" aria-live="polite">
-          <div class="burst" aria-hidden="true">
-            {["🎉", "✨", "🏆", "💸", "⭐", "🎊", "✨", "🎉", "💰", "⭐", "🎊", "✨"].map((e, i) => (
-              <span style={{ "--a": `${i * 30}deg`, "--d": `${(i % 3) * 40}ms` }}>{e}</span>
-            ))}
-          </div>
-          <div class="celebrate-card">
-            <strong>{celebrate}!</strong>
-            <span>{current.cleared ? "Everything is sorted 🙌" : `Next up: ${current.label} · ${current.left} to go`}</span>
-          </div>
-        </div>
-      )}
+      {celebrate && <Celebration key={celebrate.key} title={celebrate.title} badge={celebrate.badge} next={current.cleared ? null : current} />}
 
       <Sheet open={picker} onClose={() => setPicker(false)} title={card ? `Categorize ${card.payee}` : "Categorize"}>
         {card && (
@@ -377,51 +366,94 @@ export function Review() {
   );
 }
 
-/** The game layer: progress toward the current milestone, then the milestone trail. */
-function Quest({
-  tiers,
-  current,
-  streak,
-  sessionDone,
-  later,
-}: {
-  tiers: Array<Milestone & { left: number; done: number; total: number; cleared: boolean }>;
-  current: Milestone & { left: number; done: number; total: number; cleared: boolean };
-  streak: number;
-  sessionDone: number;
-  later: number;
-}) {
+type Tier = Milestone & { left: number; done: number; total: number; cleared: boolean };
+
+/**
+ * The game layer, kept to a slim strip: how many to go for the current
+ * milestone, a progress bar, then the milestone trail (cleared ones become badges).
+ */
+function Quest({ tiers, current, streak, sessionDone, later }: { tiers: Tier[]; current: Tier; streak: number; sessionDone: number; later: number }) {
   const pct = current.total ? Math.round((current.done / current.total) * 100) : 100;
   const trail = tiers.filter((t) => t.id !== "all" || t.total > 0);
+  const stripRef = useRef<HTMLDivElement>(null);
+  // Keep the current milestone in view as the trail scrolls on small screens.
+  useEffect(() => {
+    stripRef.current?.querySelector(".ms-now")?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+  }, [current.id]);
   return (
     <div class="quest card">
       <div class="quest-top">
-        <div>
-          <div class="upper">{current.cleared ? "All milestones" : "Current milestone"}</div>
+        {current.cleared ? (
+          <div class="quest-title">👑 Inbox zero</div>
+        ) : (
           <div class="quest-title">
-            🎯 {current.cleared ? "Inbox zero" : current.label}
+            <span key={current.left} class="quest-left num">{current.left}</span>
+            <span>
+              to go for <strong>{current.label}</strong>
+            </span>
           </div>
-        </div>
-        <div class="quest-count num">
-          {current.done}
-          <span>/{current.total}</span>
+        )}
+        <div class="quest-meta">
+          <span title="Sorted this session">⚡{sessionDone}</span>
+          {streak >= 3 && <span key={streak} class="streak" title="In a row">🔥{streak}</span>}
+          {later > 0 && <span title="Saved for later">⏳{later}</span>}
         </div>
       </div>
-      <div class="quest-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={`${current.label} progress`}>
-        <div style={{ width: `${pct}%` }} />
+      <div class="quest-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={`${current.label}: ${current.left} to go`}>
+        <div key={current.id} style={{ width: `${pct}%` }} />
+        <span class="quest-bar-label num">
+          {current.done}/{current.total}
+        </span>
       </div>
-      <div class="milestones">
+      <div class="milestones" ref={stripRef}>
         {trail.map((t) => (
-          <div class={`ms${t.cleared ? " done" : ""}${t.id === current.id && !t.cleared ? " now" : ""}`} title={t.days === Infinity ? "Every transaction" : t.days === 0 ? "Dated today" : `Last ${t.days + 1} days`}>
-            <span class="ms-dot">{t.cleared ? "✓" : t.left}</span>
+          <div
+            class={`ms${t.cleared ? " ms-cleared" : ""}${t.id === current.id && !t.cleared ? " ms-now" : ""}`}
+            title={`${t.days === Infinity ? "Every transaction" : t.days === 0 ? "Dated today" : `Last ${t.days + 1} days`}${t.cleared ? " · cleared" : ` · ${t.left} to go`}`}
+          >
+            <span class="ms-dot">{t.cleared ? t.badge : t.left}</span>
             <span class="ms-label">{t.label}</span>
           </div>
         ))}
       </div>
-      <div class="quest-meta small muted">
-        <span>⚡ {sessionDone} sorted</span>
-        {streak >= 3 && <span class="streak">🔥 {streak} streak</span>}
-        {later > 0 && <span>⏳ {later} for later</span>}
+    </div>
+  );
+}
+
+const CONFETTI_COLORS = ["#16a874", "#3b82f6", "#a855f7", "#f59e0b", "#ec4899", "#14b8a6", "#facc15"];
+
+/** Full-screen milestone celebration: confetti rain, a badge that bursts in, and what's next. */
+function Celebration({ title, badge, next }: { title: string; badge: string; next: Tier | null }) {
+  const pieces = useMemo(
+    () =>
+      Array.from({ length: 70 }, (_, i) => ({
+        left: Math.random() * 100,
+        delay: Math.random() * 0.5,
+        dur: 1.6 + Math.random() * 1.1,
+        rot: Math.random() * 720 - 360,
+        drift: Math.random() * 160 - 80,
+        color: CONFETTI_COLORS[i % CONFETTI_COLORS.length]!,
+        round: i % 3 === 0,
+      })),
+    [],
+  );
+  return (
+    <div class="celebrate" aria-live="polite">
+      <div class="confetti" aria-hidden="true">
+        {pieces.map((p) => (
+          <i
+            class={p.round ? "round-bit" : ""}
+            style={{ left: `${p.left}%`, background: p.color, animationDelay: `${p.delay}s`, animationDuration: `${p.dur}s`, "--rot": `${p.rot}deg`, "--drift": `${p.drift}px` }}
+          />
+        ))}
+      </div>
+      <div class="celebrate-card">
+        <div class="celebrate-badge" aria-hidden="true">
+          <span class="rays" />
+          <span class="badge-emoji">{badge}</span>
+        </div>
+        <strong>{title}!</strong>
+        <span>{next ? `Next: ${next.label} · ${next.left} to go` : "Everything is sorted 🙌"}</span>
       </div>
     </div>
   );
@@ -525,7 +557,7 @@ function CardBody({
         <div class="suggestion none">
           <div class="upper">No suggestion</div>
           <div class="small muted" style={{ marginTop: 4 }}>
-            {item.reason === "jev not configured" ? "Add a Jev key in Settings for suggestions." : "Jev couldn't decide."} Swipe left to choose.
+            {item.reason === "jev not configured" ? "Add a Jev key in Settings for suggestions." : "Jev couldn't decide."} Tap Other to choose one.
           </div>
         </div>
       )}

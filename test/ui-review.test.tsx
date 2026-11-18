@@ -102,20 +102,21 @@ describe("swipe review on a phone", () => {
     // Newest first; everything here is from March, so the current milestone is "This year".
     expect(top()).toContain("GROCER #15");
     expect(text()).toContain("Jev suggests");
-    expect($(".quest-title")!.textContent).toContain("This year");
-    expect($(".quest-count")!.textContent).toBe("0/5");
+    expect($(".quest-title")!.textContent).toBe("5to go for This year");
+    expect($(".quest-bar-label")!.textContent).toBe("0/5");
 
     // 1. Swipe left: decide later. Nothing is sent; the card goes to the back of the deck.
     swipe(topCard()!, -180);
     await until(() => top().includes("GROCER #14"));
     expect(posts.length).toBe(0);
     expect($(".sheet")).toBeNull();
-    expect(text()).toContain("1 for later");
+    expect($("[title=\"Saved for later\"]")!.textContent).toBe("⏳1");
     expect(JSON.parse(localStorage.getItem("wmma.review.later")!)).toEqual(["W5"]);
 
     // 2. Swipe right: accept Jev's pick.
     swipe(topCard()!, 180);
-    await until(() => posts.length === 1 && $(".quest-count")!.textContent === "1/5");
+    await until(() => posts.length === 1 && $(".quest-bar-label")!.textContent === "1/5");
+    expect($(".quest-left")!.textContent).toBe("4");
     expect(posts[0]).toEqual({ id: "W4", account: "Expenses:Food:Groceries" });
 
     // 3. A short drag springs back without doing anything.
