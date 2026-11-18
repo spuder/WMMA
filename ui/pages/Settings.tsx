@@ -10,7 +10,7 @@ export function Settings() {
   const s = useApi<any>("/settings");
   const me = useApi<any>("/status");
   const accountData = useApi<{ accounts: any[] }>("/accounts");
-  const { entities } = useApp();
+  const { entities, reloadEntities } = useApp();
   const [key, setKey] = useState("");
   const [simplefinToken, setSimplefinToken] = useState("");
   const [simplefinBusy, setSimplefinBusy] = useState(false);
@@ -244,6 +244,7 @@ export function Settings() {
         mappings={simplefinMappings}
         entities={entities.filter((e) => e.status === "active")}
         existingAccounts={(accountData.data?.accounts ?? []).filter((a: any) => a.status === "open")}
+        onEntityCreated={reloadEntities}
         busy={simplefinBusy}
         onChange={setSimplefinMapping}
         onClose={() => setSimplefinWizard(false)}
@@ -265,6 +266,7 @@ function SimplefinSetupWizard({
   mappings,
   entities,
   existingAccounts,
+  onEntityCreated,
   busy,
   onChange,
   onClose,
@@ -272,15 +274,38 @@ function SimplefinSetupWizard({
 }: {
   accounts: SimplefinAccount[];
   mappings: Record<string, SimplefinMapping>;
-  entities: Array<{ slug: string; name: string }>;
+  entities: Array<{ slug: string; name: string; type?: string }>;
   existingAccounts: Array<{ slug: string; name: string; default_entity: string }>;
+  onEntityCreated: () => void;
   busy: boolean;
   onChange: (id: string, patch: Partial<SimplefinMapping>) => void;
   onClose: () => void;
   onSave: () => void;
 }) {
+  const [profiles, setProfiles] = useState(entities);
+  const [addingFor, setAddingFor] = useState<string | null>(null);
+  const [newName, setNewName] = useState("");
+  const [newType, setNewType] = useState("schedule_c");
+  const [creatingProfile, setCreatingProfile] = useState(false);
   const included = accounts.filter((a) => !mappings[a.id]?.skip);
   const canSave = !busy && included.length > 0 && included.every((a) => Boolean(mappings[a.id]?.entity));
+  const createProfile = async (accountId: string) => {
+    if (!newName.trim()) return;
+    setCreatingProfile(true);
+    try {
+      const profile = await api<{ slug: string; name: string; type: string }>("/entities", { body: { name: newName.trim(), type: newType } });
+      setProfiles((current) => [...current, profile]);
+      onChange(accountId, { entity: profile.slug });
+      setNewName("");
+      setAddingFor(null);
+      onEntityCreated();
+      toast(`${profile.name} added`);
+    } catch (e) {
+      toast((e as Error).message);
+    } finally {
+      setCreatingProfile(false);
+    }
+  };
   return (
     <Sheet open onClose={onClose} title="Set up SimpleFIN accounts">
       <div class="stack">
@@ -310,16 +335,38 @@ function SimplefinSetupWizard({
                       ) : (
                         <select class="input" value={mapping.slug ?? ""} onChange={(e) => onChange(account.id, { slug: (e.target as HTMLSelectElement).value || undefined })}>
                           <option value="">Create a new account</option>
-                          {existingAccounts.map((existing) => <option value={existing.slug}>{existing.name} · {entities.find((entity) => entity.slug === existing.default_entity)?.name ?? existing.default_entity}</option>)}
+                          {existingAccounts.map((existing) => <option value={existing.slug}>{existing.name} · {profiles.find((entity) => entity.slug === existing.default_entity)?.name ?? existing.default_entity}</option>)}
                         </select>
                       )}
                     </div>
                     <div class="field">
                       <label>Belongs to</label>
-                      <select class="input" value={mapping.entity ?? ""} onChange={(e) => onChange(account.id, { entity: (e.target as HTMLSelectElement).value })}>
+                      <select class="input" value={mapping.entity ?? ""} onChange={(e) => {
+                        const value = (e.target as HTMLSelectElement).value;
+                        if (value === "__new__") {
+                          setAddingFor(account.id);
+                          onChange(account.id, { entity: "" });
+                        } else onChange(account.id, { entity: value });
+                      }}>
                         <option value="" disabled>Choose profile</option>
-                        {entities.map((entity) => <option value={entity.slug}>{entity.name}</option>)}
+                        {profiles.map((entity) => <option value={entity.slug}>{entity.name}</option>)}
+                        <option value="__new__">＋ Create a new business or personal profile</option>
                       </select>
+                      {addingFor === account.id && <div class="card flat stack" style={{ marginTop: 8, gap: 8, background: "var(--surface-2)" }}>
+                        <strong class="small">New business or personal profile</strong>
+                        <input class="input" value={newName} onInput={(e) => setNewName((e.target as HTMLInputElement).value)} placeholder="Business name" autoFocus />
+                        <select class="input" value={newType} onChange={(e) => setNewType((e.target as HTMLSelectElement).value)}>
+                          <option value="schedule_c">Business · Schedule C</option>
+                          <option value="s_corp_1120s">Business · S corp</option>
+                          <option value="partnership_1065">Business · Partnership</option>
+                          <option value="schedule_e">Rental · Schedule E</option>
+                          <option value="personal">Personal profile</option>
+                        </select>
+                        <div class="row">
+                          <button class="btn primary small" disabled={!newName.trim() || creatingProfile} onClick={() => createProfile(account.id)}>{creatingProfile ? "Adding…" : "Add and select"}</button>
+                          <button class="btn ghost small" disabled={creatingProfile} onClick={() => setAddingFor(null)}>Cancel</button>
+                        </div>
+                      </div>}
                     </div>
                     <div class="field">
                       <label>Account type</label>
@@ -333,7 +380,7 @@ function SimplefinSetupWizard({
             })}
           </div>
         )}
-        {entities.length === 0 && <div class="error small">Add a business or personal profile before setting up bank accounts.</div>}
+        {profiles.length === 0 && <div class="muted small">Create a profile from any “Belongs to” selector above.</div>}
         <div class="spread">
           <button class="btn ghost" disabled={busy} onClick={onClose}>Cancel</button>
           <button class="btn primary" disabled={!canSave} onClick={onSave}>{busy ? "Connecting accounts…" : `Save and sync ${included.length} account${included.length === 1 ? "" : "s"}`}</button>
