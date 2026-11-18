@@ -282,7 +282,7 @@ describe.skipIf(!hledgerWebBin)("entities, transfers, valuations, budgets, REI H
     expect(feb.lines[0]).toMatchObject({ budgeted: "$400.00", activity: "$450.00", rolledOver: "$100.00", available: "$50.00" });
     const mar = (await call("GET", "/api/v1/reports/budget?entity=personal&month=2026-03")).json;
     expect(mar.lines[0]).toMatchObject({ account: "Expenses:Food:Groceries", budgeted: "$500.00", activity: "$600.00", rolledOver: "$50.00", available: "-$50.00" });
-    expect((await call("PUT", "/api/v1/budgets", [{ entity: "personal", account: "Income:Salary", month: "2026-01", amount: "1" }])).status).toBe(400);
+    expect((await call("PUT", "/api/v1/budgets", [{ entity: "personal", account: "Assets:Checking:PersonalChecking", month: "2026-01", amount: "1" }])).status).toBe(400);
     expect((await call("GET", "/api/v1/budgets?entity=personal")).json.budgets.length).toBe(2);
   });
 

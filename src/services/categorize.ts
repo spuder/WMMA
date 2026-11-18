@@ -12,7 +12,7 @@ import type { HledgerTransaction } from "../hledger/web";
 import { JEV_MAX_OPTIONS, JevError, type JevClient } from "../jev";
 import * as M from "../money";
 import type { Money } from "../money";
-import { accountType, UNCATEGORIZED_EXPENSE, UNCATEGORIZED_INCOME } from "../naming";
+import { accountType, recurringPayeeKey, UNCATEGORIZED_EXPENSE, UNCATEGORIZED_INCOME } from "../naming";
 import { ulid } from "../ulid";
 import { getEntity } from "./accounts";
 import { templateAccounts } from "../templates";
@@ -33,6 +33,8 @@ export function payeeKey(payee: string): string {
 
 export interface RuleMatch {
   payeeKey?: string;
+  /** A recurring series' payee key (reference codes ignored), see recurringPayeeKey. */
+  recurringKey?: string;
   payeeContains?: string;
   amountMin?: number;
   amountMax?: number;
@@ -89,6 +91,7 @@ export function findUncategorized(txns: HledgerTransaction[]): Uncategorized[] {
 
 export function ruleMatches(rule: RuleMatch, u: Pick<Uncategorized, "payee" | "amount" | "account">): boolean {
   if (rule.payeeKey !== undefined && payeeKey(u.payee) !== rule.payeeKey) return false;
+  if (rule.recurringKey !== undefined && recurringPayeeKey(u.payee) !== rule.recurringKey) return false;
   if (rule.payeeContains !== undefined && !u.payee.toLowerCase().includes(rule.payeeContains.toLowerCase())) return false;
   const c = M.toCents(u.amount);
   if (rule.amountMin !== undefined && c < rule.amountMin) return false;
@@ -108,7 +111,7 @@ export function validateRuleMatch(v: unknown): RuleMatch {
   if (typeof v !== "object" || v === null || Array.isArray(v)) throw new ServiceError("match must be an object");
   const o = v as Record<string, unknown>;
   const out: RuleMatch = {};
-  for (const k of ["payeeKey", "payeeContains", "account"] as const) {
+  for (const k of ["payeeKey", "recurringKey", "payeeContains", "account"] as const) {
     if (o[k] === undefined) continue;
     if (typeof o[k] !== "string" || !o[k]) throw new ServiceError(`match.${k} must be a non-empty string`);
     out[k] = o[k] as string;
@@ -118,8 +121,8 @@ export function validateRuleMatch(v: unknown): RuleMatch {
     if (!Number.isSafeInteger(o[k])) throw new ServiceError(`match.${k} must be integer cents`);
     out[k] = o[k] as number;
   }
-  if (out.payeeKey === undefined && out.payeeContains === undefined && out.account === undefined) {
-    throw new ServiceError("match needs payeeKey, payeeContains or account");
+  if (out.payeeKey === undefined && out.recurringKey === undefined && out.payeeContains === undefined && out.account === undefined) {
+    throw new ServiceError("match needs payeeKey, recurringKey, payeeContains or account");
   }
   return out;
 }
@@ -148,6 +151,26 @@ export async function createRule(
   const rule = listRules(ctx).find((r) => r.id === id)!;
   await ctx.audit.append({ actor, operation: "rule.create", inputs: input, before: null, after: rule });
   return rule;
+}
+
+/**
+ * Create or update the rule for a recurring series, so future charges from the
+ * payee get its category and business. Returns the rule and whether it was new.
+ */
+export async function upsertRecurringRule(
+  ctx: ServiceContext,
+  actor: string,
+  input: { recurringKey: string; kind: "expense" | "income"; target: string; entity: string },
+): Promise<{ rule: Rule; created: boolean }> {
+  const match: RuleMatch = { recurringKey: input.recurringKey, ...(input.kind === "expense" ? { amountMax: -1 } : { amountMin: 1 }) };
+  const existing = listRules(ctx).find((r) => r.match.recurringKey === input.recurringKey && (input.kind === "expense" ? r.match.amountMax !== undefined : r.match.amountMin !== undefined));
+  if (!existing) return { rule: await createRule(ctx, actor, { match, target: input.target, entityOverride: input.entity }), created: true };
+  checkTarget(input.target);
+  if (!getEntity(ctx, input.entity)) throw new ServiceError(`unknown entity ${JSON.stringify(input.entity)}`, 404);
+  ctx.db.query("UPDATE rules SET target_account = ?, entity_override = ? WHERE id = ?").run(input.target, input.entity, existing.id);
+  const rule = listRules(ctx).find((r) => r.id === existing.id)!;
+  await ctx.audit.append({ actor, operation: "rule.update", inputs: input, before: existing, after: rule });
+  return { rule, created: false };
 }
 
 // ---- Jev ----------------------------------------------------------------
@@ -233,6 +256,15 @@ export async function categorize(ctx: ServiceContext, actor: string, opts: { wmm
   if (todo.length === 0) return summary;
 
   const rules = listRules(ctx);
+  // Business first: the first matching rule that sets one wins, even when another
+  // rule picks the category (e.g. a recurring series tagged to a business).
+  for (const u of todo) {
+    const entity = rules.find((r) => r.entity_override && ruleMatches(r.match, u))?.entity_override;
+    if (entity && entity !== u.entity) {
+      await ctx.store.updateTransaction(u.file, u.wmmaId, { setTags: { entity } });
+      u.entity = entity;
+    }
+  }
   const changes: Change[] = [];
   const toJev: Uncategorized[] = [];
   const bumpRule = ctx.db.query("UPDATE rules SET hit_count = hit_count + 1 WHERE id = ?");

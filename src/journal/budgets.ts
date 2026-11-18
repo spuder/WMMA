@@ -135,6 +135,6 @@ export function parseBudgets(text: string): BudgetChange[] {
 export function validateChange(c: BudgetChange): void {
   validateMonth(c.month);
   validateAccount(c.account);
-  if (!c.account.startsWith("Expenses:")) throw new Error("budgets are for Expenses accounts");
+  if (!c.account.startsWith("Expenses:") && !c.account.startsWith("Income:")) throw new Error("budgets are for Income and Expenses accounts");
   if (M.isNegative(c.amount)) throw new Error("budget amounts must not be negative");
 }

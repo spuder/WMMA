@@ -20,6 +20,16 @@ export const Icon = {
   chevron: () => <svg viewBox="0 0 24 24" {...P} width="16" height="16"><path d="m9 6 6 6-6 6" /></svg>,
   down: () => <svg viewBox="0 0 24 24" {...P} width="14" height="14"><path d="m6 9 6 6 6-6" /></svg>,
   clock: () => <svg viewBox="0 0 24 24" {...P}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>,
+  bars: () => <svg viewBox="0 0 24 24" {...P}><path d="M5 20v-6M10 20V8M15 20v-9M20 20V5" /></svg>,
+  pie: () => <svg viewBox="0 0 24 24" {...P}><path d="M12 3a9 9 0 1 0 9 9h-9z" /><path d="M15 3.5A9 9 0 0 1 20.5 9H15z" /></svg>,
+  map: () => <svg viewBox="0 0 24 24" {...P}><path d="m3 6 6-2 6 2 6-2v14l-6 2-6-2-6 2zM9 4v14M15 6v14" /></svg>,
+  calendar: () => <svg viewBox="0 0 24 24" {...P}><rect x="3.5" y="5" width="17" height="15.5" rx="2.5" /><path d="M3.5 10h17M8 3v4M16 3v4" /></svg>,
+  trend: () => <svg viewBox="0 0 24 24" {...P}><path d="m3 17 6-6 4 4 8-8M15 7h6v6" /></svg>,
+  layers: () => <svg viewBox="0 0 24 24" {...P}><path d="m12 3 9 5-9 5-9-5zM3 13l9 5 9-5" /></svg>,
+  compass: () => <svg viewBox="0 0 24 24" {...P}><circle cx="12" cy="12" r="9" /><path d="m15.5 8.5-2 5-5 2 2-5z" /></svg>,
+  download: () => <svg viewBox="0 0 24 24" {...P}><path d="M12 4v11M7 10l5 5 5-5M4 20h16" /></svg>,
+  filter: () => <svg viewBox="0 0 24 24" {...P}><path d="M4 6h16M7 12h10M10 18h4" /></svg>,
+  plus: () => <svg viewBox="0 0 24 24" {...P} stroke-width="2.2"><path d="M12 5v14M5 12h14" /></svg>,
   logo: () => (
     <svg viewBox="0 0 32 32" width="28" height="28">
       <rect width="32" height="32" rx="9" fill="var(--accent)" />
@@ -109,12 +119,15 @@ export function CellMenu({
   children,
   width = 320,
   flash = false,
+  tool = false,
 }: {
   label: string;
   value: ComponentChildren;
   children: (close: () => void) => ComponentChildren;
   width?: number;
   flash?: boolean;
+  /** Toolbar look: always bordered, sized like a button. */
+  tool?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [place, setPlace] = useState({ up: false, right: false });
@@ -139,7 +152,7 @@ export function CellMenu({
     setOpen((o) => !o);
   };
   return (
-    <div class={`cellmenu${open ? " open" : ""}`} ref={ref} onClick={(e) => e.stopPropagation()}>
+    <div class={`cellmenu${open ? " open" : ""}${tool ? " tool" : ""}`} ref={ref} onClick={(e) => e.stopPropagation()}>
       <button class={`cellmenu-btn${flash ? " flash" : ""}`} aria-haspopup="dialog" aria-expanded={open} aria-label={label} onClick={toggle}>
         <span class="cellmenu-value">{value}</span>
         <Icon.down />

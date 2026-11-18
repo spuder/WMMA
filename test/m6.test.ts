@@ -107,12 +107,18 @@ describe.skipIf(!hledgerWebBin)("REST API + MCP (M6 done-when)", () => {
     const { tools } = await mcp.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual(
       [
+        "assign_recurring",
         "categorize_transaction",
         "create_rule",
+        "get_account_balances",
         "get_budget_vs_actual",
+        "get_business_pnl",
         "get_cashflow",
         "get_net_worth",
+        "get_overview",
         "get_pnl",
+        "get_pnl_statement",
+        "get_recurring",
         "get_review_queue",
         "get_spending_by_category",
         "list_accounts",
