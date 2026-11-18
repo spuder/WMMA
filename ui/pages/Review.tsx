@@ -29,6 +29,7 @@ export function Review() {
   const [learned, setLearned] = useState(0);
   const [picker, setPicker] = useState(false);
   const [editingEntity, setEditingEntity] = useState<string | null>(null);
+  const [notes, setNotes] = useState<Record<string, string | null>>({});
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState<{ dx: number; dy: number; active: boolean }>({ dx: 0, dy: 0, active: false });
   const [fly, setFly] = useState<"left" | "right" | null>(null);
@@ -59,6 +60,28 @@ export function Review() {
       toast((e as Error).message);
     } finally {
       setBusy(false);
+    }
+  };
+
+  const loadNote = (item: Item) => {
+    if (item.wmma_id in notes) return;
+    api<{ note: string | null }>(`/transactions/${item.wmma_id}`)
+      .then((t) => setNotes((n) => (item.wmma_id in n ? n : { ...n, [item.wmma_id]: t.note })))
+      .catch(() => setNotes((n) => (item.wmma_id in n ? n : { ...n, [item.wmma_id]: null })));
+  };
+  useEffect(() => {
+    if (card) loadNote(card);
+  }, [card?.wmma_id]);
+
+  const saveNote = async (item: Item, note: string) => {
+    const next = note.trim() || null;
+    if ((notes[item.wmma_id] ?? null) === next) return;
+    try {
+      const t = await api<{ note: string | null }>(`/transactions/${item.wmma_id}`, { method: "PATCH", body: { memo: next } });
+      setNotes((n) => ({ ...n, [item.wmma_id]: t.note }));
+      toast(next ? "Note saved" : "Note cleared");
+    } catch (e) {
+      toast((e as Error).message);
     }
   };
 
@@ -95,7 +118,7 @@ export function Review() {
 
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
-      if (picker || (e.target as HTMLElement)?.tagName === "INPUT") return;
+      if (picker || ["INPUT", "SELECT", "TEXTAREA"].includes((e.target as HTMLElement)?.tagName)) return;
       if (e.key === "ArrowRight") accept();
       else if (e.key === "ArrowLeft") other();
       else if (e.key.toLowerCase() === "s") skip();
@@ -202,6 +225,8 @@ export function Review() {
                 onEditEntity={() => setEditingEntity((current) => current === card.wmma_id ? null : card.wmma_id)}
                 onChangeEntity={(nextEntity) => changeEntity(card, nextEntity)}
                 onPickSuggestion={(account) => resolve(card, account, account === top?.account ? "right" : "left")}
+                note={notes[card.wmma_id]}
+                onSaveNote={(note) => saveNote(card, note)}
               />
             </div>
           </div>
@@ -237,8 +262,9 @@ export function Review() {
   );
 }
 
-const JEV_COLORS = ["#2bbf88", "#4d96ff", "#a76df2"];
-const jevColor = (account: string, offset = 0) => JEV_COLORS[(account.length + offset) % JEV_COLORS.length]!;
+/** One color per Jev rank, so the headline pick and its chip always match. */
+const JEV_COLORS = ["#16a874", "#3b82f6", "#a855f7", "#f59e0b", "#ec4899", "#14b8a6"];
+const jevColor = (rank: number) => JEV_COLORS[rank % JEV_COLORS.length]!;
 
 function CardBody({
   item,
@@ -248,6 +274,8 @@ function CardBody({
   onEditEntity,
   onChangeEntity,
   onPickSuggestion,
+  note,
+  onSaveNote,
 }: {
   item: Item;
   entityName: (s: string | null) => string;
@@ -256,6 +284,8 @@ function CardBody({
   onEditEntity?: () => void;
   onChangeEntity?: (entity: string) => void;
   onPickSuggestion?: (account: string) => void;
+  note?: string | null | undefined;
+  onSaveNote?: (note: string) => void;
 }) {
   const top = item.jev_choices[0];
   const inflow = item.amount_cents > 0;
@@ -285,23 +315,40 @@ function CardBody({
             </button>
           )}
         </dd>
+        {onSaveNote && (
+          <>
+            <dt>Note</dt>
+            <dd>
+              <input
+                key={`${item.wmma_id}:${note ?? ""}`}
+                class="review-note"
+                placeholder={note === undefined ? "Loading…" : "Add a note"}
+                defaultValue={note ?? ""}
+                disabled={note === undefined}
+                onPointerDown={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+                onBlur={(e) => onSaveNote((e.target as HTMLInputElement).value)}
+              />
+            </dd>
+          </>
+        )}
       </dl>
       {top ? (
-        <div class="suggestion" style={{ background: `${jevColor(top.account)}20`, borderColor: `${jevColor(top.account)}55` }}>
-          <div class="upper" style={{ color: jevColor(top.account) }}>
+        <div class="suggestion" style={{ background: `${jevColor(0)}20`, borderColor: `${jevColor(0)}55` }}>
+          <div class="upper" style={{ color: jevColor(0) }}>
             Jev suggests
           </div>
           <div class="cat">{catLabel(top.account)}</div>
-          <div class="conf" style={{ background: `${jevColor(top.account)}35` }} aria-label={`${Math.round(top.probability * 100)}% confident`}>
-            <div style={{ width: `${Math.round(top.probability * 100)}%`, background: jevColor(top.account) }} />
+          <div class="conf" style={{ background: `${jevColor(0)}35` }} aria-label={`${Math.round(top.probability * 100)}% confident`}>
+            <div style={{ width: `${Math.round(top.probability * 100)}%`, background: jevColor(0) }} />
           </div>
           <div class="spread tiny muted" style={{ marginTop: 6 }}>
             <span>{Math.round(top.probability * 100)}% confident</span>
             {item.jev_choices[1] && <span>then {leaf(item.jev_choices[1].account)}</span>}
           </div>
           {onPickSuggestion && <div class="jev-options">
-            {item.jev_choices.slice(0, 3).map((choice, index) => (
-              <button style={{ color: jevColor(choice.account, index), borderColor: `${jevColor(choice.account, index)}66` }} onPointerDown={(e) => e.stopPropagation()} onClick={() => onPickSuggestion(choice.account)}>
+            {item.jev_choices.slice(0, 6).map((choice, index) => (
+              <button key={choice.account} style={{ color: jevColor(index), borderColor: `${jevColor(index)}88`, background: `${jevColor(index)}14` }} onPointerDown={(e) => e.stopPropagation()} onClick={() => onPickSuggestion(choice.account)}>
                 {catLabel(choice.account)} <span>{Math.round(choice.probability * 100)}%</span>
               </button>
             ))}

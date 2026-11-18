@@ -317,7 +317,7 @@ textarea.input { height: auto; padding: 10px 14px; }
 
 /* ---------- swipe game ---------- */
 .swipe-wrap { display: flex; flex-direction: column; align-items: center; gap: 18px; padding-top: 6px; }
-.deck { position: relative; width: 100%; max-width: 560px; height: min(68vh, 600px); touch-action: pan-y; }
+.deck { position: relative; width: 100%; max-width: 600px; height: min(76vh, 720px); touch-action: pan-y; }
 .swipe-card {
   position: absolute; inset: 0; display: flex; flex-direction: column;
   padding: 30px; border-radius: 28px; background: var(--surface); border: 1px solid var(--line);
@@ -331,18 +331,21 @@ textarea.input { height: auto; padding: 10px 14px; }
 .swipe-card .payee { font-size: 28px; font-weight: 700; letter-spacing: -0.015em; }
 .swipe-card .facts { display: grid; grid-template-columns: auto 1fr; gap: 12px 18px; margin-top: 22px; font-size: 17px; }
 .swipe-card .facts dt { color: var(--muted); }
-.swipe-card .facts dd { margin: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.swipe-card .facts { align-items: center; }
+.swipe-card .facts dd { margin: 0; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .suggestion { margin-top: auto; padding: 20px; border: 1px solid transparent; border-radius: 20px; background: var(--accent-soft); }
 .suggestion .cat { font-size: 25px; font-weight: 750; letter-spacing: -0.015em; color: var(--ink); }
 .suggestion.none { background: var(--surface-2); }
 .conf { height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--accent) 22%, transparent); overflow: hidden; margin-top: 10px; }
 .conf > div { height: 100%; background: var(--accent); border-radius: 3px; }
-.review-entity { display: inline-flex; align-items: center; gap: 7px; padding: 4px 7px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-2); color: var(--ink); font: inherit; font-weight: 650; cursor: pointer; }
-.review-entity > svg { width: 15px; height: 15px; }
-.review-entity-select { width: 100%; padding: 7px 9px; border: 1px solid var(--accent); border-radius: 9px; background: var(--surface-2); color: var(--ink); font: inherit; font-weight: 650; }
-.jev-options { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-.jev-options button { padding: 7px 10px; border: 1px solid; border-radius: 10px; background: var(--surface); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
-.jev-options button span { margin-left: 5px; color: var(--muted); font-weight: 600; }
+.review-entity { display: inline-flex; align-items: center; gap: 9px; min-height: 44px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); color: var(--ink); font: inherit; font-weight: 650; cursor: pointer; }
+.review-entity > svg { width: 18px; height: 18px; }
+.review-entity-select, .review-note { width: 100%; min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); color: var(--ink); font: inherit; font-weight: 600; }
+.review-entity-select { border-color: var(--accent); }
+.review-note:focus { outline: none; border-color: var(--accent); }
+.jev-options { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.jev-options button { min-height: 44px; padding: 9px 14px; border: 1.5px solid; border-radius: 12px; font: inherit; font-size: 16px; font-weight: 700; cursor: pointer; }
+.jev-options button span { margin-left: 6px; color: var(--muted); font-weight: 600; }
 .stamp {
   position: absolute; top: 26px; padding: 6px 14px; border-radius: 10px; border: 3px solid; font-weight: 900; font-size: 20px; letter-spacing: 0.1em;
   opacity: 0; transform: rotate(-12deg); pointer-events: none;
@@ -351,12 +354,12 @@ textarea.input { height: auto; padding: 10px 14px; }
 .stamp.no { right: 22px; color: var(--out); border-color: var(--out); transform: rotate(12deg); }
 .swipe-actions { display: flex; align-items: center; justify-content: center; gap: 22px; }
 .round {
-  width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--line);
+  width: 72px; height: 72px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--line);
   background: var(--surface); box-shadow: var(--shadow); cursor: pointer; transition: transform 0.1s;
 }
 .round:active { transform: scale(0.92); }
-.round svg { width: 28px; height: 28px; }
-.round.yes { color: var(--in); width: 76px; height: 76px; }
+.round svg { width: 32px; height: 32px; }
+.round.yes { color: var(--in); width: 86px; height: 86px; }
 .round.no { color: var(--out); }
 .progress { width: 100%; max-width: 420px; }
 .done { text-align: center; padding: 48px 16px; }
