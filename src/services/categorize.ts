@@ -335,8 +335,9 @@ function toItem(r: Record<string, unknown>): ReviewItem {
   return { ...(r as unknown as ReviewItem), jev_choices: JSON.parse(String(r["jev_choices"])), amount: M.format(M.cents(Number(r["amount_cents"]))) };
 }
 
-export function listReview(ctx: ServiceContext, status = "pending", limit = 200): ReviewItem[] {
-  return (ctx.db.query("SELECT * FROM review_queue WHERE status = ? ORDER BY date, wmma_id LIMIT ?").all(status, limit) as Array<Record<string, unknown>>).map(toItem);
+export function listReview(ctx: ServiceContext, status = "pending", limit = 200, order: "oldest" | "newest" = "oldest"): ReviewItem[] {
+  const sql = `SELECT * FROM review_queue WHERE status = ? ORDER BY ${order === "newest" ? "date DESC, wmma_id DESC" : "date, wmma_id"} LIMIT ?`;
+  return (ctx.db.query(sql).all(status, limit) as Array<Record<string, unknown>>).map(toItem);
 }
 
 export interface ReviewResult {

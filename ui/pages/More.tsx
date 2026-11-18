@@ -2,7 +2,7 @@ import { Icon } from "../components/ui";
 
 export function More() {
   const links = [
-    { href: "#/accounts", icon: Icon.bank, title: "Accounts & entities", sub: "Balances, businesses, assets" },
+    { href: "#/accounts", icon: Icon.bank, title: "Accounts & businesses", sub: "Balances, business and personal profiles, assets" },
     { href: "#/imports", icon: Icon.upload, title: "Imports", sub: "YNAB, QFX, CSV, SimpleFIN, REI Hub" },
     { href: "#/settings", icon: Icon.gear, title: "Settings", sub: "Jev key, appearance" },
   ];

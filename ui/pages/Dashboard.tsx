@@ -1,9 +1,9 @@
-import { useCallback } from "preact/hooks";
-import { compact, leaf, money, monthEnd, monthName, monthShift, monthStart, thisMonth, useApi } from "../api";
+import { useCallback, useState } from "preact/hooks";
+import { catEmoji, compact, leaf, money, monthEnd, monthName, monthShift, monthStart, thisMonth, useApi } from "../api";
 import { Chart, type Theme } from "../components/chart";
-import { ErrorBox, Icon, Loading } from "../components/ui";
+import { CatName, ErrorBox, Icon, Loading } from "../components/ui";
 import { EntitySwitcher, go, useApp } from "../app";
-import { TxnRow } from "./Transactions";
+import { TxnList, type Txn } from "./Transactions";
 
 const greeting = () => {
   const h = new Date().getHours();
@@ -12,6 +12,8 @@ const greeting = () => {
 
 export function Dashboard() {
   const { entity, reviewCount } = useApp();
+  const [edited, setEdited] = useState<Record<string, Txn>>({});
+  const accounts = useApi<{ accounts: any[] }>("/accounts");
   const m = thisMonth();
   const eq = entity ? `&entity=${encodeURIComponent(entity)}` : "";
   const nw = useApi(`/reports/networth?from=${monthShift(m, -11)}&to=${m}`, []);
@@ -58,7 +60,7 @@ export function Dashboard() {
           padAngle: 2,
           itemStyle: { borderRadius: 6, borderColor: t.surface, borderWidth: 2 },
           label: { show: false },
-          data: cats.slice(0, 8).map((c) => ({ name: leaf(c.account), value: c.amount_cents })),
+          data: cats.slice(0, 8).map((c) => ({ name: `${catEmoji(c.account)} ${leaf(c.account)}`, value: c.amount_cents })),
         },
       ],
     }),
@@ -92,6 +94,19 @@ export function Dashboard() {
       </div>
 
       {nw.error && <ErrorBox error={nw.error} />}
+      {accounts.error && <ErrorBox error={accounts.error} />}
+
+      {!accounts.loading && !accounts.error && accounts.data?.accounts.length === 0 && (
+        <section class="card onboarding span-12">
+          <div class="upper">Get started</div>
+          <h2>Bring your finances into WMMA</h2>
+          <p class="sub">Add an account or import a statement to start seeing balances, spending, and reports here.</p>
+          <div class="row onboarding-actions">
+            <a class="btn primary" href="#/accounts">Add an account</a>
+            <a class="btn" href="#/imports">Import transactions</a>
+          </div>
+        </section>
+      )}
 
       <div class="grid">
         <div class="card hero span-7">
@@ -161,7 +176,7 @@ export function Dashboard() {
                   <div class="spread small" style={{ padding: "5px 0" }}>
                     <span class="row" style={{ gap: 8, minWidth: 0 }}>
                       <span style={{ width: 9, height: 9, borderRadius: 3, flex: "none", background: `var(--c${i})` }} />
-                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{leaf(c.account)}</span>
+                      <CatName account={c.account} label={leaf(c.account)} />
                     </span>
                     <span class="num muted">{c.share}%</span>
                   </div>
@@ -187,13 +202,15 @@ export function Dashboard() {
           {recent.loading ? (
             <Loading h={200} />
           ) : (recent.data?.transactions ?? []).length === 0 ? (
-            <div class="empty">No transactions yet. Import some from More → Imports.</div>
+            <div class="empty">No transactions yet. <a href="#/imports">Import a bank statement</a> to see activity here.</div>
           ) : (
-            <div class="list">
-              {recent.data.transactions.map((t: any) => (
-                <TxnRow t={t} onClick={() => go(`/transactions?id=${t.wmma_id}`)} />
-              ))}
-            </div>
+            <TxnList
+              rows={(recent.data.transactions as Txn[]).map((t) => edited[t.wmma_id] ?? t)}
+              accounts={accounts.data?.accounts ?? []}
+              onOpen={(t) => go(`/transactions?id=${t.wmma_id}`)}
+              onChanged={(t) => setEdited((e) => ({ ...e, [t.wmma_id]: t }))}
+              onFilterAccount={(a) => go(a ? `/transactions?account=${encodeURIComponent(a)}` : "/transactions")}
+            />
           )}
         </div>
       </div>

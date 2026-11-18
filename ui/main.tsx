@@ -13,14 +13,14 @@ import { Settings } from "./pages/Settings";
 import { Transactions } from "./pages/Transactions";
 
 const NAV = [
-  { path: "/", label: "Home", icon: Icon.home },
-  { path: "/transactions", label: "Activity", icon: Icon.list },
-  { path: "/review", label: "Review", icon: Icon.swipe },
-  { path: "/reports", label: "Reports", icon: Icon.chart },
-  { path: "/more", label: "More", icon: Icon.more, mobileOnly: true },
-  { path: "/accounts", label: "Accounts", icon: Icon.bank, desktopOnly: true },
-  { path: "/imports", label: "Imports", icon: Icon.upload, desktopOnly: true },
-  { path: "/settings", label: "Settings", icon: Icon.gear, desktopOnly: true },
+  { path: "/", label: "Home", icon: Icon.home, tone: "home" },
+  { path: "/transactions", label: "Activity", icon: Icon.list, tone: "activity" },
+  { path: "/review", label: "Review", icon: Icon.swipe, tone: "review" },
+  { path: "/reports", label: "Reports", icon: Icon.chart, tone: "reports" },
+  { path: "/more", label: "More", icon: Icon.more, tone: "more", mobileOnly: true },
+  { path: "/accounts", label: "Accounts", icon: Icon.bank, tone: "accounts" },
+  { path: "/imports", label: "Imports", icon: Icon.upload, tone: "imports", desktopOnly: true },
+  { path: "/settings", label: "Settings", icon: Icon.gear, tone: "settings", desktopOnly: true },
 ];
 
 function Shell() {
@@ -102,8 +102,8 @@ function Shell() {
             <Icon.logo /> WMMA
           </div>
           {NAV.filter((n) => !n.mobileOnly).map((n) => (
-            <a href={`#${n.path}`} class={`navlink${active(n.path) ? " active" : ""}`}>
-              <n.icon />
+            <a href={`#${n.path}`} class={`navlink nav-${n.tone}${active(n.path) ? " active" : ""}`}>
+              <span class="nav-icon"><n.icon /></span>
               {n.label}
               {n.path === "/review" && reviewCount > 0 && <span class="badge">{reviewCount}</span>}
             </a>
@@ -125,8 +125,8 @@ function Shell() {
         </main>
         <nav class="bottomnav" aria-label="Main">
           {NAV.filter((n) => !n.desktopOnly).map((n) => (
-            <a href={`#${n.path}`} class={`navlink${active(n.path) ? " active" : ""}`}>
-              <n.icon />
+            <a href={`#${n.path}`} class={`navlink nav-${n.tone}${active(n.path) ? " active" : ""}`}>
+              <span class="nav-icon"><n.icon /></span>
               {n.label}
               {n.path === "/review" && reviewCount > 0 && <span class="badge">{reviewCount > 99 ? "99+" : reviewCount}</span>}
             </a>

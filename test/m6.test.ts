@@ -37,7 +37,7 @@ describe("SecretStore", () => {
   test("disabled without a key; short keys rejected", async () => {
     const s = new SecretStore(join(dir, "none.enc"), null);
     expect(s.enabled).toBe(false);
-    await expect(s.set("jev_api_key", "x")).rejects.toThrow(/WMMA_SECRET_KEY/);
+    await expect(s.set("jev_api_key", "x")).rejects.toThrow(/secret storage is not available/);
     expect(() => new SecretStore(join(dir, "x"), "short")).toThrow();
   });
 });

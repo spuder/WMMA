@@ -30,7 +30,10 @@ const realFetch = globalThis.fetch;
 beforeAll(() => {
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
-    if (url.endsWith("/api/v1/review") && (!init?.method || init.method === "GET")) return Response.json({ items: queue });
+    if (/\/api\/v1\/review(\?|$)/.test(url) && (!init?.method || init.method === "GET")) {
+      expect(url).toContain("order=newest");
+      return Response.json({ items: queue });
+    }
     const m = /\/api\/v1\/review\/(\w+)$/.exec(url);
     if (m && init?.method === "POST") {
       const { account } = JSON.parse(String(init.body));
@@ -94,46 +97,61 @@ describe("swipe review on a phone", () => {
       root,
     );
 
+    localStorage.removeItem("wmma.review.later");
     await until(() => topCard() !== null);
-    expect(text()).toContain("GROCER #12");
+    // Newest first; everything here is from March, so the current milestone is "This year".
+    expect(top()).toContain("GROCER #15");
     expect(text()).toContain("Jev suggests");
-    expect(text()).toContain("0 of 5 sorted");
+    expect($(".quest-title")!.textContent).toBe("5 to clear · This year");
+    expect($(".quest-bar-label")!.textContent).toBe("0/5");
 
-    // 1. Swipe right: accept Jev's pick.
-    swipe(topCard()!, 180);
-    await until(() => posts.length === 1 && text().includes("1 of 5 sorted"));
-    expect(posts[0]).toEqual({ id: "W1", account: "Expenses:Food:Groceries" });
-
-    // 2. A short drag springs back without resolving anything.
-    swipe(topCard()!, 40);
-    await new Promise((r) => setTimeout(r, 50));
-    expect(posts.length).toBe(1);
-
-    // 3. Tap the accept button.
-    await until(() => top().includes("$60.00"));
-    ($(".round.yes") as HTMLButtonElement).click();
-    await until(() => posts.length === 2);
-    expect(posts[1]).toEqual({ id: "W2", account: "Expenses:Food:Groceries" });
-
-    // 4. No suggestion: accept is disabled; swipe left opens the picker, tap a category.
-    await until(() => top().includes("MYSTERY CO") && top().includes("No suggestion"));
-    expect(($(".round.yes") as HTMLButtonElement).disabled).toBe(true);
+    // 1. Swipe left: decide later. Nothing is sent; the card goes to the back of the deck.
     swipe(topCard()!, -180);
+    await until(() => top().includes("GROCER #14"));
+    expect(posts.length).toBe(0);
+    expect($(".sheet")).toBeNull();
+    expect($("[title=\"Saved for later\"]")!.textContent).toBe("⏳1");
+    expect(JSON.parse(localStorage.getItem("wmma.review.later")!)).toEqual(["W5"]);
+
+    // 2. Swipe right: accept Jev's pick.
+    swipe(topCard()!, 180);
+    await until(() => posts.length === 1 && $(".quest-bar-label")!.textContent === "1/5");
+    expect($(".quest-left")!.textContent).toBe("4");
+    expect(posts[0]).toEqual({ id: "W4", account: "Expenses:Food:Groceries" });
+
+    // 3. A short drag springs back without doing anything.
+    swipe(topCard()!, 40);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(posts.length).toBe(1);
+    expect(top()).toContain("MYSTERY CO");
+
+    // 4. No suggestion: accept is disabled; "Other" opens the picker, tap a category.
+    expect(top()).toContain("No suggestion");
+    expect(($(".round.yes") as HTMLButtonElement).disabled).toBe(true);
+    ($(".round.pick") as HTMLButtonElement).click();
     await until(() => $(".sheet") !== null);
     const shopping = [...document.querySelectorAll(".sheet .catbtn")].find((b) => b.textContent?.includes("Shopping")) as HTMLButtonElement;
     expect([...document.querySelectorAll(".sheet .catbtn")].some((b) => b.textContent?.includes("Salary"))).toBe(false); // money out: expenses only
     shopping.click();
-    await until(() => posts.length === 3);
-    expect(posts[2]).toEqual({ id: "W3", account: "Expenses:Shopping" });
+    await until(() => posts.length === 2);
+    expect(posts[1]).toEqual({ id: "W3", account: "Expenses:Shopping" });
 
-    // 5. Third grocery accept teaches a rule that also sorts the last item.
-    await until(() => top().includes("GROCER #14"));
+    // 5. Tap the accept button.
+    await until(() => top().includes("$60.00"));
+    ($(".round.yes") as HTMLButtonElement).click();
+    await until(() => posts.length === 3);
+    expect(posts[2]).toEqual({ id: "W2", account: "Expenses:Food:Groceries" });
+
+    // 6. Third grocery accept teaches a rule that also sorts the card set aside for later.
+    await until(() => top().includes("$50.00"));
     swipe(topCard()!, 200);
     await until(() => text().includes("All caught up"));
-    expect(posts.map((p) => p.id)).toEqual(["W1", "W2", "W3", "W4"]);
+    expect(posts.map((p) => p.id)).toEqual(["W4", "W3", "W2", "W1"]);
     expect(text()).toContain("5 sorted");
     expect(text()).toContain("1 new rule learned");
     expect(text()).toContain("Learned: “grocer” → Groceries · 1 more sorted");
+    await until(() => text().includes("Inbox zero!")); // milestone celebration
+    expect(JSON.parse(localStorage.getItem("wmma.review.later")!)).toEqual([]);
     expect(refreshes).toBeGreaterThanOrEqual(4);
   });
 });

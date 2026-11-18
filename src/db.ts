@@ -124,6 +124,13 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX review_queue_status ON review_queue(status, date);
   `,
+  `ALTER TABLE accounts ADD COLUMN website_url TEXT;`,
+  `ALTER TABLE entities ADD COLUMN color TEXT;`,
+  // Account names imported before U+FFFD (mangled ®/™ from banks) was stripped.
+  `UPDATE accounts SET name = trim(replace(replace(name, char(65533), ''), '  ', ' ')) WHERE instr(name, char(65533)) > 0;`,
+  // Physical assets (vehicles, real estate, other): JSON details and an optional loan/mortgage against them.
+  `ALTER TABLE accounts ADD COLUMN details TEXT;
+   ALTER TABLE accounts ADD COLUMN linked_loan TEXT REFERENCES accounts(slug);`,
 ];
 
 export function openDb(path: string): Database {

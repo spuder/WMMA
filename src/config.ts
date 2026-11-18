@@ -8,7 +8,6 @@ export interface Config {
   tz: string;
   hledgerWebBin: string;
   hledgerWebPort: number;
-  simplefinAccessUrl: string | null;
   simplefinSyncCron: string;
   jev: { apiKey: string | null; baseUrl: string; model: string };
   secretKey: string | null;
@@ -58,7 +57,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     tz: env.WMMA_TZ || "UTC",
     hledgerWebBin: env.HLEDGER_WEB_BIN || "hledger-web",
     hledgerWebPort: port("HLEDGER_WEB_PORT", env.HLEDGER_WEB_PORT, 5000),
-    simplefinAccessUrl: env.SIMPLEFIN_ACCESS_URL || null,
     simplefinSyncCron: cron("SIMPLEFIN_SYNC_CRON", env.SIMPLEFIN_SYNC_CRON || "0 6 * * *"),
     jev: {
       apiKey: env.JEV_API_KEY || null,

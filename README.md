@@ -48,7 +48,7 @@ echo '{"columns":{"date":"Date","payee":"Description","amount":"Amount"}}' > /da
 wmma csv-profile set chase /data/chase.json
 wmma import csv /data/chase-march.csv --profile chase --account main-checking
 
-# SimpleFIN (needs SIMPLEFIN_ACCESS_URL). Also runs on SIMPLEFIN_SYNC_CRON.
+# SimpleFIN (connect it in Settings). Also runs on SIMPLEFIN_SYNC_CRON.
 wmma sync simplefin
 
 # Records that could match more than one existing transaction
@@ -57,6 +57,21 @@ wmma duplicate <id> merge --wmma-id <ID>   # or: import | discard
 ```
 
 Profile fields: `columns.{date,payee,memo,amount | debit+credit,id}`, `dateFormat`, `invertAmount`, `delimiter`, `skipRows`.
+
+### Connect SimpleFIN
+
+In WMMA, open **Settings → SimpleFIN bank sync**, then open your [SimpleFIN
+Bridge account](https://beta-bridge.simplefin.org/my-account) and add the banks
+you want to connect. Create and copy a one-time Setup Token, paste it into WMMA,
+and select **Connect SimpleFIN**. WMMA claims it once and stores the resulting
+Access URL encrypted; it does not display or log the Access URL.
+No server environment variables are needed. WMMA stores the claimed Access URL
+encrypted using a generated key in a separate persistent Docker volume. After
+connecting, open **Imports** and select **Sync SimpleFIN now**. New bank accounts
+are created automatically on the first sync; review them under **Accounts**.
+Back up the `wmma-secret-key` volume along with `./data`; the encrypted
+credentials cannot be recovered without it. `WMMA_SECRET_KEY` remains available
+only to migrate secrets from older deployments.
 
 ## Web UI
 
@@ -84,6 +99,7 @@ Build the local-testing image and create a persistent data volume:
 ```sh
 docker build --platform linux/amd64 -f Dockerfile.example -t wmma:example .
 docker volume create wmma-example-data
+docker volume create wmma-example-secrets
 ```
 
 Start the app in one terminal:
@@ -93,6 +109,7 @@ docker run --rm --name wmma-example \
   -p 127.0.0.1:3000:3000 \
   -e WMMA_ALLOWED_USERS=test@example.com \
   -v wmma-example-data:/data \
+  -v wmma-example-secrets:/var/lib/wmma-secrets \
   wmma:example
 ```
 
@@ -149,7 +166,7 @@ Write tools: `categorize_transaction`, `set_entity`, `split_transaction`, `creat
 | Imports | `POST /imports` (multipart: `ynab-csv`, `qfx`, `csv`, `reihub`), `POST /imports/ynab-api`, `POST /sync/simplefin`, `GET /import-runs`, `GET/PUT /csv-profiles[/:name]`, `GET /duplicates`, `POST /duplicates/:id` |
 | Budgets | `GET/PUT /budgets` |
 | Reports | `GET /reports/pnl`, `/reports/cashflow`, `/reports/budget`, `/reports/networth`, `/reports/spending` |
-| Settings | `GET/PUT /settings` (`settings: {"ui.*": ...}`, `jevApiKey` — needs `WMMA_SECRET_KEY`) |
+| Settings | `GET/PUT /settings` (`settings: {"ui.*": ...}`, `jevApiKey`) |
 
 ## Categorization
 
@@ -186,9 +203,9 @@ Then open `https://wmma.<your-tailnet>.ts.net`. Only Tailscale users in `WMMA_AL
 | `WMMA_TZ` | timezone, default `UTC` |
 | `WMMA_DATA_DIR` | default `/data` |
 | `YNAB_TOKEN` | YNAB personal access token (for `import ynab-api`) |
-| `SIMPLEFIN_ACCESS_URL`, `SIMPLEFIN_SYNC_CRON` | SimpleFIN access URL; sync schedule (default `0 6 * * *`) |
+| `SIMPLEFIN_SYNC_CRON` | SimpleFIN sync schedule (default `0 6 * * *`); connect accounts in Settings |
 | `JEV_API_KEY` | Jev (TypeSafe) API key; optional `JEV_BASE_URL`, `JEV_MODEL` |
-| `WMMA_SECRET_KEY` | ≥16 chars; encrypts secrets set in the UI (`/data/secrets.enc`). Needed only to set the Jev key from the UI |
+| `WMMA_SECRET_KEY` | Optional legacy migration key; new deployments generate a key in the persistent `wmma-secret-key` volume |
 
 ## Development
 

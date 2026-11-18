@@ -5,6 +5,8 @@ import { accountType, slugify, uniqueSlug } from "../naming";
 import { FORM_TAG, TEMPLATES } from "../templates";
 import { createAccount, getAccount, getEntity, listAccounts, type AccountRow, type EntityRow } from "./accounts";
 import { ServiceError, type ServiceContext } from "./context";
+import { checkedAssetDetails, checkedLinkedLoan, isPhysicalAsset, type AssetDetails } from "./assets";
+import { recordValuation } from "./ledger";
 
 export function listEntities(ctx: ServiceContext, status: "active" | "archived" | "all" = "active"): EntityRow[] {
   return status === "all"
@@ -22,7 +24,7 @@ export async function applyTemplate(ctx: ServiceContext, type: EntityType): Prom
   return lines.map((l) => l.account);
 }
 
-export async function addEntity(ctx: ServiceContext, actor: string, input: { name: string; type: EntityType; slug?: string }): Promise<EntityRow> {
+export async function addEntity(ctx: ServiceContext, actor: string, input: { name: string; type: EntityType; slug?: string; color?: string }): Promise<EntityRow> {
   const name = input.name?.trim();
   if (!name) throw new ServiceError("name is required");
   if (!ENTITY_TYPES.includes(input.type)) throw new ServiceError(`type must be one of ${ENTITY_TYPES.join(", ")}`);
@@ -35,7 +37,8 @@ export async function addEntity(ctx: ServiceContext, actor: string, input: { nam
   } else {
     slug = uniqueSlug(slugify(name, "entity"), taken);
   }
-  ctx.db.query("INSERT INTO entities (slug, name, type, created_at) VALUES (?, ?, ?, ?)").run(slug, name, input.type, nowIso());
+  const color = checkedColor(input.color);
+  ctx.db.query("INSERT INTO entities (slug, name, type, created_at, color) VALUES (?, ?, ?, ?, ?)").run(slug, name, input.type, nowIso(), color);
   const accounts = await applyTemplate(ctx, input.type);
   const entity = getEntity(ctx, slug)!;
   await ctx.audit.append({ actor, operation: "entity.add", inputs: input, before: null, after: { entity, templateAccounts: accounts.length } });
@@ -52,7 +55,7 @@ export async function updateEntity(
   ctx: ServiceContext,
   actor: string,
   slug: string,
-  patch: { name?: string; type?: EntityType; archive?: { date: string } },
+  patch: { name?: string; type?: EntityType; color?: string | null; archive?: { date: string } },
 ): Promise<{ entity: EntityRow; closedAccounts: string[] }> {
   const before = getEntity(ctx, slug);
   if (!before) throw new ServiceError(`unknown entity ${JSON.stringify(slug)}`, 404);
@@ -64,6 +67,9 @@ export async function updateEntity(
     if (!ENTITY_TYPES.includes(patch.type)) throw new ServiceError(`type must be one of ${ENTITY_TYPES.join(", ")}`);
     ctx.db.query("UPDATE entities SET type = ? WHERE slug = ?").run(patch.type, slug);
     await applyTemplate(ctx, patch.type);
+  }
+  if (patch.color !== undefined) {
+    ctx.db.query("UPDATE entities SET color = ? WHERE slug = ?").run(checkedColor(patch.color), slug);
   }
   const closedAccounts: string[] = [];
   if (patch.archive) {
@@ -85,19 +91,47 @@ export async function updateEntity(
   return { entity, closedAccounts };
 }
 
+function checkedColor(raw: string | null | undefined): string | null {
+  if (raw === undefined || raw === null || raw === "") return null;
+  if (!/^#[0-9a-fA-F]{6}$/.test(raw)) throw new ServiceError("color must be a six-digit hex color");
+  return raw.toLowerCase();
+}
+
 export async function addAccount(
   ctx: ServiceContext,
   actor: string,
-  input: { name: string; kind: AccountKind; entity: string },
+  input: {
+    name: string;
+    kind: AccountKind;
+    entity: string;
+    websiteUrl?: string | null;
+    details?: unknown;
+    linkedLoan?: string | null;
+    /** Opening value for an asset, recorded as a valuation. */
+    value?: { value: unknown; date?: unknown };
+  },
 ): Promise<AccountRow> {
   if (!input.name?.trim()) throw new ServiceError("name is required");
   if (!ACCOUNT_KINDS.includes(input.kind)) throw new ServiceError(`kind must be one of ${ACCOUNT_KINDS.join(", ")}`);
+  const details: AssetDetails | null = checkedAssetDetails(input.kind, input.details);
+  const linkedLoan = checkedLinkedLoan(ctx, null, input.kind, input.linkedLoan);
+  if (input.value !== undefined && !isPhysicalAsset(input.kind) && input.kind !== "investment") {
+    throw new ServiceError("an opening value is only for investment, vehicle, real estate and other asset accounts");
+  }
   const entity = getEntity(ctx, input.entity);
   if (!entity) throw new ServiceError(`unknown entity ${JSON.stringify(input.entity)}`, 404);
   if (entity.status === "archived") throw new ServiceError("entity is archived", 409);
-  const account = createAccount(ctx, { name: input.name.trim(), kind: input.kind, entity: input.entity });
+  const websiteUrl = checkedWebsiteUrl(input.websiteUrl);
+  let account = createAccount(ctx, { name: input.name.trim(), kind: input.kind, entity: input.entity, websiteUrl });
+  if (details || linkedLoan) {
+    ctx.db.query("UPDATE accounts SET details = ?, linked_loan = ? WHERE slug = ?").run(details ? JSON.stringify(details) : null, linkedLoan, account.slug);
+    account = getAccount(ctx, account.slug)!;
+  }
   await ctx.store.declareAccounts([{ name: account.hledger_account, type: accountType(account.hledger_account) }]);
   await ctx.audit.append({ actor, operation: "account.add", inputs: input, before: null, after: account });
+  if (input.value !== undefined) {
+    await recordValuation(ctx, actor, { account: account.slug, date: input.value.date ?? new Date().toISOString().slice(0, 10), value: input.value.value });
+  }
   return account;
 }
 
@@ -105,13 +139,22 @@ export async function updateAccount(
   ctx: ServiceContext,
   actor: string,
   slug: string,
-  patch: { defaultEntity?: string; close?: { date: string } },
+  patch: { defaultEntity?: string; websiteUrl?: string | null; close?: { date: string }; details?: unknown; linkedLoan?: string | null },
 ): Promise<AccountRow> {
   const before = getAccount(ctx, slug);
   if (!before) throw new ServiceError(`unknown account ${JSON.stringify(slug)}`, 404);
+  const websiteUrl = patch.websiteUrl === undefined ? undefined : checkedWebsiteUrl(patch.websiteUrl);
+  // Validate everything before writing anything.
+  if (patch.defaultEntity !== undefined && !getEntity(ctx, patch.defaultEntity)) throw new ServiceError(`unknown entity ${JSON.stringify(patch.defaultEntity)}`, 404);
+  const details = patch.details === undefined ? undefined : checkedAssetDetails(before.kind, patch.details);
+  const linkedLoan = patch.linkedLoan === undefined ? undefined : checkedLinkedLoan(ctx, slug, before.kind, patch.linkedLoan);
+  if (details !== undefined) ctx.db.query("UPDATE accounts SET details = ? WHERE slug = ?").run(details ? JSON.stringify(details) : null, slug);
+  if (linkedLoan !== undefined) ctx.db.query("UPDATE accounts SET linked_loan = ? WHERE slug = ?").run(linkedLoan, slug);
   if (patch.defaultEntity !== undefined) {
-    if (!getEntity(ctx, patch.defaultEntity)) throw new ServiceError(`unknown entity ${JSON.stringify(patch.defaultEntity)}`, 404);
     ctx.db.query("UPDATE accounts SET default_entity = ? WHERE slug = ?").run(patch.defaultEntity, slug);
+  }
+  if (websiteUrl !== undefined) {
+    ctx.db.query("UPDATE accounts SET website_url = ? WHERE slug = ?").run(websiteUrl, slug);
   }
   if (patch.close) {
     try {
@@ -124,4 +167,15 @@ export async function updateAccount(
   const after = getAccount(ctx, slug)!;
   await ctx.audit.append({ actor, operation: "account.update", inputs: { slug, ...patch }, before, after });
   return after;
+}
+
+function checkedWebsiteUrl(raw: string | null | undefined): string | null {
+  if (raw === undefined || raw === null || !raw.trim()) return null;
+  try {
+    const url = new URL(raw.trim());
+    if (url.protocol !== "https:" || !url.hostname || url.username || url.password) throw new Error("invalid URL");
+    return url.toString();
+  } catch {
+    throw new ServiceError("websiteUrl must be a valid HTTPS URL");
+  }
 }

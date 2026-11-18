@@ -2,7 +2,7 @@ import { authenticate, type Identity } from "./auth/tailscale";
 import { ACCOUNT_KINDS, type AccountKind } from "./db";
 import { YnabApiError } from "./importers/ynab/api";
 import type { DateFormat } from "./importers/ynab/csv";
-import { listAccountsWithBalances } from "./services/accounts";
+import { getAccount, listAccountsWithBalances } from "./services/accounts";
 import { ServiceError, type ServiceContext } from "./services/context";
 import { importYnabApi, importYnabCsv, listImportRuns, type YnabImportOptions } from "./services/imports";
 import {
@@ -12,6 +12,8 @@ import {
   listDuplicates,
   putCsvProfile,
   resolveDuplicate,
+  previewSimplefinAccounts,
+  saveSimplefinAccountMappings,
   syncSimplefin,
   type BankAccountAssignment,
 } from "./services/bank-imports";
@@ -22,6 +24,7 @@ import { listBudgets, recordTransfer, recordValuation, setBudgets } from "./serv
 import { budgetReport, pnl } from "./services/reports";
 import { importReiHub } from "./services/bank-imports";
 import { handleMcp } from "./mcp";
+import { checkedMileage, decodeVin, recordMileage, valuationHistory } from "./services/assets";
 import { cashflow, categories, netWorth, spending, trend } from "./services/reports";
 import { getSettings, putSettings } from "./services/settings";
 import { getTransaction, listMappings, patchTransaction, searchTransactions, splitTransaction, updateMapping } from "./services/transactions";
@@ -93,15 +96,18 @@ export function parseImportOptions(v: unknown): ParsedOptions {
     for (const [name, a] of Object.entries(o.accounts as Record<string, unknown>)) {
       if (typeof a !== "object" || a === null) bad(`accounts[${JSON.stringify(name)}] must be an object`);
       const { entity, kind, slug, name: newName } = a as Record<string, unknown>;
+      const skip = (a as Record<string, unknown>).skip;
       for (const [k, val] of Object.entries({ entity, slug, name: newName })) {
         if (val !== undefined && typeof val !== "string") bad(`accounts[${JSON.stringify(name)}].${k} must be a string`);
       }
       if (kind !== undefined && !ACCOUNT_KINDS.includes(kind as AccountKind)) bad(`accounts[${JSON.stringify(name)}].kind must be one of ${ACCOUNT_KINDS.join(", ")}`);
+      if (skip !== undefined && typeof skip !== "boolean") bad(`accounts[${JSON.stringify(name)}].skip must be true or false`);
       accounts[name] = {
         ...(entity ? { entity: entity as string } : {}),
         ...(kind ? { kind: kind as AccountKind } : {}),
         ...(slug ? { slug: slug as string } : {}),
         ...(newName ? { name: newName as string } : {}),
+        ...(skip !== undefined ? { skip: skip as boolean } : {}),
       };
     }
     out.accounts = accounts;
@@ -195,6 +201,17 @@ const routes: Record<string, Handler> = {
     return Response.json(await syncSimplefin(ctx, identity.login, opts));
   },
 
+  "GET /api/v1/simplefin/accounts": async (_req, _identity, ctx) => {
+    const saved = ctx.db.query("SELECT value FROM settings WHERE key = ?").get("simplefin.account_mappings") as { value: string } | null;
+    return Response.json({ accounts: await previewSimplefinAccounts(ctx), mappings: saved ? JSON.parse(saved.value) : {} });
+  },
+  "POST /api/v1/simplefin/accounts": async (req, identity, ctx) => {
+    const opts = parseImportOptions(await jsonBody(req));
+    if (!opts.accounts) bad("accounts are required");
+    await saveSimplefinAccountMappings(ctx, identity.login, opts.accounts);
+    return Response.json({ configured: true });
+  },
+
   "GET /api/v1/csv-profiles": (_req, _id, ctx) => Response.json({ profiles: listCsvProfiles(ctx) }),
 
   "PUT /api/v1/csv-profiles/:name": async (req, identity, ctx, params) =>
@@ -220,14 +237,24 @@ const routes: Record<string, Handler> = {
 
 Object.assign(routes, {
   "GET /api/v1/review": (req, _id, ctx) => {
-    const status = new URL(req.url, "http://localhost").searchParams.get("status") ?? "pending";
+    const q = new URL(req.url, "http://localhost").searchParams;
+    const status = q.get("status") ?? "pending";
     if (!["pending", "accepted", "changed"].includes(status)) bad("invalid status");
-    return Response.json({ items: listReview(ctx, status) });
+    const order = q.get("order") === "newest" ? "newest" : "oldest";
+    const limit = Math.min(intParam(q, "limit") ?? 200, 2000);
+    return Response.json({ items: listReview(ctx, status, limit, order) });
   },
   "POST /api/v1/review/:id": async (req, identity, ctx, params) => {
     const body = (await jsonBody(req)) as { account?: unknown } | undefined;
     if (typeof body?.account !== "string") bad("account is required");
     return Response.json(await resolveReview(ctx, identity.login, params["id"]!, body.account));
+  },
+  "PATCH /api/v1/review/:id": async (req, identity, ctx, params) => {
+    const body = (await jsonBody(req)) as { entity?: unknown } | undefined;
+    if (typeof body?.entity !== "string") bad("entity is required");
+    await patchTransaction(ctx, identity.login, params["id"]!, { entity: body.entity });
+    ctx.db.query("UPDATE review_queue SET entity = ? WHERE wmma_id = ? AND status = 'pending'").run(body.entity, params["id"]!);
+    return Response.json({ entity: body.entity });
   },
   "GET /api/v1/rules": (_req, _id, ctx) => Response.json({ rules: listRules(ctx) }),
   "POST /api/v1/rules": async (req, identity, ctx) => {
@@ -256,7 +283,7 @@ Object.assign(routes, {
   "POST /api/v1/entities": async (req, identity, ctx) => {
     const b = ((await jsonBody(req)) ?? {}) as Record<string, unknown>;
     if (!ENTITY_TYPES.includes(b.type as EntityType)) bad(`type must be one of ${ENTITY_TYPES.join(", ")}`);
-    const entity = await addEntity(ctx, identity.login, { name: str(b.name, "name"), type: b.type as EntityType, ...(typeof b.slug === "string" ? { slug: b.slug } : {}) });
+    const entity = await addEntity(ctx, identity.login, { name: str(b.name, "name"), type: b.type as EntityType, ...(typeof b.slug === "string" ? { slug: b.slug } : {}), ...(typeof b.color === "string" ? { color: b.color } : {}) });
     return Response.json(entity, { status: 201 });
   },
   "PATCH /api/v1/entities/:slug": async (req, identity, ctx, params) => {
@@ -267,23 +294,47 @@ Object.assign(routes, {
       if (!ENTITY_TYPES.includes(b.type as EntityType)) bad(`type must be one of ${ENTITY_TYPES.join(", ")}`);
       patch.type = b.type as EntityType;
     }
+    if (b.color !== undefined) {
+      if (b.color !== null && typeof b.color !== "string") bad("color must be a hex string or null");
+      patch.color = b.color as string | null;
+    }
     if (b.archive !== undefined) patch.archive = { date: str((b.archive as Record<string, unknown> | null)?.date, "archive.date") };
     return Response.json(await updateEntity(ctx, identity.login, params["slug"]!, patch));
   },
   "POST /api/v1/accounts": async (req, identity, ctx) => {
     const b = ((await jsonBody(req)) ?? {}) as Record<string, unknown>;
     if (!KINDS.includes(b.kind as AccountKind)) bad(`kind must be one of ${KINDS.join(", ")}`);
-    return Response.json(await addAccount(ctx, identity.login, { name: str(b.name, "name"), kind: b.kind as AccountKind, entity: str(b.entity, "entity") }), { status: 201 });
+    if (b.websiteUrl !== undefined && b.websiteUrl !== null && typeof b.websiteUrl !== "string") bad("websiteUrl must be a string or null");
+    if (b.linkedLoan !== undefined && b.linkedLoan !== null && typeof b.linkedLoan !== "string") bad("linkedLoan must be a string or null");
+    if (b.value !== undefined && (typeof b.value !== "object" || b.value === null)) bad("value must be { value, date? }");
+    const value = b.value as { value?: unknown; date?: unknown } | undefined;
+    return Response.json(
+      await addAccount(ctx, identity.login, {
+        name: str(b.name, "name"),
+        kind: b.kind as AccountKind,
+        entity: str(b.entity, "entity"),
+        ...(b.websiteUrl !== undefined ? { websiteUrl: b.websiteUrl as string | null } : {}),
+        ...(b.details !== undefined ? { details: b.details } : {}),
+        ...(b.linkedLoan !== undefined ? { linkedLoan: b.linkedLoan as string | null } : {}),
+        ...(value ? { value: { value: value.value, ...(value.date !== undefined ? { date: value.date } : {}) } } : {}),
+      }),
+      { status: 201 },
+    );
   },
   "PATCH /api/v1/accounts/:slug": async (req, identity, ctx, params) => {
     const b = ((await jsonBody(req)) ?? {}) as Record<string, unknown>;
     return Response.json(
       await updateAccount(ctx, identity.login, params["slug"]!, {
         ...(b.defaultEntity !== undefined ? { defaultEntity: str(b.defaultEntity, "defaultEntity") } : {}),
+        ...(b.websiteUrl !== undefined ? { websiteUrl: b.websiteUrl === null ? null : str(b.websiteUrl, "websiteUrl") } : {}),
         ...(b.close !== undefined ? { close: { date: str((b.close as Record<string, unknown> | null)?.date, "close.date") } } : {}),
+        ...(b.details !== undefined ? { details: b.details } : {}),
+        ...(b.linkedLoan !== undefined ? { linkedLoan: b.linkedLoan === null ? null : str(b.linkedLoan, "linkedLoan") } : {}),
       }),
     );
   },
+  "GET /api/v1/accounts/:slug/valuations": (_req, _id, ctx, params) => Response.json({ valuations: valuationHistory(ctx, params["slug"]!) }),
+  "GET /api/v1/vin/:vin": async (_req, _id, _ctx, params) => Response.json(await decodeVin(params["vin"]!)),
   "GET /api/v1/budgets": async (req, _id, ctx) => {
     const entity = new URL(req.url, "http://localhost").searchParams.get("entity") ?? undefined;
     return Response.json({ budgets: await listBudgets(ctx, entity) });
@@ -302,7 +353,12 @@ Object.assign(routes, {
   },
   "POST /api/v1/valuations": async (req, identity, ctx) => {
     const b = ((await jsonBody(req)) ?? {}) as Record<string, unknown>;
-    return Response.json(await recordValuation(ctx, identity.login, { account: str(b.account, "account"), date: b.date, value: b.value }), { status: 201 });
+    const account = getAccount(ctx, str(b.account, "account"));
+    // Vehicles: an optional odometer reading taken with the valuation, validated first.
+    const miles = account ? checkedMileage(account, b.mileage) : undefined;
+    const result = await recordValuation(ctx, identity.login, { account: str(b.account, "account"), date: b.date, value: b.value });
+    if (account && miles !== undefined) recordMileage(ctx, account, miles, b.date as string);
+    return Response.json(result, { status: 201 });
   },
   "GET /api/v1/reports/pnl": async (req, _id, ctx) => {
     const q = new URL(req.url, "http://localhost").searchParams;
@@ -389,10 +445,14 @@ Object.assign(routes, {
   "PUT /api/v1/settings": async (req, identity, ctx) => {
     const b = ((await jsonBody(req)) ?? {}) as Record<string, unknown>;
     if (b.jevApiKey !== undefined && b.jevApiKey !== null && typeof b.jevApiKey !== "string") bad("jevApiKey must be a string or null");
+    if (b.simplefinSetupToken !== undefined && typeof b.simplefinSetupToken !== "string") bad("simplefinSetupToken must be a string");
+    if (b.simplefinDisconnect !== undefined && typeof b.simplefinDisconnect !== "boolean") bad("simplefinDisconnect must be a boolean");
     return Response.json(
       await putSettings(ctx, identity.login, {
         ...(b.settings !== undefined ? { settings: b.settings as Record<string, unknown> } : {}),
         ...(b.jevApiKey !== undefined ? { jevApiKey: b.jevApiKey as string | null } : {}),
+        ...(b.simplefinSetupToken !== undefined ? { simplefinSetupToken: b.simplefinSetupToken as string } : {}),
+        ...(b.simplefinDisconnect !== undefined ? { simplefinDisconnect: b.simplefinDisconnect as boolean } : {}),
       }),
     );
   },
@@ -448,7 +508,10 @@ export function createFetchHandler(ctx: ServiceContext): (req: Request) => Promi
       return await r.handler(req, auth.identity, ctx, r.params);
     } catch (e) {
       if (e instanceof ServiceError) return Response.json({ error: e.message }, { status: e.status });
-      if (e instanceof YnabApiError || e instanceof SimplefinError) return Response.json({ error: e.message }, { status: 502 });
+      if (e instanceof YnabApiError) return Response.json({ error: e.message }, { status: 502 });
+      // Only statuses WMMA chose (bad user input) pass through; SimpleFIN's own 401/403/429
+      // must not masquerade as WMMA's auth errors, so everything else is a gateway error.
+      if (e instanceof SimplefinError) return Response.json({ error: e.message }, { status: e.status === 422 ? 422 : 502 });
       console.error(e);
       return Response.json({ error: "internal error" }, { status: 500 });
     }

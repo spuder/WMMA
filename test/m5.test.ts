@@ -19,6 +19,7 @@ import { importQfx, importReiHub, existingEntries } from "../src/services/bank-i
 import { createRule } from "../src/services/categorize";
 import type { ServiceContext } from "../src/services/context";
 import { importYnabCsv } from "../src/services/imports";
+import { decodeVin } from "../src/services/assets";
 import { freePort, hledgerBin, hledgerWebBin } from "./helpers";
 
 // ---------------------------------------------------------------- unit
@@ -109,6 +110,28 @@ function qfx(acctId: string, txns: Array<[string, string, string, string]>) {
   return `<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS><CURDEF>USD<BANKACCTFROM><BANKID>9<ACCTID>${acctId}<ACCTTYPE>CHECKING</BANKACCTFROM><BANKTRANLIST>\n${trn}\n</BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>`;
 }
 
+describe("VIN decoding", () => {
+  const nhtsa = (result: Record<string, string>) => (async (url: string) => {
+    expect(url).toBe("https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/2T3P1RFV8MC123456?format=json");
+    return Response.json({ Results: [result] });
+  }) as unknown as typeof fetch;
+
+  test("decodes year, make, model and trim; title-cases shouted makes", async () => {
+    const v = await decodeVin(" 2t3p1rfv8mc123456 ", nhtsa({ ModelYear: "2021", Make: "TOYOTA", Model: "RAV4", Trim: "XLE", BodyClass: "Sport Utility Vehicle (SUV)/Multi-Purpose Vehicle (MPV)" }));
+    expect(v).toMatchObject({ vin: "2T3P1RFV8MC123456", year: 2021, make: "Toyota", model: "RAV4", trim: "XLE" });
+  });
+  test("rejects malformed VINs without a network call", async () => {
+    const never = (async () => {
+      throw new Error("should not fetch");
+    }) as unknown as typeof fetch;
+    await expect(decodeVin("ABC", never)).rejects.toThrow(/17 letters/);
+    await expect(decodeVin("2T3P1RFV8MC12345O", never)).rejects.toThrow(/no I, O or Q/);
+  });
+  test("an undecodable VIN is a clear 422", async () => {
+    await expect(decodeVin("2T3P1RFV8MC123456", nhtsa({ ModelYear: "", Make: "", Model: "" }))).rejects.toMatchObject({ status: 422 });
+  });
+});
+
 describe.skipIf(!hledgerWebBin)("entities, transfers, valuations, budgets, REI Hub (M5 done-when)", () => {
   let dir: string;
   let web: HledgerWeb;
@@ -196,6 +219,54 @@ describe.skipIf(!hledgerWebBin)("entities, transfers, valuations, budgets, REI H
     expect(await marchPnl("personal")).toEqual(before);
     const all = (await call("GET", "/api/v1/reports/pnl?from=2026-01-01&to=2026-12-31")).json;
     expect(all.income.map((l: { account: string }) => l.account)).not.toContain("Equity:Unrealized");
+  });
+
+  test("vehicles: details, opening value, linked loan, mileage and value history", async () => {
+    expect((await call("POST", "/api/v1/accounts", { name: "Car Loan", kind: "loan", entity: "personal" })).status).toBe(201);
+    const bad = await call("POST", "/api/v1/accounts", { name: "x", kind: "vehicle", entity: "personal", details: { vin: "IIIIIIIIIIIIIIIII" } });
+    expect(bad.status).toBe(400);
+    expect((await call("POST", "/api/v1/accounts", { name: "y", kind: "bank", entity: "personal", details: { make: "Toyota" } })).status).toBe(400);
+    expect((await call("POST", "/api/v1/accounts", { name: "z", kind: "vehicle", entity: "personal", details: { address: "1 Main" } })).status).toBe(400);
+
+    const created = await call("POST", "/api/v1/accounts", {
+      name: "2021 Toyota RAV4",
+      kind: "vehicle",
+      entity: "personal",
+      details: { year: "2021", make: "Toyota", model: "RAV4", trim: "XLE", vin: "2t3p1rfv8mc123456", mileage: "42,180", purchasePrice: "$32,500", purchaseDate: "2021-06-01" },
+      linkedLoan: "car-loan",
+      value: { value: "24000.00", date: "2026-03-01" },
+    });
+    expect(created.status).toBe(201);
+    expect(created.json).toMatchObject({ kind: "vehicle", linked_loan: "car-loan", hledger_account: "Assets:Vehicles:2021ToyotaRAV4" });
+    const car = (await call("GET", "/api/v1/accounts")).json.accounts.find((a: { slug: string }) => a.slug === created.json.slug);
+    expect(car.balance).toBe("$24,000.00");
+    expect(car.details).toEqual({ year: 2021, make: "Toyota", model: "RAV4", trim: "XLE", vin: "2T3P1RFV8MC123456", mileage: 42180, purchaseDate: "2021-06-01", purchasePrice: "32500.00" });
+
+    // One loan per asset.
+    expect((await call("PATCH", "/api/v1/accounts/house", { linkedLoan: "car-loan" })).status).toBe(409);
+    expect((await call("PATCH", "/api/v1/accounts/house", { linkedLoan: "personal-checking" })).status).toBe(404);
+
+    // A bad odometer reading is rejected before the valuation is booked.
+    expect((await call("POST", "/api/v1/valuations", { account: car.slug, date: "2026-04-01", value: "23000", mileage: "lots" })).status).toBe(400);
+    expect((await call("POST", "/api/v1/valuations", { account: car.slug, date: "2026-05-01", value: "23000", mileage: "45000" })).status).toBe(201);
+    // An older reading never overwrites a newer one.
+    expect((await call("POST", "/api/v1/valuations", { account: car.slug, date: "2026-04-01", value: "23500", mileage: "43000" })).status).toBe(201);
+    const after = (await call("GET", "/api/v1/accounts")).json.accounts.find((a: { slug: string }) => a.slug === car.slug);
+    expect(after.details).toMatchObject({ mileage: 45000, mileageAsOf: "2026-05-01" });
+
+    const history = (await call("GET", `/api/v1/accounts/${car.slug}/valuations`)).json.valuations;
+    expect(history.map((v: { date: string; value: string }) => [v.date, v.value])).toEqual([
+      ["2026-03-01", "$24,000.00"],
+      ["2026-04-01", "$23,500.00"],
+      ["2026-05-01", "$23,000.00"],
+    ]);
+
+    // Editing replaces details; null clears the loan.
+    const patched = await call("PATCH", `/api/v1/accounts/${car.slug}`, { details: { year: 2021, make: "Toyota", model: "RAV4 Hybrid" }, linkedLoan: null });
+    expect(patched.status).toBe(200);
+    expect(patched.json.linked_loan).toBeNull();
+    expect(JSON.parse(patched.json.details)).toEqual({ year: 2021, make: "Toyota", model: "RAV4 Hybrid" });
+    expect((await call("PATCH", "/api/v1/accounts/house", { linkedLoan: "car-loan" })).status).toBe(200);
   });
 
   test("budgets roll unspent money over and carry overspending", async () => {

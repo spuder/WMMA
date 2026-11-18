@@ -17,6 +17,7 @@ export function Imports() {
   const dups = useApi<{ duplicates: any[] }>("/duplicates");
   const accts = useApi<{ accounts: any[] }>("/accounts");
   const profiles = useApi<{ profiles: any[] }>("/csv-profiles");
+  const settings = useApi<any>("/settings");
   const [kind, setKind] = useState<Kind>("qfx");
   const [file, setFile] = useState<File | null>(null);
   const [plan, setPlan] = useState<File | null>(null);
@@ -140,7 +141,15 @@ export function Imports() {
         <div class="span-5 stack">
           <div class="card stack">
             <h2>Connected sources</h2>
-            <button class="btn block" disabled={busy !== null} onClick={() => action("sf", "/sync/simplefin", {}, "SimpleFIN")}>
+            {settings.data?.simplefin.configured && settings.data.simplefin.accountsConfigured ? (
+              <div class="muted small">SimpleFIN is connected. Selected accounts sync to their assigned businesses or personal profile.</div>
+            ) : settings.data?.simplefin.configured ? (
+              <div class="muted small">Choose which accounts to add and assign them to businesses or personal finances in Settings.</div>
+            ) : (
+              <div class="small">Connect SimpleFIN in <a href="#/settings" style={{ color: "var(--accent)", fontWeight: 650 }}>Settings</a> before syncing.</div>
+            )}
+            {!settings.loading && settings.data?.simplefin.configured && !settings.data.simplefin.accountsConfigured && <a class="btn block" href="#/settings">Set up SimpleFIN accounts in Settings</a>}
+            <button class="btn block" disabled={busy !== null || settings.loading || !settings.data?.simplefin.configured || !settings.data.simplefin.accountsConfigured} onClick={() => action("sf", "/sync/simplefin", {}, "SimpleFIN")}>
               {busy === "sf" ? "Syncing…" : "Sync SimpleFIN now"}
             </button>
             <button class="btn block" disabled={busy !== null} onClick={() => action("ynab", "/imports/ynab-api", { includeBudgets: true }, "YNAB")}>
@@ -153,12 +162,25 @@ export function Imports() {
               <div class="small">
                 {last.added} added · {last.merged ?? 0} merged · {last.skippedDuplicates} duplicates{last.needsReview ? ` · ${last.needsReview} possible duplicates to check` : ""}
               </div>
-              {(last.balances ?? []).map((b: any) => (
-                <div class="spread small">
-                  <span>{b.account}</span>
-                  <span class={`pill ${b.match ? "ok" : "warn"}`}>{b.match ? `✓ ${b.wmma}` : `${b.wmma} vs ${b.source}`}</span>
+              {(last.balances ?? []).length > 0 && (
+                <div class="balance-list">
+                  {(last.balances ?? []).map((b: any) => (
+                    <div class="balance-row" key={b.account}>
+                      <span class="name">{b.account}</span>
+                      {b.match ? (
+                        <span class="pill ok" title="Bank and WMMA balances match">✓ {b.wmma}</span>
+                      ) : (
+                        <dl class="balance-diff" title="Balances differ">
+                          <dt>Bank</dt>
+                          <dd>{b.source}</dd>
+                          <dt>WMMA</dt>
+                          <dd>{b.wmma}</dd>
+                        </dl>
+                      )}
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
               {(last.errors ?? []).map((e: string) => (
                 <div class="error small">{e}</div>
               ))}

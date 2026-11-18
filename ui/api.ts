@@ -111,3 +111,117 @@ export const store = {
     }
   },
 };
+
+// ---- Category icons & groups ------------------------------------------------
+
+/** Picker group order; categories land in a group via CATEGORY_RULES. */
+export const CATEGORY_GROUPS = [
+  "Income",
+  "Food & Dining",
+  "Housing",
+  "Bills & Utilities",
+  "Auto & Transport",
+  "Travel & Lifestyle",
+  "Shopping",
+  "Children",
+  "Education",
+  "Health & Wellness",
+  "Gifts & Donations",
+  "Financial",
+  "Business",
+  "Other",
+  "Transfers",
+] as const;
+export type CategoryGroup = (typeof CATEGORY_GROUPS)[number];
+
+/** First match wins, tested against the humanized, lower-cased account path. */
+const CATEGORY_RULES: Array<[top: "Income" | "Expenses" | "*", pattern: RegExp, emoji: string, group: CategoryGroup]> = [
+  ["*", /uncategori[sz]ed/, "❓", "Other"],
+  ["*", /credit card payment/, "💳", "Transfers"],
+  ["*", /transfer/, "🔄", "Transfers"],
+  ["Income", /salary|paycheck|payroll|wages/, "💵", "Income"],
+  ["Income", /dividend|capital gain/, "📈", "Income"],
+  ["Income", /interest/, "🏦", "Income"],
+  ["Income", /\brent/, "🏠", "Income"],
+  ["Income", /refund|reimburse/, "↩️", "Income"],
+  ["Income", /gross receipts|business|sales/, "💼", "Income"],
+  ["Income", /./, "💰", "Income"],
+  ["Expenses", /grocer/, "🍏", "Food & Dining"],
+  ["Expenses", /coffee/, "☕", "Food & Dining"],
+  ["Expenses", /dining|restaurant|bars/, "🍽️", "Food & Dining"],
+  ["Expenses", /food/, "🍔", "Food & Dining"],
+  ["Expenses", /insurance/, "☂️", "Financial"],
+  ["Expenses", /rent property|office rent/, "🏢", "Business"],
+  ["Expenses", /mortgage/, "🏡", "Housing"],
+  ["Expenses", /electric|power/, "⚡", "Bills & Utilities"],
+  ["Expenses", /water/, "💧", "Bills & Utilities"],
+  ["Expenses", /garbage|trash/, "🗑️", "Bills & Utilities"],
+  ["Expenses", /internet|cable/, "🌐", "Bills & Utilities"],
+  ["Expenses", /phone|mobile/, "📱", "Bills & Utilities"],
+  ["Expenses", /utilit/, "💡", "Bills & Utilities"],
+  ["Expenses", /subscription|streaming/, "🔁", "Bills & Utilities"],
+  ["Expenses", /\brent\b/, "🏠", "Housing"],
+  ["Expenses", /repair|maintenance|home improvement/, "🔨", "Housing"],
+  ["Expenses", /housing|home/, "🏡", "Housing"],
+  ["Expenses", /fuel|gasoline/, "⛽", "Auto & Transport"],
+  ["Expenses", /parking|toll/, "🅿️", "Auto & Transport"],
+  ["Expenses", /taxi|ride ?share|uber|lyft/, "🚕", "Auto & Transport"],
+  ["Expenses", /transit|\btrain\b|\bbus\b/, "🚆", "Auto & Transport"],
+  ["Expenses", /\bauto\b|\bcars?\b|vehicle|transport/, "🚗", "Auto & Transport"],
+  ["Expenses", /travel|vacation|airfare|hotel|lodging/, "✈️", "Travel & Lifestyle"],
+  ["Expenses", /entertainment|recreation|movies|games/, "🎬", "Travel & Lifestyle"],
+  ["Expenses", /\bpets?\b/, "🐶", "Travel & Lifestyle"],
+  ["Expenses", /fun money|personal care|hobb/, "😜", "Travel & Lifestyle"],
+  ["Expenses", /clothing|apparel/, "👕", "Shopping"],
+  ["Expenses", /electronics|computer|software/, "💻", "Shopping"],
+  ["Expenses", /furniture|housewares/, "🪑", "Shopping"],
+  ["Expenses", /shopping/, "🛍️", "Shopping"],
+  ["Expenses", /child ?care|daycare|babysit/, "👶", "Children"],
+  ["Expenses", /\bchild|\bkids\b/, "⚽", "Children"],
+  ["Expenses", /student loan/, "🎓", "Education"],
+  ["Expenses", /education|tuition|school|books/, "🏫", "Education"],
+  ["Expenses", /\bdent(ist|al)/, "🦷", "Health & Wellness"],
+  ["Expenses", /fitness|gym/, "💪", "Health & Wellness"],
+  ["Expenses", /health|medical|doctor|pharmacy/, "💊", "Health & Wellness"],
+  ["Expenses", /charit|donation/, "🎗️", "Gifts & Donations"],
+  ["Expenses", /gift/, "🎁", "Gifts & Donations"],
+  ["Expenses", /advertis|marketing|promotion/, "📣", "Business"],
+  ["Expenses", /cost of goods|inventory/, "📦", "Business"],
+  ["Expenses", /postage|shipping/, "📮", "Business"],
+  ["Expenses", /depreciation|depletion|amorti/, "📉", "Business"],
+  ["Expenses", /bad debt/, "🧾", "Business"],
+  ["Expenses", /employee benefit|health plan/, "🩺", "Business"],
+  ["Expenses", /officer|owner comp/, "👔", "Business"],
+  ["Expenses", /wages|payroll|contract labor|contractor/, "👷", "Business"],
+  ["Expenses", /pension|retirement|401k/, "🏖️", "Business"],
+  ["Expenses", /office|supplies/, "📎", "Business"],
+  ["Expenses", /legal|professional|accounting/, "⚖️", "Business"],
+  ["Expenses", /business|commission/, "💼", "Business"],
+  ["Expenses", /tax/, "🏛️", "Financial"],
+  ["Expenses", /cash|atm/, "🏧", "Financial"],
+  ["Expenses", /loan/, "💰", "Financial"],
+  ["Expenses", /fee|bank charge/, "🏦", "Financial"],
+  ["Expenses", /interest/, "💳", "Financial"],
+  ["Expenses", /misc|other/, "💲", "Other"],
+];
+
+const categoryMetaCache = new Map<string, { emoji: string; group: CategoryGroup }>();
+
+/** Emoji and picker group for a category account such as "Expenses:Food:Groceries". */
+export function categoryMeta(account: string): { emoji: string; group: CategoryGroup } {
+  const cached = categoryMetaCache.get(account);
+  if (cached) return cached;
+  const [top = ""] = account.split(":");
+  const path = account.split(":").map(humanize).join(" ").toLowerCase();
+  const hit = CATEGORY_RULES.find(([t, re]) => (t === "*" || t === top) && re.test(path));
+  const meta = hit
+    ? { emoji: hit[2], group: hit[3] }
+    : top === "Income"
+      ? { emoji: "💰", group: "Income" as const }
+      : top === "Equity"
+        ? { emoji: "⚖️", group: "Transfers" as const }
+        : { emoji: "🏷️", group: "Other" as const };
+  categoryMetaCache.set(account, meta);
+  return meta;
+}
+export const catEmoji = (account: string) => categoryMeta(account).emoji;

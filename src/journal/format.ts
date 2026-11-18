@@ -46,6 +46,7 @@ function fail(msg: string): never {
  */
 export function cleanText(s: string): string {
   return s
+    .replace(/\uFFFD/g, "") // bytes the bank sent in a non-UTF-8 encoding (e.g. a mangled ®)
     .replace(/[;|,]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
