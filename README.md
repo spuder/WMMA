@@ -70,15 +70,47 @@ Open `https://wmma.<your-tailnet>.ts.net` on your phone or computer (add it to y
 
 Pick an entity (or "All entities") from the pill at the top of each screen.
 
-### Trying it locally
+### Try it locally with Docker
+
+This runs WMMA in Docker and a small identity proxy on your computer. The proxy
+stands in for Tailscale Serve during local testing. The container port is
+published on host loopback, and the proxy also listens on `127.0.0.1`; this
+setup is only for local development, not deployment.
+Docker must be installed and running. The example image targets `linux/amd64`
+because that is the architecture hledger publishes.
+
+Build the local-testing image and create a persistent data volume:
 
 ```sh
-bun run build                                       # dist/wmma, UI included
-WMMA_DATA_DIR=./data WMMA_ALLOWED_USERS=you@example.com HLEDGER_WEB_BIN=$(which hledger-web) dist/wmma &
-WMMA_DEV_USER=you@example.com bun run dev:proxy &   # stands in for Tailscale Serve (localhost only)
-WMMA_DEV_USER=you@example.com bun run demo:seed     # synthetic demo data
-open http://127.0.0.1:8080
+docker build --platform linux/amd64 -f Dockerfile.example -t wmma:example .
+docker volume create wmma-example-data
 ```
+
+Start the app in one terminal:
+
+```sh
+docker run --rm --name wmma-example \
+  -p 127.0.0.1:3000:3000 \
+  -e WMMA_ALLOWED_USERS=test@example.com \
+  -v wmma-example-data:/data \
+  wmma:example
+```
+
+In a second terminal, start the local identity proxy:
+
+```sh
+WMMA_DEV_USER=test@example.com bun run dev:proxy
+```
+
+Open <http://127.0.0.1:8080>. To populate the app with synthetic data, run in
+a third terminal:
+
+```sh
+WMMA_DEV_USER=test@example.com bun run demo:seed
+```
+
+Stop the app with Ctrl-C. The named Docker volume keeps its data between runs;
+remove it with `docker volume rm wmma-example-data` to start fresh.
 
 ## Entities, budgets, transfers, assets
 

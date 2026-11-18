@@ -21,6 +21,6 @@ function deny(status: 401 | 403, error: string): AuthResult {
 export function authenticate(req: Request, allowedUsers: ReadonlySet<string>): AuthResult {
   const login = req.headers.get(LOGIN_HEADER)?.trim().toLowerCase();
   if (!login) return deny(401, "missing Tailscale identity");
-  if (!allowedUsers.has(login)) return deny(403, "Tailscale user is not allowed");
+  if (!allowedUsers.has(login)) return deny(403, `Tailscale user ${login} is not allowed`);
   return { ok: true, identity: { login, name: req.headers.get(NAME_HEADER) } };
 }

@@ -24,6 +24,7 @@ const NAV = [
 ];
 
 function Shell() {
+  const me = useApi<{ user: string; name: string | null }>("/status");
   const [path, query] = useRoute();
   const [entity, setEntityState] = useState<string | null>(store.get("entity"));
   const ents = useApi<{ entities: Entity[] }>("/entities");
@@ -48,6 +49,25 @@ function Shell() {
     setEntityState(s);
     store.set("entity", s);
   };
+
+  if (me.loading) return <div class="auth-state">Connecting to WMMA…</div>;
+  if (me.error) {
+    const unrecognized = me.error.startsWith("Tailscale user ") && me.error.endsWith(" is not allowed");
+    return (
+      <main class="auth-state">
+        <section class="card auth-card stack">
+          <h1>{unrecognized ? "Tailscale user not recognized" : "Tailscale login required"}</h1>
+          <p>{unrecognized ? `${me.error.slice("Tailscale user ".length, -" is not allowed".length)} is not authorized to use WMMA.` : "WMMA could not identify your Tailscale account. Connect to your tailnet and reload this page."}</p>
+          <ol>
+            <li>Install and open <a href="https://tailscale.com/download" target="_blank" rel="noreferrer">Tailscale</a> on this device.</li>
+            <li>Sign in to the <strong>snowy-vibes</strong> tailnet and make sure Tailscale is connected.</li>
+            <li>Reload this page. If your account is still not recognized, ask the WMMA administrator to add your Tailscale login to the allowed users.</li>
+          </ol>
+          <button class="btn" onClick={() => location.reload()}>Try again</button>
+        </section>
+      </main>
+    );
+  }
 
   const page = (() => {
     switch (path) {
@@ -91,7 +111,15 @@ function Shell() {
           <div style={{ marginTop: "auto" }} class="muted tiny">
             Where My Money At
           </div>
+          <div class="identity" title={me.data?.user}>
+            <span class="identity-dot" />
+            <span><strong>{me.data?.name || me.data?.user}</strong><small>Signed in with Tailscale</small></span>
+          </div>
         </nav>
+        <div class="identity identity-mobile" title={me.data?.user}>
+          <span class="identity-dot" />
+          <span><strong>{me.data?.name || me.data?.user}</strong><small>Signed in with Tailscale</small></span>
+        </div>
         <main class="main">
           <div class="page">{page}</div>
         </main>
