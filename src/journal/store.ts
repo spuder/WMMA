@@ -1,0 +1,162 @@
+/**
+ * JournalStore owns the /data layout and is the only code that writes journal
+ * files (SPEC §2). Writes are serialised and atomic (temp file + rename), so
+ * hledger-web never sees a half-written journal.
+ */
+import { mkdir, open, readdir, readFile, rename, rm, stat } from "node:fs/promises";
+import { join } from "node:path";
+import { formatAccountDirective, formatTransaction, type AccountType, type Tags, type Transaction } from "./format";
+
+export const IMPORT_SOURCES = ["ynab", "qfx", "csv", "simplefin", "reihub"] as const;
+
+const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
+
+const HEADER = "; Managed by WMMA. Do not edit by hand: changes may be overwritten.\n";
+
+export interface DataPaths {
+  root: string;
+  imports: string;
+  journals: string;
+  accountsDir: string;
+  main: string;
+  accounts: string;
+  prices: string;
+  budgets: string;
+  db: string;
+  audit: string;
+}
+
+export function dataPaths(root: string): DataPaths {
+  const journals = join(root, "journals");
+  return {
+    root,
+    imports: join(root, "imports"),
+    journals,
+    accountsDir: join(journals, "accounts"),
+    main: join(journals, "main.journal"),
+    accounts: join(journals, "accounts.journal"),
+    prices: join(journals, "prices.journal"),
+    budgets: join(journals, "budgets.journal"),
+    db: join(root, "wmma.db"),
+    audit: join(root, "audit.log"),
+  };
+}
+
+async function exists(p: string): Promise<boolean> {
+  try {
+    await stat(p);
+    return true;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw e;
+  }
+}
+
+async function readOrEmpty(p: string): Promise<string> {
+  try {
+    return await readFile(p, "utf8");
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return "";
+    throw e;
+  }
+}
+
+/** Write a file atomically: temp file in the same directory, fsync, rename. */
+export async function atomicWrite(path: string, content: string): Promise<void> {
+  const tmp = `${path}.tmp-${process.pid}-${crypto.randomUUID()}`;
+  const fh = await open(tmp, "w", 0o640);
+  try {
+    await fh.writeFile(content, "utf8");
+    await fh.sync();
+  } catch (e) {
+    await fh.close();
+    await rm(tmp, { force: true });
+    throw e;
+  }
+  await fh.close();
+  await rename(tmp, path);
+}
+
+export function validateSlug(slug: string): void {
+  if (!SLUG_RE.test(slug)) throw new Error(`invalid account slug ${JSON.stringify(slug)}`);
+}
+
+export class JournalStore {
+  readonly paths: DataPaths;
+  #queue: Promise<unknown> = Promise.resolve();
+
+  constructor(dataDir: string) {
+    this.paths = dataPaths(dataDir);
+  }
+
+  /** Run fn after all previously queued writes; failures don't poison the queue. */
+  #serial<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.#queue.then(fn, fn);
+    this.#queue = run.catch(() => {});
+    return run;
+  }
+
+  /** Create the data folder layout (idempotent). */
+  init(): Promise<void> {
+    return this.#serial(async () => {
+      const p = this.paths;
+      for (const src of IMPORT_SOURCES) await mkdir(join(p.imports, src), { recursive: true });
+      await mkdir(p.accountsDir, { recursive: true });
+      for (const f of [p.accounts, p.prices, p.budgets]) {
+        if (!(await exists(f))) await atomicWrite(f, HEADER);
+      }
+      await this.#writeMain();
+    });
+  }
+
+  accountJournalPath(slug: string): string {
+    validateSlug(slug);
+    return join(this.paths.accountsDir, `${slug}.journal`);
+  }
+
+  async listAccountJournals(): Promise<string[]> {
+    const names = await readdir(this.paths.accountsDir).catch((e: NodeJS.ErrnoException) => {
+      if (e.code === "ENOENT") return [] as string[];
+      throw e;
+    });
+    return names
+      .filter((n) => n.endsWith(".journal") && SLUG_RE.test(n.slice(0, -".journal".length)))
+      .sort();
+  }
+
+  /** main.journal lists every include explicitly: hledger errors on globs that match nothing. */
+  async #writeMain(): Promise<void> {
+    // USD only in V1 (SPEC §1). Declaring it also satisfies `hledger check --strict`.
+    const lines = [HEADER, "commodity $1000.00", "include accounts.journal", "include prices.journal", "include budgets.journal"];
+    for (const f of await this.listAccountJournals()) lines.push(`include accounts/${f}`);
+    const content = lines.join("\n") + "\n";
+    if ((await readOrEmpty(this.paths.main)) !== content) await atomicWrite(this.paths.main, content);
+  }
+
+  /** Append transactions to an account's journal, creating it (and its include) if needed. */
+  async appendTransactions(slug: string, txns: readonly Transaction[]): Promise<void> {
+    const path = this.accountJournalPath(slug);
+    // Format (and validate) everything before touching disk: all or nothing.
+    const text = txns.map(formatTransaction).join("\n");
+    return this.#serial(async () => {
+      const existing = await readOrEmpty(path);
+      const isNew = existing === "";
+      const base = isNew ? HEADER : existing.endsWith("\n") ? existing : existing + "\n";
+      if (txns.length > 0 || isNew) await atomicWrite(path, `${base}\n${text}`);
+      if (isNew) await this.#writeMain();
+    });
+  }
+
+  /** Declare an account in accounts.journal. Returns false if it was already declared. */
+  async declareAccount(name: string, opts: { type?: AccountType; tags?: Tags } = {}): Promise<boolean> {
+    const line = formatAccountDirective(name, opts);
+    return this.#serial(async () => {
+      const existing = await readOrEmpty(this.paths.accounts);
+      const declared = existing.split("\n").some((l) => l === `account ${name}` || l.startsWith(`account ${name}  ;`));
+      if (declared) return false;
+      const base = existing === "" ? HEADER : existing.endsWith("\n") ? existing : existing + "\n";
+      await atomicWrite(this.paths.accounts, base + line);
+      return true;
+    });
+  }
+}

@@ -1,0 +1,39 @@
+# syntax=docker/dockerfile:1
+# hledger only publishes linux-x64 binaries, so the image is amd64.
+
+FROM --platform=linux/amd64 oven/bun:1.4.4 AS build
+WORKDIR /app
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
+COPY tsconfig.json ./
+COPY src ./src
+RUN bun build src/main.ts --compile --target=bun-linux-x64 --outfile /out/wmma
+
+FROM --platform=linux/amd64 debian:trixie-slim AS hledger
+ARG HLEDGER_VERSION=1.52.4
+ARG HLEDGER_SHA256=f76a2e4088e162b7658e43077502569d5a6fdacd219b19bfb9aab6588b69643a
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates curl \
+ && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSLo /tmp/hledger.tgz \
+      "https://github.com/simonmichael/hledger/releases/download/${HLEDGER_VERSION}/hledger-linux-x64.tar.gz" \
+ && echo "${HLEDGER_SHA256}  /tmp/hledger.tgz" | sha256sum -c - \
+ && mkdir /out && tar -xzf /tmp/hledger.tgz -C /out hledger hledger-web
+
+FROM --platform=linux/amd64 debian:trixie-slim
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates tzdata \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd --system --uid 10001 --home-dir /data wmma \
+ && mkdir /data && chown wmma:wmma /data
+COPY --from=hledger /out/hledger /out/hledger-web /usr/local/bin/
+COPY --from=build /out/wmma /usr/local/bin/wmma
+ENV LANG=C.UTF-8 \
+    WMMA_DATA_DIR=/data \
+    WMMA_HOST=127.0.0.1 \
+    WMMA_PORT=3000
+USER wmma
+VOLUME /data
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s CMD ["wmma", "healthcheck"]
+ENTRYPOINT ["wmma"]
+CMD ["serve"]

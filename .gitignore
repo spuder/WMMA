@@ -1,0 +1,13 @@
+# User data must never be committed (SPEC §2)
+data/
+*.journal
+!test/fixtures/**/*.journal
+*.db
+*.db-*
+.env
+.env.*
+!.env.example
+
+node_modules/
+dist/
+*.log
