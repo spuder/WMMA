@@ -237,9 +237,12 @@ const routes: Record<string, Handler> = {
 
 Object.assign(routes, {
   "GET /api/v1/review": (req, _id, ctx) => {
-    const status = new URL(req.url, "http://localhost").searchParams.get("status") ?? "pending";
+    const q = new URL(req.url, "http://localhost").searchParams;
+    const status = q.get("status") ?? "pending";
     if (!["pending", "accepted", "changed"].includes(status)) bad("invalid status");
-    return Response.json({ items: listReview(ctx, status) });
+    const order = q.get("order") === "newest" ? "newest" : "oldest";
+    const limit = Math.min(intParam(q, "limit") ?? 200, 2000);
+    return Response.json({ items: listReview(ctx, status, limit, order) });
   },
   "POST /api/v1/review/:id": async (req, identity, ctx, params) => {
     const body = (await jsonBody(req)) as { account?: unknown } | undefined;

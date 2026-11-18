@@ -1,7 +1,9 @@
 /**
  * Swipe game for the review queue (SPEC §9): one card per transaction with
- * Jev's top pick. Swipe right = accept. Swipe left = pick another category.
- * Accepts feed the 3-swipe rule learning on the server.
+ * Jev's top pick. Swipe right = accept. Swipe left = decide later (the card
+ * goes to the back of the deck). The middle button picks another category.
+ * Newest transactions come first, so the milestones (today, this week, …)
+ * clear one after another; accepts feed the 3-swipe rule learning on the server.
  */
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { api, catLabel, dayLabel, leaf, money } from "../api";
@@ -21,33 +23,113 @@ interface Item {
 
 const THRESHOLD = 96;
 
+/** Rolling windows, so each milestone contains the one before it. */
+const MILESTONES = [
+  { id: "today", label: "Today", days: 0 },
+  { id: "week", label: "This week", days: 6 },
+  { id: "2weeks", label: "2 weeks", days: 13 },
+  { id: "month", label: "This month", days: 29 },
+  { id: "quarter", label: "This quarter", days: 89 },
+  { id: "year", label: "This year", days: 364 },
+  { id: "all", label: "Everything", days: Infinity },
+] as const;
+type Milestone = (typeof MILESTONES)[number];
+
+/** Local calendar date n days ago (not UTC: "today" must mean the user's today). */
+const daysAgo = (n: number) => {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+const within = (m: Milestone, date: string) => m.days === Infinity || date >= daysAgo(m.days);
+
+/** Cards set aside with "later" stay at the back of the deck across reloads (this browser only). */
+const LATER_KEY = "wmma.review.later";
+const loadLater = (): string[] => {
+  try {
+    const v = JSON.parse(localStorage.getItem(LATER_KEY) ?? "[]");
+    return Array.isArray(v) ? v.filter((x) => typeof x === "string").slice(-2000) : [];
+  } catch {
+    return [];
+  }
+};
+const saveLater = (ids: string[]) => {
+  try {
+    localStorage.setItem(LATER_KEY, JSON.stringify(ids));
+  } catch {
+    // private mode etc.: later order just won't survive a reload
+  }
+};
+
 export function Review() {
   const { entity, entities, categories, refreshReview } = useApp();
   const [items, setItems] = useState<Item[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState(0);
+  /** Dates of everything sorted this session (including rule auto-sorts), for milestone progress. */
+  const [sorted, setSorted] = useState<string[]>([]);
   const [learned, setLearned] = useState(0);
+  const [later, setLater] = useState<string[]>(loadLater);
+  const [streak, setStreak] = useState(0);
+  const [celebrate, setCelebrate] = useState<string | null>(null);
   const [picker, setPicker] = useState(false);
   const [editingEntity, setEditingEntity] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string | null>>({});
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState<{ dx: number; dy: number; active: boolean }>({ dx: 0, dy: 0, active: false });
-  const [fly, setFly] = useState<"left" | "right" | null>(null);
+  const [fly, setFly] = useState<"left" | "right" | "up" | null>(null);
   const start = useRef<{ x: number; y: number; id: number } | null>(null);
   // The latest drag distance; read on release so a fast flick isn't lost to a pending render.
   const dxRef = useRef(0);
 
   useEffect(() => {
-    api<{ items: Item[] }>("/review")
+    api<{ items: Item[] }>("/review?order=newest&limit=2000")
       .then((r) => setItems(r.items))
       .catch((e: Error) => setError(e.message));
   }, []);
 
-  const queue = useMemo(() => (items ?? []).filter((i) => !entity || i.entity === entity), [items, entity]);
-  const total = done + queue.length;
+  // Newest first; cards set aside for later go to the back, in the order they were set aside.
+  const queue = useMemo(() => {
+    const laterRank = new Map(later.map((id, i) => [id, i]));
+    return (items ?? [])
+      .filter((i) => !entity || i.entity === entity)
+      .sort((a, b) => {
+        const la = laterRank.get(a.wmma_id) ?? -1;
+        const lb = laterRank.get(b.wmma_id) ?? -1;
+        if (la !== lb) return la - lb;
+        return b.date.localeCompare(a.date) || b.wmma_id.localeCompare(a.wmma_id);
+      });
+  }, [items, entity, later]);
   const card = queue[0];
   const top = card?.jev_choices[0];
   const entityName = (slug: string | null) => entities.find((e) => e.slug === slug)?.name ?? slug ?? "—";
+
+  const tiers = useMemo(
+    () =>
+      MILESTONES.map((m) => {
+        const left = queue.filter((i) => within(m, i.date)).length;
+        const done = sorted.filter((d) => within(m, d)).length;
+        return { ...m, left, done, total: left + done, cleared: left === 0 };
+      }),
+    [queue, sorted],
+  );
+  const current = tiers.find((t) => !t.cleared) ?? tiers[tiers.length - 1]!;
+
+  // Celebrate each milestone the moment it's cleared during this session.
+  const clearedBefore = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (!items) return;
+    const now = new Set(tiers.filter((t) => t.cleared && t.total > 0).map((t) => t.id));
+    if (clearedBefore.current) {
+      const fresh = tiers.filter((t) => now.has(t.id) && !clearedBefore.current!.has(t.id) && t.done > 0);
+      const biggest = fresh[fresh.length - 1];
+      if (biggest) {
+        setCelebrate(biggest.id === "all" ? "Inbox zero" : `${biggest.label} cleared`);
+        navigator.vibrate?.([30, 40, 60]);
+        setTimeout(() => setCelebrate(null), 1900);
+      }
+    }
+    clearedBefore.current = now;
+  }, [tiers, items]);
 
   const changeEntity = async (item: Item, nextEntity: string) => {
     setBusy(true);
@@ -85,15 +167,25 @@ export function Review() {
     }
   };
 
-  async function resolve(item: Item, account: string, direction: "left" | "right") {
+  const updateLater = (fn: (ids: string[]) => string[]) =>
+    setLater((ids) => {
+      const next = fn(ids);
+      saveLater(next);
+      return next;
+    });
+
+  async function resolve(item: Item, account: string, direction: "right" | "up") {
     setBusy(true);
     setFly(direction);
     try {
       const r = await api<{ ruleCreated: { match: { payeeKey?: string } } | null; autoResolved: string[] }>(`/review/${item.wmma_id}`, { body: { account } });
       await new Promise((res) => setTimeout(res, 220));
       const gone = new Set([item.wmma_id, ...r.autoResolved]);
+      const goneDates = (items ?? []).filter((x) => gone.has(x.wmma_id)).map((x) => x.date);
       setItems((xs) => (xs ?? []).filter((x) => !gone.has(x.wmma_id)));
-      setDone((d) => d + gone.size);
+      setSorted((d) => [...d, ...goneDates]);
+      setStreak((n) => n + 1);
+      updateLater((ids) => ids.filter((id) => !gone.has(id)));
       if (r.ruleCreated) {
         setLearned((n) => n + 1);
         const extra = r.autoResolved.length ? ` · ${r.autoResolved.length} more sorted` : "";
@@ -110,18 +202,29 @@ export function Review() {
   }
 
   const accept = () => card && top && !busy && resolve(card, top.account, "right");
-  const other = () => card && !busy && setPicker(true);
-  const skip = () => {
+  const choose = () => card && !busy && setPicker(true);
+  /** Swipe left: send the card to the back of the deck to decide later. */
+  const deferCard = async () => {
     if (!card || busy) return;
-    setItems((xs) => (xs ? [...xs.filter((x) => x.wmma_id !== card.wmma_id), card] : xs));
+    setBusy(true);
+    setFly("left");
+    setStreak(0);
+    await new Promise((res) => setTimeout(res, 220));
+    updateLater((ids) => [...ids.filter((id) => id !== card.wmma_id), card.wmma_id]);
+    setFly(null);
+    setDrag({ dx: 0, dy: 0, active: false });
+    setBusy(false);
   };
 
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
       if (picker || ["INPUT", "SELECT", "TEXTAREA"].includes((e.target as HTMLElement)?.tagName)) return;
       if (e.key === "ArrowRight") accept();
-      else if (e.key === "ArrowLeft") other();
-      else if (e.key.toLowerCase() === "s") skip();
+      else if (e.key === "ArrowLeft" || e.key.toLowerCase() === "s") deferCard();
+      else if (e.key === "ArrowDown" || e.key.toLowerCase() === "c" || e.key === "/") {
+        e.preventDefault();
+        choose();
+      }
     };
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
@@ -144,17 +247,20 @@ export function Review() {
     const dx = e.type === "pointercancel" ? 0 : e.clientX - start.current.x || dxRef.current;
     start.current = null;
     if (dx > THRESHOLD && top) accept();
-    else if (dx < -THRESHOLD) {
-      setDrag({ dx: 0, dy: 0, active: false });
-      other();
-    } else setDrag({ dx: 0, dy: 0, active: false });
+    else if (dx < -THRESHOLD) deferCard();
+    else setDrag({ dx: 0, dy: 0, active: false });
   };
 
-  const transform = fly
-    ? `translate(${fly === "right" ? 130 : -130}%, ${drag.dy}px) rotate(${fly === "right" ? 18 : -18}deg)`
-    : `translate(${drag.dx}px, ${drag.dy}px) rotate(${drag.dx / 18}deg)`;
+  const transform =
+    fly === "up"
+      ? `translate(0, -120%) scale(0.9)`
+      : fly
+        ? `translate(${fly === "right" ? 130 : -130}%, ${drag.dy}px) rotate(${fly === "right" ? 18 : -18}deg)`
+        : `translate(${drag.dx}px, ${drag.dy}px) rotate(${drag.dx / 18}deg)`;
   const yes = Math.max(0, Math.min(1, drag.dx / THRESHOLD));
   const no = Math.max(0, Math.min(1, -drag.dx / THRESHOLD));
+  const laterCount = queue.filter((i) => later.includes(i.wmma_id)).length;
+  const sessionDone = sorted.length;
 
   return (
     <div class="stack">
@@ -164,12 +270,13 @@ export function Review() {
       </div>
       {error && <ErrorBox error={error} />}
       {!items && !error && <Loading h={420} />}
+      {items && (card || sessionDone > 0) && <Quest tiers={tiers} current={current} streak={streak} sessionDone={sessionDone} later={laterCount} />}
       {items && !card && (
         <div class="card done">
-          <div class="emoji">🎉</div>
+          <div class="emoji">🏆</div>
           <h2 style={{ fontSize: 22, margin: "10px 0 6px" }}>All caught up</h2>
           <p class="muted" style={{ margin: 0 }}>
-            {done > 0 ? `${done} sorted${learned ? ` · ${learned} new rule${learned > 1 ? "s" : ""} learned` : ""}.` : "Nothing waiting for a category."}
+            {sessionDone > 0 ? `${sessionDone} sorted${learned ? ` · ${learned} new rule${learned > 1 ? "s" : ""} learned` : ""}.` : "Nothing waiting for a category."}
           </p>
           <div class="row" style={{ justifyContent: "center", marginTop: 18 }}>
             <button class="btn primary" onClick={() => go("/")}>
@@ -180,20 +287,6 @@ export function Review() {
       )}
       {card && (
         <div class="swipe-wrap">
-          <div class="progress stack" style={{ gap: 6 }}>
-            <div class="spread small">
-              <span class="muted">
-                {done} of {total} sorted
-              </span>
-              <button class="btn ghost small" style={{ height: 28, padding: "0 6px" }} onClick={skip}>
-                Later
-              </button>
-            </div>
-            <div class="bar">
-              <div style={{ width: `${total ? (done / total) * 100 : 0}%` }} />
-            </div>
-          </div>
-
           <div class="deck">
             {queue.slice(1, 3).reverse().map((it, i, arr) => (
               <div class={`swipe-card ${i === arr.length - 1 ? "behind" : "behind2"}`} key={it.wmma_id} aria-hidden>
@@ -214,9 +307,10 @@ export function Review() {
               <div class="stamp yes" style={{ opacity: yes }}>
                 ACCEPT
               </div>
-              <div class="stamp no" style={{ opacity: no }}>
-                OTHER
+              <div class="stamp later" style={{ opacity: no }}>
+                LATER
               </div>
+              {later.includes(card.wmma_id) && <div class="later-tag">⏳ Saved for later</div>}
               <CardBody
                 item={card}
                 entityName={entityName}
@@ -224,7 +318,7 @@ export function Review() {
                 editingEntity={editingEntity === card.wmma_id}
                 onEditEntity={() => setEditingEntity((current) => current === card.wmma_id ? null : card.wmma_id)}
                 onChangeEntity={(nextEntity) => changeEntity(card, nextEntity)}
-                onPickSuggestion={(account) => !busy && resolve(card, account, account === top?.account ? "right" : "left")}
+                onPickSuggestion={(account) => !busy && resolve(card, account, account === top?.account ? "right" : "up")}
                 busy={busy}
                 note={notes[card.wmma_id]}
                 onSaveNote={(note) => saveNote(card, note)}
@@ -233,15 +327,35 @@ export function Review() {
           </div>
 
           <div class="swipe-actions">
-            <button class="round no" onClick={other} aria-label="Choose another category" disabled={busy}>
-              <Icon.x />
+            <button class="round later" onClick={deferCard} aria-label="Decide later" disabled={busy}>
+              <Icon.clock />
+              <span>Later</span>
+            </button>
+            <button class="round pick" onClick={choose} aria-label="Choose another category" disabled={busy}>
+              <Icon.list />
+              <span>Other</span>
             </button>
             <button class="round yes" onClick={accept} aria-label={top ? `Accept ${catLabel(top.account)}` : "No suggestion to accept"} disabled={busy || !top}>
               <Icon.check />
+              <span>Accept</span>
             </button>
           </div>
           <div class="muted tiny hide-sm">
-            <span class="kbd">←</span> other · <span class="kbd">→</span> accept · <span class="kbd">S</span> later
+            <span class="kbd">←</span> later · <span class="kbd">↓</span> other category · <span class="kbd">→</span> accept
+          </div>
+        </div>
+      )}
+
+      {celebrate && (
+        <div class="celebrate" aria-live="polite">
+          <div class="burst" aria-hidden="true">
+            {["🎉", "✨", "🏆", "💸", "⭐", "🎊", "✨", "🎉", "💰", "⭐", "🎊", "✨"].map((e, i) => (
+              <span style={{ "--a": `${i * 30}deg`, "--d": `${(i % 3) * 40}ms` }}>{e}</span>
+            ))}
+          </div>
+          <div class="celebrate-card">
+            <strong>{celebrate}!</strong>
+            <span>{current.cleared ? "Everything is sorted 🙌" : `Next up: ${current.label} · ${current.left} to go`}</span>
           </div>
         </div>
       )}
@@ -254,11 +368,61 @@ export function Review() {
             direction={card.amount_cents < 0 ? "out" : "in"}
             onPick={(a) => {
               setPicker(false);
-              resolve(card, a, "left");
+              resolve(card, a, "up");
             }}
           />
         )}
       </Sheet>
+    </div>
+  );
+}
+
+/** The game layer: progress toward the current milestone, then the milestone trail. */
+function Quest({
+  tiers,
+  current,
+  streak,
+  sessionDone,
+  later,
+}: {
+  tiers: Array<Milestone & { left: number; done: number; total: number; cleared: boolean }>;
+  current: Milestone & { left: number; done: number; total: number; cleared: boolean };
+  streak: number;
+  sessionDone: number;
+  later: number;
+}) {
+  const pct = current.total ? Math.round((current.done / current.total) * 100) : 100;
+  const trail = tiers.filter((t) => t.id !== "all" || t.total > 0);
+  return (
+    <div class="quest card">
+      <div class="quest-top">
+        <div>
+          <div class="upper">{current.cleared ? "All milestones" : "Current milestone"}</div>
+          <div class="quest-title">
+            🎯 {current.cleared ? "Inbox zero" : current.label}
+          </div>
+        </div>
+        <div class="quest-count num">
+          {current.done}
+          <span>/{current.total}</span>
+        </div>
+      </div>
+      <div class="quest-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={`${current.label} progress`}>
+        <div style={{ width: `${pct}%` }} />
+      </div>
+      <div class="milestones">
+        {trail.map((t) => (
+          <div class={`ms${t.cleared ? " done" : ""}${t.id === current.id && !t.cleared ? " now" : ""}`} title={t.days === Infinity ? "Every transaction" : t.days === 0 ? "Dated today" : `Last ${t.days + 1} days`}>
+            <span class="ms-dot">{t.cleared ? "✓" : t.left}</span>
+            <span class="ms-label">{t.label}</span>
+          </div>
+        ))}
+      </div>
+      <div class="quest-meta small muted">
+        <span>⚡ {sessionDone} sorted</span>
+        {streak >= 3 && <span class="streak">🔥 {streak} streak</span>}
+        {later > 0 && <span>⏳ {later} for later</span>}
+      </div>
     </div>
   );
 }
