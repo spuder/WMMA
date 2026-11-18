@@ -165,6 +165,17 @@ kbd {
 .nav nav { display: flex; gap: 26px; margin-left: auto; font-size: 15px; }
 .nav nav a { color: var(--ink-2); transition: color 0.2s; }
 .nav nav a:hover { color: var(--ink); text-decoration: none; }
+.gh-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink-2);
+  font-size: 15px;
+  transition: color 0.2s;
+}
+.gh-link:hover { color: var(--ink); text-decoration: none; }
+.btn .gh { flex: none; }
+.fine { margin-top: 20px; font-size: 14px; color: var(--ink-3); }
 
 /* ───────────── Buttons ───────────── */
 .btn {
@@ -795,6 +806,8 @@ kbd {
 @media (max-width: 720px) {
   body { font-size: 16px; }
   .nav nav { display: none; }
+  .gh-link { margin-left: auto; }
+  .gh-link span { display: none; }
   .nav-inner { justify-content: space-between; }
   .hero { padding-top: 56px; }
   .hero h1 { margin: 22px auto 22px; }
