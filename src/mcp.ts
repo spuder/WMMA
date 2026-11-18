@@ -14,6 +14,7 @@ import { ServiceError, type ServiceContext } from "./services/context";
 import { listEntities } from "./services/entities";
 import { recordTransfer, recordValuation, setBudgets } from "./services/ledger";
 import { budgetReport, cashflow, netWorth, pnl, spending } from "./services/reports";
+import { accountHistory, businesses, overview, recurring, statement } from "./services/insights";
 import { patchTransaction, searchTransactions, splitTransaction, updateMapping } from "./services/transactions";
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD");
@@ -80,6 +81,29 @@ export function buildMcpServer(ctx: ServiceContext, actor: string): McpServer {
   tool("get_spending_by_category", "Spending by expense category.", { entity: entity.optional(), from: date, to: date, depth: z.number().int().min(1).max(4).optional() }, false, async (a) =>
     spending(ctx, { entity: a.entity ?? null, from: a.from, to: a.to, ...(a.depth ? { depth: a.depth } : {}) }) as unknown as Promise<Json>,
   );
+  tool("get_overview", "Income and spending for a period (all time if from/to are omitted): totals, savings rate, top categories and merchants.", { entity: entity.optional(), from: date.optional(), to: date.optional() }, false, async (a) =>
+    overview(ctx, { entity: a.entity ?? null, from: a.from ?? null, to: a.to ?? null }) as unknown as Promise<Json>,
+  );
+  tool("get_recurring", "Detected recurring charges and income (subscriptions, bills, paychecks) with frequency, amount and next expected date.", { entity: entity.optional() }, false, async (a) =>
+    recurring(ctx, { entity: a.entity ?? null }) as unknown as Promise<Json>,
+  );
+  tool("get_business_pnl", "Profit and loss for every entity side by side, with a net series per month.", { from: date.optional(), to: date.optional() }, false, async (a) =>
+    businesses(ctx, { from: a.from ?? null, to: a.to ?? null }) as unknown as Promise<Json>,
+  );
+  tool(
+    "get_pnl_statement",
+    "A P&L statement for one entity: each category per period, with tax-form line numbers (e.g. Schedule C) for business entities.",
+    { entity, from: date.optional(), to: date.optional(), interval: z.enum(["total", "month", "quarter", "year"]).optional() },
+    false,
+    async (a) => statement(ctx, { entity: a.entity, from: a.from ?? null, to: a.to ?? null, interval: a.interval ?? "total" }) as unknown as Promise<Json>,
+  );
+  tool(
+    "get_account_balances",
+    "Balance of each asset and liability account at the end of every period, with money moved in/out and valuation changes (for net worth and investment performance).",
+    { entity: entity.optional(), from: date, to: date.optional(), interval: z.enum(["day", "week", "month", "quarter", "year"]).optional() },
+    false,
+    async (a) => accountHistory(ctx, { entity: a.entity ?? null, from: a.from, to: a.to ?? null, interval: a.interval ?? "month" }) as unknown as Promise<Json>,
+  );
   tool("get_review_queue", "Transactions waiting for a category, with Jev's top suggestions.", { limit: z.number().int().min(1).max(500).optional() }, false, async (a) => listReview(ctx, "pending", a.limit ?? 100) as unknown as Promise<Json>);
 
   // ---- write
@@ -122,7 +146,7 @@ export function buildMcpServer(ctx: ServiceContext, actor: string): McpServer {
     true,
     async (a) => (await updateMapping(ctx, actor, { source: a.source, sourceCategory: a.source_category, target: a.target, apply: a.apply ?? false })) as unknown as Json,
   );
-  tool("set_budget", "Set a monthly budget amount for an Expenses category, from a month onward.", { entity, account: z.string(), month, amount }, true, async (a) => ({
+  tool("set_budget", "Set a monthly budget amount for an Expenses category (or planned income for an Income category), from a month onward.", { entity, account: z.string(), month, amount }, true, async (a) => ({
     updated: await setBudgets(ctx, actor, [{ entity: a.entity, account: a.account, month: a.month, amount: a.amount }]),
   }));
   tool("record_valuation", "Record an asset's value as of a date (difference goes to Equity:Unrealized).", { account: z.string().describe("Account slug"), date, value: amount }, true, async (a) =>

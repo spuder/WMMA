@@ -4,6 +4,12 @@ import { api, store, useApi } from "./api";
 import { App, type Entity, useRoute } from "./app";
 import { Icon, Toaster } from "./components/ui";
 import { Accounts } from "./pages/Accounts";
+import { Budget } from "./pages/Budget";
+import { CashFlow } from "./pages/CashFlow";
+import { Forecast } from "./pages/Forecast";
+import { Investments } from "./pages/Investments";
+import { NetWorth } from "./pages/NetWorth";
+import { Recurring } from "./pages/Recurring";
 import { Dashboard } from "./pages/Dashboard";
 import { Imports } from "./pages/Imports";
 import { More } from "./pages/More";
@@ -16,7 +22,13 @@ const NAV = [
   { path: "/", label: "Home", icon: Icon.home, tone: "home" },
   { path: "/transactions", label: "Activity", icon: Icon.list, tone: "activity" },
   { path: "/review", label: "Review", icon: Icon.swipe, tone: "review" },
-  { path: "/reports", label: "Reports", icon: Icon.chart, tone: "reports" },
+  { path: "/cashflow", label: "Cash Flow", icon: Icon.bars, tone: "cashflow", desktopOnly: true },
+  { path: "/reports", label: "Reports", icon: Icon.pie, tone: "reports" },
+  { path: "/budget", label: "Budget", icon: Icon.map, tone: "budget", desktopOnly: true },
+  { path: "/recurring", label: "Recurring", icon: Icon.calendar, tone: "recurring", desktopOnly: true },
+  { path: "/investments", label: "Investments", icon: Icon.trend, tone: "investments", desktopOnly: true },
+  { path: "/networth", label: "Net Worth", icon: Icon.layers, tone: "networth", desktopOnly: true },
+  { path: "/forecast", label: "Forecast", icon: Icon.compass, tone: "forecast", desktopOnly: true },
   { path: "/more", label: "More", icon: Icon.more, tone: "more", mobileOnly: true },
   { path: "/accounts", label: "Accounts", icon: Icon.bank, tone: "accounts" },
   { path: "/imports", label: "Imports", icon: Icon.upload, tone: "imports", desktopOnly: true },
@@ -79,6 +91,18 @@ function Shell() {
         return <Review />;
       case "/reports":
         return <Reports query={query} />;
+      case "/cashflow":
+        return <CashFlow />;
+      case "/budget":
+        return <Budget />;
+      case "/recurring":
+        return <Recurring />;
+      case "/investments":
+        return <Investments />;
+      case "/networth":
+        return <NetWorth />;
+      case "/forecast":
+        return <Forecast />;
       case "/accounts":
         return <Accounts />;
       case "/imports":
@@ -92,7 +116,7 @@ function Shell() {
     }
   })();
 
-  const active = (p: string) => (p === "/" ? path === "/" : path.startsWith(p) || (p === "/more" && ["/accounts", "/imports", "/settings"].includes(path)));
+  const active = (p: string) => (p === "/" ? path === "/" : path.startsWith(p) || (p === "/more" && ["/accounts", "/imports", "/settings", "/cashflow", "/budget", "/recurring", "/investments", "/networth", "/forecast"].includes(path)));
 
   return (
     <App.Provider value={{ entity, setEntity, entities, reviewCount, refreshReview, categories, reloadEntities: ents.reload }}>

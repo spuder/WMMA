@@ -1,11 +1,11 @@
 /** ECharts, tree-shaken, themed from the CSS tokens and re-themed on light/dark changes. */
 import { BarChart, LineChart, PieChart, SankeyChart } from "echarts/charts";
-import { GridComponent, LegendComponent, TooltipComponent } from "echarts/components";
+import { GridComponent, LegendComponent, MarkAreaComponent, MarkLineComponent, TooltipComponent, VisualMapPiecewiseComponent } from "echarts/components";
 import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import { useEffect, useRef, useState } from "preact/hooks";
 
-echarts.use([LineChart, BarChart, PieChart, SankeyChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer]);
+echarts.use([LineChart, BarChart, PieChart, SankeyChart, GridComponent, TooltipComponent, LegendComponent, MarkLineComponent, MarkAreaComponent, VisualMapPiecewiseComponent, CanvasRenderer]);
 
 export type ChartOption = echarts.EChartsCoreOption;
 
@@ -59,7 +59,7 @@ export function useTheme(): Theme | null {
   return t;
 }
 
-export function Chart({ option, class: cls = "chart", onClick }: { option: (t: Theme) => ChartOption; class?: string; onClick?: (p: any) => void }) {
+export function Chart({ option, class: cls = "chart", onClick }: { option: (t: Theme) => ChartOption; class?: string; onClick?: ((p: any) => void) | undefined }) {
   const el = useRef<HTMLDivElement>(null);
   const inst = useRef<echarts.ECharts | null>(null);
   const theme = useTheme();

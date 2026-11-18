@@ -1,510 +1,467 @@
 import { useCallback, useState } from "preact/hooks";
-import { api, catEmoji, catLabel, compact, leaf, money, monthEnd, monthName, monthShift, monthStart, thisMonth, today, useApi } from "../api";
+import { catLabel, compact, money, useApi } from "../api";
+import { businessStyle, EntitySwitcher, go, useApp } from "../app";
 import { Chart, type Theme } from "../components/chart";
-import { CatName, ErrorBox, Loading, Sheet, toast } from "../components/ui";
-import { EntitySwitcher, go, useApp } from "../app";
+import {
+  axis,
+  BarList,
+  BY_OPTIONS,
+  type By,
+  csvMoney,
+  Donut,
+  downloadCsv,
+  FlowBars,
+  FlowSankey,
+  type Interval,
+  Kpis,
+  openSlice,
+  pct,
+  PeriodTransactions,
+  periodLabel,
+  qs,
+  RANGES,
+  RangeMenu,
+  type RangeKey,
+  rangeDates,
+  Seg,
+  shortDate,
+  slices,
+  StackBars,
+  Summary,
+  useStored,
+  valueAxis,
+} from "../components/report-kit";
+import { CatName, ErrorBox, Icon, Loading } from "../components/ui";
 
-type Tab = "pnl" | "cashflow" | "budget" | "networth" | "spending" | "trend";
+type Tab = "cashflow" | "spending" | "income" | "pnl";
 const TABS: Array<[Tab, string]> = [
-  ["pnl", "P&L"],
   ["cashflow", "Cash flow"],
-  ["budget", "Budget"],
-  ["networth", "Net worth"],
   ["spending", "Spending"],
-  ["trend", "Trend"],
+  ["income", "Income"],
+  ["pnl", "Profit & loss"],
 ];
-
-type Range = "month" | "last" | "ytd" | "12m" | "lastyear";
-function rangeDates(r: Range): { from: string; to: string; label: string } {
-  const m = thisMonth();
-  const y = m.slice(0, 4);
-  switch (r) {
-    case "month":
-      return { from: monthStart(m), to: monthEnd(m), label: monthName(m, { month: "long" }) };
-    case "last":
-      return { from: monthStart(monthShift(m, -1)), to: monthEnd(monthShift(m, -1)), label: monthName(monthShift(m, -1), { month: "long" }) };
-    case "ytd":
-      return { from: `${y}-01-01`, to: today(), label: `${y} to date` };
-    case "12m":
-      return { from: monthStart(monthShift(m, -11)), to: monthEnd(m), label: "Last 12 months" };
-    case "lastyear":
-      return { from: `${Number(y) - 1}-01-01`, to: `${Number(y) - 1}-12-31`, label: String(Number(y) - 1) };
-  }
-}
+const RANGE_KEYS = RANGES.map(([k]) => k);
 
 export function Reports({ query }: { query: URLSearchParams }) {
-  const tab = (query.get("tab") as Tab) || "pnl";
-  const [range, setRange] = useState<Range>("month");
-  return (
-    <div class="stack">
-      <div class="topbar">
-        <h1>Reports</h1>
-        <EntitySwitcher />
-      </div>
-      <div class="chips">
-        {TABS.map(([k, l]) => (
-          <button class={`chip${tab === k ? " active" : ""}`} onClick={() => go(`/reports?tab=${k}`)}>
-            {l}
-          </button>
-        ))}
-      </div>
-      {tab !== "budget" && tab !== "networth" && tab !== "trend" && (
-        <div class="seg" style={{ alignSelf: "flex-start", overflowX: "auto", maxWidth: "100%" }}>
-          {(
-            [
-              ["month", "This month"],
-              ["last", "Last month"],
-              ["ytd", "YTD"],
-              ["12m", "12 mo"],
-              ["lastyear", "Last year"],
-            ] as const
-          ).map(([k, l]) => (
-            <button class={range === k ? "active" : ""} onClick={() => setRange(k)}>
-              {l}
-            </button>
-          ))}
-        </div>
-      )}
-      {tab === "pnl" && <Pnl range={range} />}
-      {tab === "cashflow" && <Cashflow range={range} />}
-      {tab === "budget" && <Budget />}
-      {tab === "networth" && <NetWorth />}
-      {tab === "spending" && <Spending range={range} />}
-      {tab === "trend" && <Trend />}
-    </div>
-  );
-}
-
-const eq = (entity: string | null) => (entity ? `&entity=${encodeURIComponent(entity)}` : "");
-
-function Pnl({ range }: { range: Range }) {
-  const { entity, entities } = useApp();
+  const tab = (TABS.find(([k]) => k === query.get("tab"))?.[0] ?? "cashflow") as Tab;
+  const [range, setRange] = useStored<RangeKey>("reports.range", "12m", RANGE_KEYS);
   const r = rangeDates(range);
-  const { data, error, loading } = useApi(`/reports/pnl?from=${r.from}&to=${r.to}${eq(entity)}`, [entity, range]);
-  if (error) return <ErrorBox error={error} />;
-  if (loading || !data) return <Loading h={320} />;
-  const max = Math.max(1, ...data.income.map((l: any) => l.amount_cents), ...data.expenses.map((l: any) => l.amount_cents));
-  const name = entity ? (entities.find((e) => e.slug === entity)?.name ?? entity) : "All finances";
-  return (
-    <div class="grid">
-      <div class="card hero span-12">
-        <div class="upper">
-          {name} · {r.label}
-        </div>
-        <div class={`big num ${data.net_cents < 0 ? "out" : ""}`}>{data.net}</div>
-        <div class="muted small">
-          Net income · {data.totalIncome} in, {data.totalExpenses} out
-        </div>
-      </div>
-      <div class="card span-6">
-        <h2>Income</h2>
-        <Lines lines={data.income} max={max} total={data.totalIncome} r={r} />
-      </div>
-      <div class="card span-6">
-        <h2>Expenses</h2>
-        <Lines lines={data.expenses} max={max} total={data.totalExpenses} out r={r} />
-      </div>
-    </div>
-  );
-}
-
-function Lines({ lines, max, total, out, r }: { lines: any[]; max: number; total: string; out?: boolean; r: { from: string; to: string } }) {
-  if (lines.length === 0) return <div class="empty">Nothing in this period</div>;
-  return (
-    <table class="table">
-      <tbody>
-        {lines.map((l) => (
-          <tr title={`${l.account} · ${r.from} to ${r.to}`}>
-            <td>
-              <CatName account={l.account} />
-              <div class={`inline-bar${out ? " out" : ""}`} style={{ width: `${Math.max(2, (l.amount_cents / max) * 100)}%` }} />
-            </td>
-            <td class="r num">{l.amount}</td>
-          </tr>
-        ))}
-        <tr class="total">
-          <td>Total</td>
-          <td class="r num">{total}</td>
-        </tr>
-      </tbody>
-    </table>
-  );
-}
-
-function Cashflow({ range }: { range: Range }) {
-  const { entity } = useApp();
-  const r = rangeDates(range);
-  const { data, error, loading } = useApi(`/reports/cashflow?from=${r.from}&to=${r.to}&depth=2${eq(entity)}`, [entity, range]);
-  const option = useCallback(
-    (t: Theme) => {
-      const color = (kind: string, i: number) => (kind === "income" ? t.in : kind === "hub" ? t.accent : kind === "savings" ? t.accent : kind === "deficit" ? t.out : t.palette[(i % (t.palette.length - 1)) + 1]);
-      return {
-        tooltip: { trigger: "item", valueFormatter: (v: number) => money(v) },
-        series: [
-          {
-            type: "sankey",
-            left: 4,
-            right: 110,
-            top: 10,
-            bottom: 10,
-            nodeWidth: 12,
-            nodeGap: 10,
-            draggable: false,
-            emphasis: { focus: "adjacency" },
-            lineStyle: { color: "gradient", curveness: 0.5, opacity: t.dark ? 0.35 : 0.28 },
-            label: { color: t.ink, fontSize: 12, formatter: (p: any) => `${p.data.label}` },
-            data: (data?.nodes ?? []).map((n: any, i: number) => ({ name: n.id, label: n.label, itemStyle: { color: color(n.kind, i), borderWidth: 0 } })),
-            links: (data?.links ?? []).map((l: any) => ({ source: l.source, target: l.target, value: l.value_cents })),
-          },
-        ],
-      };
-    },
-    [data],
-  );
-  if (error) return <ErrorBox error={error} />;
-  if (loading || !data) return <Loading h={380} />;
-  return (
-    <div class="card">
-      <div class="spread">
-        <div>
-          <h2>Where the money went</h2>
-          <div class="sub">{r.label}</div>
-        </div>
-        <span class={`pill ${data.net.startsWith("-") ? "over" : "ok"}`}>{data.net.startsWith("-") ? `${data.net} net` : `${data.net} saved`}</span>
-      </div>
-      {data.links.length === 0 ? <div class="empty">No income or spending in this period</div> : <Chart option={option} class="chart tall" />}
-    </div>
-  );
-}
-
-function Budget() {
-  const { entity, entities } = useApp();
-  const [month, setMonth] = useState(thisMonth());
-  const ent = entity ?? entities.find((e) => e.type === "personal")?.slug ?? entities[0]?.slug ?? null;
-  const { data, error, loading, reload } = useApi(ent ? `/reports/budget?entity=${encodeURIComponent(ent)}&month=${month}` : null, [ent, month]);
-  const [edit, setEdit] = useState<{ account: string; amount: string } | null>(null);
-  const [adding, setAdding] = useState(false);
-  const save = async (account: string, amount: string) => {
-    try {
-      await api("/budgets", { method: "PUT", body: [{ entity: ent, account, month, amount }] });
-      toast(`Budget set for ${leaf(account)}`);
-      setEdit(null);
-      setAdding(false);
-      reload();
-    } catch (e) {
-      toast((e as Error).message);
-    }
-  };
-  if (!ent) return <div class="empty">Add a business or personal profile first</div>;
-  const lines: any[] = data?.lines ?? [];
-  const cents = (s: string) => Math.round(Number(s.replace(/[$,]/g, "")) * 100);
-  const totalBudget = lines.reduce((a, l) => a + cents(l.budgeted), 0);
-  const totalSpent = lines.reduce((a, l) => a + cents(l.activity), 0);
   return (
     <div class="stack">
-      <div class="spread">
-        <div class="seg">
-          <button onClick={() => setMonth(monthShift(month, -1))} aria-label="Previous month">
-            ‹
-          </button>
-          <button class="active">{monthName(month, { month: "long", year: "numeric" })}</button>
-          <button onClick={() => setMonth(monthShift(month, 1))} aria-label="Next month">
-            ›
-          </button>
-        </div>
-        <button class="btn" onClick={() => setAdding(true)}>
-          + Budget
-        </button>
-      </div>
-      {!entity && <div class="muted small">Showing {entities.find((e) => e.slug === ent)?.name}. Pick a business or personal profile above to switch.</div>}
-      {error && <ErrorBox error={error} />}
-      {loading && <Loading h={300} />}
-      {data && (
-        <>
-          <div class="grid-2">
-            <div class="card tile">
-              <div class="label">Budgeted</div>
-              <div class="value num">{money(totalBudget, true)}</div>
-            </div>
-            <div class="card tile">
-              <div class="label">Spent</div>
-              <div class={`value num ${totalSpent > totalBudget ? "out" : ""}`}>{money(totalSpent, true)}</div>
-            </div>
-          </div>
-          <div class="card" style={{ paddingTop: 6 }}>
-            {lines.length === 0 && <div class="empty">No budgets yet. Tap “+ Budget” to add one.</div>}
-            {lines.map((l) => {
-              const avail = l.available_cents as number;
-              const budget = cents(l.budgeted) + cents(l.rolledOver);
-              const spent = cents(l.activity);
-              const pct = budget > 0 ? Math.min(100, (spent / budget) * 100) : spent > 0 ? 100 : 0;
-              const state = avail < 0 ? "over" : budget > 0 && spent / budget > 0.85 ? "warn" : avail === 0 ? "zero" : "ok";
-              return (
-                <div class="item tap" style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }} onClick={() => setEdit({ account: l.account, amount: l.budgeted.replace(/[$,]/g, "") })}>
-                  <div class="spread">
-                    <strong><CatName account={l.account} /></strong>
-                    <span class={`pill ${state}`}>{l.available}</span>
-                  </div>
-                  <div class={`bar ${state === "over" ? "over" : state === "warn" ? "warn" : ""}`}>
-                    <div style={{ width: `${pct}%` }} />
-                  </div>
-                  <div class="spread tiny muted">
-                    <span>
-                      {l.activity} of {l.budgeted}
-                      {cents(l.rolledOver) !== 0 && ` · ${cents(l.rolledOver) > 0 ? "+" : ""}${l.rolledOver} rolled over`}
-                    </span>
-                    <span>available</span>
-                  </div>
-                </div>
-              );
-            })}
-            {data.unbudgetedSpending !== "$0.00" && <div class="muted small" style={{ paddingTop: 10 }}>Unbudgeted spending this month: {data.unbudgetedSpending}</div>}
-          </div>
-        </>
-      )}
-      <Sheet open={!!edit} onClose={() => setEdit(null)} title={edit ? catLabel(edit.account) : ""}>
-        {edit && <AmountForm initial={edit.amount} note={`Monthly amount from ${monthName(month, { month: "long", year: "numeric" })} on`} onSave={(a) => save(edit.account, a)} />}
-      </Sheet>
-      <Sheet open={adding} onClose={() => setAdding(false)} title="New budget">
-        <NewBudget onSave={save} />
-      </Sheet>
-    </div>
-  );
-}
-
-function AmountForm({ initial, note, onSave }: { initial: string; note: string; onSave: (amount: string) => void }) {
-  const [v, setV] = useState(initial);
-  return (
-    <form
-      class="stack"
-      onSubmit={(e) => {
-        e.preventDefault();
-        onSave(v);
-      }}
-    >
-      <div class="field">
-        <label>{note}</label>
-        <input class="input num" style={{ fontSize: 22, height: 54 }} inputMode="decimal" value={v} onInput={(e) => setV((e.target as HTMLInputElement).value)} autoFocus />
-      </div>
-      <button class="btn primary block" type="submit">
-        Save
-      </button>
-    </form>
-  );
-}
-
-function NewBudget({ onSave }: { onSave: (account: string, amount: string) => void }) {
-  const { categories } = useApp();
-  const [account, setAccount] = useState("");
-  const [amount, setAmount] = useState("");
-  const expenses = categories.filter((c) => c.startsWith("Expenses:"));
-  return (
-    <div class="stack">
-      <div class="field">
-        <label>Category</label>
-        <select class="input" value={account} onChange={(e) => setAccount((e.target as HTMLSelectElement).value)}>
-          <option value="">Choose…</option>
-          {expenses.map((c) => (
-            <option value={c}>{catEmoji(c)} {catLabel(c)}</option>
-          ))}
-        </select>
-      </div>
-      <div class="field">
-        <label>Monthly amount</label>
-        <input class="input num" inputMode="decimal" placeholder="400.00" value={amount} onInput={(e) => setAmount((e.target as HTMLInputElement).value)} />
-      </div>
-      <button class="btn primary block" disabled={!account || !amount} onClick={() => onSave(account, amount)}>
-        Add budget
-      </button>
-    </div>
-  );
-}
-
-function NetWorth() {
-  const { entity } = useApp();
-  const m = thisMonth();
-  const [span, setSpan] = useState(12);
-  const { data, error, loading } = useApi(`/reports/networth?from=${monthShift(m, -(span - 1))}&to=${m}`, [span]);
-  const option = useCallback(
-    (t: Theme) => {
-      const series: any[] = data?.series ?? [];
-      const ents: string[] = (data?.entities ?? []).filter((e: string) => e !== "(none)");
-      return {
-        grid: { left: 4, right: 8, top: 30, bottom: 0, containLabel: true },
-        legend: { top: 0, left: 0, itemWidth: 10, itemHeight: 10, textStyle: { color: t.muted } },
-        tooltip: { trigger: "axis", valueFormatter: (v: number) => money(v, true) },
-        xAxis: { type: "category", boundaryGap: false, data: series.map((s) => monthName(s.month)), axisLine: { lineStyle: { color: t.line } }, axisTick: { show: false }, axisLabel: { color: t.muted } },
-        yAxis: { type: "value", scale: true, splitLine: { lineStyle: { color: t.line, type: "dashed" } }, axisLabel: { color: t.muted, formatter: (v: number) => compact(v) } },
-        series: entity
-          ? [{ name: entity, type: "line", smooth: 0.3, symbol: "none", lineStyle: { width: 3, color: t.accent }, areaStyle: { color: `${t.accent}22` }, data: series.map((s) => s.by_entity_cents[entity] ?? 0) }]
-          : [
-              ...ents.map((e) => ({ name: e, type: "line", stack: "nw", smooth: 0.3, symbol: "none", lineStyle: { width: 0 }, areaStyle: { opacity: 0.55 }, data: series.map((s) => s.by_entity_cents[e] ?? 0) })),
-              { name: "Total", type: "line", smooth: 0.3, symbol: "none", lineStyle: { width: 3, color: t.ink }, data: series.map((s) => s.net_worth_cents) },
-            ],
-      };
-    },
-    [data, entity],
-  );
-  if (error) return <ErrorBox error={error} />;
-  if (loading || !data) return <Loading h={360} />;
-  const s = data.series;
-  const last = entity ? (s.at(-1)?.by_entity_cents[entity] ?? 0) : (s.at(-1)?.net_worth_cents ?? 0);
-  const first = entity ? (s[0]?.by_entity_cents[entity] ?? 0) : (s[0]?.net_worth_cents ?? 0);
-  return (
-    <div class="stack">
-      <div class="card hero">
-        <div class="spread">
-          <div class="upper">Net worth</div>
-          <div class="seg">
-            {[6, 12, 36].map((n) => (
-              <button class={span === n ? "active" : ""} onClick={() => setSpan(n)}>
-                {n < 12 ? `${n}M` : `${n / 12}Y`}
+      <div class="topbar report-top">
+        <div class="report-title">
+          <h1>Reports</h1>
+          <nav class="tabs" aria-label="Report">
+            {TABS.map(([k, l]) => (
+              <button class={`tab${tab === k ? " active" : ""}`} aria-current={tab === k ? "page" : undefined} onClick={() => go(`/reports?tab=${k}`)}>
+                {l}
               </button>
             ))}
-          </div>
+          </nav>
         </div>
-        <div class="big num">{money(last, true)}</div>
-        <span class={`delta ${last >= first ? "up" : "down"}`}>
-          {last >= first ? "▲" : "▼"} {money(Math.abs(last - first), true)} over {span} months
-        </span>
-        <Chart option={option} class="chart tall" />
+        <div class="toolbar">
+          <RangeMenu value={range} onChange={setRange} />
+          {tab !== "pnl" && <EntitySwitcher />}
+        </div>
       </div>
-      {!entity && (
-        <div class="grid-2">
-          <div class="card tile">
-            <div class="label">Assets</div>
-            <div class="value num">{money(s.at(-1)?.assets_cents ?? 0, true)}</div>
-          </div>
-          <div class="card tile">
-            <div class="label">Liabilities</div>
-            <div class="value num">{money(-(s.at(-1)?.liabilities_cents ?? 0), true)}</div>
-          </div>
-        </div>
-      )}
+      {tab === "cashflow" && <CashflowReport from={r.from} to={r.to} label={r.label} />}
+      {tab === "spending" && <KindReport kind="expense" from={r.from} to={r.to} label={r.label} />}
+      {tab === "income" && <KindReport kind="income" from={r.from} to={r.to} label={r.label} />}
+      {tab === "pnl" && <ProfitLoss from={r.from} to={r.to} label={r.label} range={range} />}
     </div>
   );
 }
 
-function Spending({ range }: { range: Range }) {
+/** Interval that keeps a range's chart readable. */
+function autoInterval(from: string | null, to: string | null): Interval {
+  if (!from || !to) return "month";
+  const days = (Date.parse(to) - Date.parse(from)) / 86_400_000;
+  return days <= 45 ? "day" : days <= 120 ? "week" : days <= 1100 ? "month" : "quarter";
+}
+
+function CashflowReport({ from, to, label }: { from: string | null; to: string | null; label: string }) {
   const { entity } = useApp();
-  const r = rangeDates(range);
-  const [depth, setDepth] = useState(2);
-  const { data, error, loading } = useApi(`/reports/spending?from=${r.from}&to=${r.to}&depth=${depth}${eq(entity)}`, [entity, range, depth]);
-  const cats: any[] = data?.categories ?? [];
-  const option = useCallback(
-    (t: Theme) => ({
-      tooltip: { trigger: "item", valueFormatter: (v: number) => money(v) },
-      series: [
-        {
-          type: "pie",
-          radius: ["58%", "86%"],
-          padAngle: 1.5,
-          itemStyle: { borderRadius: 7, borderColor: t.surface, borderWidth: 2 },
-          label: { show: false },
-          data: cats.map((c) => ({ name: `${catEmoji(c.account)} ${catLabel(c.account)}`, value: c.amount_cents })),
-        },
-      ],
-    }),
-    [data],
-  );
-  if (error) return <ErrorBox error={error} />;
-  if (loading || !data) return <Loading h={360} />;
+  const [view, setView] = useStored<"bars" | "sankey">("reports.cf.view", "bars", ["bars", "sankey"]);
+  const [interval, setInterval] = useStored<Interval | "auto">("reports.cf.interval", "auto", ["auto", "week", "month", "quarter", "year"]);
+  const [by, setBy] = useStored<By>("reports.cf.by", "category", ["category", "group", "merchant"]);
+  const iv = interval === "auto" ? autoInterval(from, to) : interval;
+  const ov = useApi(`/reports/overview${qs({ from, to, entity })}`, [entity, from, to]);
+  const se = useApi(`/reports/series${qs({ from, to, entity, interval: iv })}`, [entity, from, to, iv]);
+  if (ov.error) return <ErrorBox error={ov.error} />;
+  const d = ov.data;
   return (
-    <div class="grid">
-      <div class="card span-5" style={{ position: "relative" }}>
-        <div class="spread">
-          <h2>{r.label}</h2>
-          <div class="seg">
-            <button class={depth === 2 ? "active" : ""} onClick={() => setDepth(2)}>
-              Groups
-            </button>
-            <button class={depth === 3 ? "active" : ""} onClick={() => setDepth(3)}>
-              Detail
-            </button>
+    <div class="stack">
+      {d ? (
+        <Kpis
+          items={[
+            { label: "Total income", value: money(d.income.total_cents), tone: "in" },
+            { label: "Total expenses", value: money(d.expenses.total_cents), tone: "neg" },
+            { label: "Total net income", value: money(d.net_cents), tone: d.net_cents < 0 ? "neg" : "" },
+            { label: "Savings rate", value: pct(d.savings_rate, 0) },
+          ]}
+        />
+      ) : (
+        <Loading h={92} />
+      )}
+      <div class="card chart-card">
+        <div class="card-head">
+          <div>
+            <h2>{label}</h2>
+            {d && <div class="sub">{shortDate(d.from)} – {shortDate(d.to)}</div>}
+          </div>
+          <div class="row wrap">
+            <Seg value={view} onChange={setView} label="Chart" options={[["bars", "Trend bars"], ["sankey", "Flow"]]} />
+            {view === "bars" && (
+              <Seg
+                value={interval}
+                onChange={setInterval}
+                label="Interval"
+                options={[["auto", "Auto"], ["month", "Monthly"], ["quarter", "Quarterly"], ["year", "Yearly"]]}
+              />
+            )}
           </div>
         </div>
-        {cats.length === 0 ? (
-          <div class="empty">No spending in this period</div>
-        ) : (
-          <div style={{ position: "relative" }}>
-            <Chart option={option} class="chart tall" />
-            <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", pointerEvents: "none", textAlign: "center" }}>
-              <div>
-                <div class="muted small">Total spent</div>
-                <div class="num" style={{ fontWeight: 760, fontSize: 26, letterSpacing: "-0.03em" }}>{data.total}</div>
-              </div>
-            </div>
+        {view === "sankey" ? <FlowSankey entity={entity} from={d?.from ?? from} to={d?.to ?? to} /> : se.data ? <FlowBars periods={se.data.periods} interval={se.data.interval} /> : <Loading h={380} />}
+      </div>
+      <div class="grid">
+        <div class="card span-8">
+          <div class="card-head">
+            <h2>Breakdown</h2>
+            <Seg value={by} onChange={setBy} label="Group by" options={BY_OPTIONS} />
           </div>
+          {d ? (
+            <>
+              <h3 class="section-h">Income</h3>
+              <BarList items={slices(d.income, by)} tone="in" onPick={openSlice} limit={8} />
+              <h3 class="section-h">Expenses</h3>
+              <BarList items={slices(d.expenses, by)} tone="out" onPick={openSlice} />
+            </>
+          ) : (
+            <Loading h={300} />
+          )}
+        </div>
+        <div class="span-4">
+          {d && (
+            <Summary
+              sub={
+                <span class="row" style={{ gap: 6 }}>
+                  <span class="tiny-ico"><Icon.calendar /></span>
+                  {label}
+                </span>
+              }
+              rows={[
+                ["Total income", `+${money(d.income.total_cents)}`, "in"],
+                ["Total spending", money(d.expenses.total_cents)],
+                ["Net cash flow", money(d.net_cents), d.net_cents < 0 ? "neg" : ""],
+                ["Savings rate", pct(d.savings_rate, 0)],
+                ["Income transactions", String(d.income.count)],
+                ["Expense transactions", String(d.expenses.count)],
+              ]}
+              footer={
+                <button
+                  class="linkbtn"
+                  onClick={() =>
+                    downloadCsv(`cash-flow-${d.from}-${d.to}.csv`, [
+                      ["kind", "category", "amount"],
+                      ...d.income.categories.map((c: any) => ["income", c.account, csvMoney(c.cents)]),
+                      ...d.expenses.categories.map((c: any) => ["expense", c.account, csvMoney(c.cents)]),
+                    ])
+                  }
+                >
+                  Download CSV
+                </button>
+              }
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function KindReport({ kind, from, to, label }: { kind: "expense" | "income"; from: string | null; to: string | null; label: string }) {
+  const { entity } = useApp();
+  const [view, setView] = useStored<"pie" | "bars">(`reports.${kind}.view`, "pie", ["pie", "bars"]);
+  const [by, setBy] = useStored<By>(`reports.${kind}.by`, "category", ["category", "group", "merchant"]);
+  const iv = autoInterval(from, to);
+  const ov = useApi(`/reports/overview${qs({ from, to, entity })}`, [entity, from, to]);
+  const se = useApi(view === "bars" ? `/reports/series${qs({ from, to, entity, interval: iv, stack: kind, top: 8 })}` : null, [entity, from, to, view]);
+  if (ov.error) return <ErrorBox error={ov.error} />;
+  const d = ov.data;
+  const k = d ? (kind === "income" ? d.income : d.expenses) : null;
+  return (
+    <div class="stack">
+      <div class="card chart-card">
+        <div class="card-head">
+          <div>
+            <h2>{label}</h2>
+            {d && <div class="sub">{shortDate(d.from)} – {shortDate(d.to)}</div>}
+          </div>
+          <div class="row wrap">
+            <Seg value={view} onChange={setView} label="Chart" options={[["pie", "Pie"], ["bars", "Over time"]]} />
+            {view === "pie" && <Seg value={by} onChange={setBy} label="Group by" options={BY_OPTIONS} />}
+          </div>
+        </div>
+        {!k ? (
+          <Loading h={380} />
+        ) : view === "pie" ? (
+          <Donut items={slices(k, by)} total={k.total_cents} label="Total" />
+        ) : se.data?.stack ? (
+          <StackBars periods={se.data.periods} interval={se.data.interval} stack={se.data.stack} tone={kind === "income" ? "in" : "out"} />
+        ) : (
+          <Loading h={380} />
         )}
       </div>
-      <div class="card span-7">
-        <table class="table">
-          <thead>
-            <tr>
-              <th>Category</th>
-              <th class="r">Share</th>
-              <th class="r">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {cats.map((c) => (
+      <div class="grid">
+        <div class="card span-8">
+          <div class="card-head">
+            <h2>Transactions</h2>
+          </div>
+          <PeriodTransactions entity={entity} from={d?.from ?? from} to={d?.to ?? to} kind={kind} />
+        </div>
+        <div class="span-4 stack">
+          {k && (
+            <Summary
+              rows={[
+                ["Total transactions", String(k.count)],
+                ["Largest transaction", money(k.largest_cents), kind === "income" ? "in" : ""],
+                ["Average transaction", money(k.average_cents), kind === "income" ? "in" : ""],
+                [kind === "income" ? "Total income" : "Total spending", money(k.total_cents), kind === "income" ? "in" : ""],
+                ["First transaction", shortDate(k.first_date)],
+                ["Last transaction", shortDate(k.last_date)],
+              ]}
+              footer={
+                <button
+                  class="linkbtn"
+                  onClick={() => downloadCsv(`${kind === "income" ? "income" : "spending"}-${d.from}-${d.to}.csv`, [["category", "transactions", "amount"], ...k.categories.map((c: any) => [c.account, c.count, csvMoney(c.cents)])])}
+                >
+                  Download CSV
+                </button>
+              }
+            />
+          )}
+          {k && k.merchants.length > 0 && (
+            <div class="card">
+              <h2>Top {kind === "income" ? "payers" : "merchants"}</h2>
+              <BarList items={slices(k, "merchant")} tone={kind === "income" ? "in" : "out"} limit={6} onPick={openSlice} />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- profit & loss ----------------------------------------------------------
+
+const FORM_NAME: Record<string, string> = {
+  schedule_c: "Schedule C",
+  s_corp_1120s: "Form 1120-S",
+  partnership_1065: "Form 1065",
+  schedule_e: "Schedule E",
+  personal: "Personal",
+};
+
+function ProfitLoss({ from, to, label, range }: { from: string | null; to: string | null; label: string; range: RangeKey }) {
+  const { entities } = useApp();
+  const iv = autoInterval(from, to) === "day" || autoInterval(from, to) === "week" ? "week" : "month";
+  const biz = useApi(`/reports/businesses${qs({ from, to, interval: iv })}`, [from, to, iv]);
+  const [pick, setPick] = useStored<string>("reports.pnl.entity", "");
+  const list: any[] = biz.data?.entities ?? [];
+  const businesses = list.filter((e) => e.type !== "personal");
+  const chosen = list.find((e) => e.slug === pick) ?? businesses[0] ?? list[0];
+  const option = useCallback(
+    (t: Theme) => {
+      const ps: any[] = biz.data?.periods ?? [];
+      return {
+        grid: { left: 4, right: 10, top: 36, bottom: 0, containLabel: true },
+        legend: { top: 0, left: 0, itemWidth: 10, itemHeight: 10, icon: "circle", textStyle: { color: t.muted } },
+        tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, valueFormatter: (v: number) => money(v) },
+        xAxis: { type: "category", data: ps.map((p) => periodLabel(p.start, iv)), ...axis(t) },
+        yAxis: valueAxis(t),
+        series: businesses.map((e) => ({
+          name: e.name,
+          type: "bar",
+          barMaxWidth: 22,
+          itemStyle: { color: businessStyle(e.slug, e.color).color, borderRadius: 4 },
+          data: e.income_series.map((v: number, i: number) => v - e.expense_series[i]),
+        })),
+      };
+    },
+    [biz.data],
+  );
+  if (biz.error) return <ErrorBox error={biz.error} />;
+  if (!biz.data) return <Loading h={400} />;
+  if (entities.length === 0) return <div class="empty">Add a business or personal profile first</div>;
+  return (
+    <div class="stack">
+      <div class="biz-cards">
+        {list.map((e) => (
+          <button class={`card biz-card${chosen?.slug === e.slug ? " active" : ""}`} onClick={() => setPick(e.slug)}>
+            <div class="row" style={{ gap: 9 }}>
+              <span class="business-icon compact" style={businessStyle(e.slug, e.color)}>
+                {e.type === "personal" ? "👤" : <Icon.folder />}
+              </span>
+              <strong class="biz-name">{e.name}</strong>
+              {e.status === "archived" && <span class="pill zero">Archived</span>}
+            </div>
+            <div class={`biz-net num ${e.net_cents < 0 ? "neg" : ""}`}>{money(e.net_cents)}</div>
+            <div class="muted small">{e.type === "personal" ? "Net cash flow" : "Net profit"} · {label}</div>
+            <div class="biz-split">
+              <span>
+                <span class="muted">In</span> <span class="num in">{compact(e.income_cents)}</span>
+              </span>
+              <span>
+                <span class="muted">Out</span> <span class="num">{compact(e.expenses_cents)}</span>
+              </span>
+              <span>
+                <span class="muted">Margin</span> <span class="num">{pct(e.margin, 0)}</span>
+              </span>
+            </div>
+          </button>
+        ))}
+      </div>
+      {businesses.length > 0 && (
+        <div class="card chart-card">
+          <div class="card-head">
+            <div>
+              <h2>Net profit by business</h2>
+              <div class="sub">{label}</div>
+            </div>
+          </div>
+          <Chart option={option} class="chart" />
+        </div>
+      )}
+      {chosen && <Statement entity={chosen.slug} from={from} to={to} label={label} range={range} />}
+    </div>
+  );
+}
+
+function Statement({ entity, from, to, label, range }: { entity: string; from: string | null; to: string | null; label: string; range: RangeKey }) {
+  const [cols, setCols] = useStored<"total" | "month" | "quarter">("reports.pnl.cols", "total", ["total", "month", "quarter"]);
+  const [showAll, setShowAll] = useState(false);
+  const { data, error } = useApi(`/reports/statement${qs({ entity, from, to, interval: cols })}`, [entity, from, to, cols]);
+  const [open, setOpen] = useState<Record<string, boolean>>({ income: true, cogs: true, expenses: true });
+  if (error) return <ErrorBox error={error} />;
+  if (!data) return <Loading h={400} />;
+  const periods: any[] = data.periods;
+  const multi = data.interval !== "total";
+  const form = FORM_NAME[data.entity.type] ?? "";
+  const isBiz = data.entity.type !== "personal";
+  const isCogs = (a: string) => a.startsWith("Expenses:CostOfGoodsSold");
+  const lineNo = (l: string | null) => (l ? parseFloat(l) + (/[a-z]$/.test(l) ? (l.charCodeAt(l.length - 1) - 96) / 100 : 0) : 999);
+  /** With "show all", add the form's lines that had no activity (as zero rows). */
+  const withForm = (lines: any[], pick: (account: string) => boolean) => {
+    if (!showAll || !isBiz) return lines;
+    const have = new Set(lines.map((l) => l.account));
+    const extra = (data.form_lines as any[]).filter((f) => pick(f.account) && !have.has(f.account)).map((f) => ({ account: f.account, line: f.line, values: periods.map(() => 0), total_cents: 0 }));
+    return [...lines, ...extra].sort((a, b) => lineNo(a.line) - lineNo(b.line));
+  };
+  const income = withForm(data.income, (a) => a.startsWith("Income:"));
+  const cogs = withForm(data.cost_of_goods, isCogs);
+  const expenses = withForm(data.expenses, (a) => a.startsWith("Expenses:") && !isCogs(a));
+  const t = data.totals;
+  const Section = ({ id, title, lines, totals, total, sign }: { id: string; title: string; lines: any[]; totals: number[]; total: number; sign?: string }) => (
+    <>
+      <tr class="st-section" onClick={() => setOpen({ ...open, [id]: !open[id] })}>
+        <td>
+          <span class={`st-caret${open[id] ? " open" : ""}`}>
+            <Icon.chevron />
+          </span>
+          {title}
+        </td>
+        {multi && totals.map((v) => <td class="r num">{money(v)}</td>)}
+        <td class="r num">{sign}{money(total)}</td>
+      </tr>
+      {open[id] &&
+        lines.map((l) => (
+          <tr class={`st-line${l.total_cents === 0 ? " zero" : ""}`} onClick={() => go(`/transactions?account=${encodeURIComponent(l.account)}`)}>
+            <td>
+              <span class="st-name">
+                {l.line && <span class="st-lineno">Line {l.line}</span>}
+                <CatName account={l.account} />
+              </span>
+            </td>
+            {multi && l.values.map((v: number) => <td class="r num">{v ? money(v) : <span class="muted">–</span>}</td>)}
+            <td class="r num">{money(l.total_cents)}</td>
+          </tr>
+        ))}
+      {open[id] && lines.length === 0 && (
+        <tr class="st-line zero">
+          <td colSpan={multi ? periods.length + 2 : 2}>
+            <span class="muted small">Nothing recorded</span>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+  const exportCsv = () =>
+    downloadCsv(`pnl-${data.entity.slug}-${data.from}-${data.to}.csv`, [
+      ["section", "line", "category", ...(multi ? periods.map((p) => p.start) : []), "total"],
+      ...income.map((l: any) => ["income", l.line ?? "", catLabel(l.account), ...(multi ? l.values.map(csvMoney) : []), csvMoney(l.total_cents)]),
+      ...cogs.map((l: any) => ["cost of goods sold", l.line ?? "", catLabel(l.account), ...(multi ? l.values.map(csvMoney) : []), csvMoney(l.total_cents)]),
+      ...expenses.map((l: any) => ["expenses", l.line ?? "", catLabel(l.account), ...(multi ? l.values.map(csvMoney) : []), csvMoney(l.total_cents)]),
+      ["net", "", isBiz ? "Net profit" : "Net", ...(multi ? t.net.map(csvMoney) : []), csvMoney(t.net_total)],
+    ]);
+  return (
+    <div class="card statement">
+      <div class="card-head">
+        <div>
+          <div class="st-title">
+            {data.entity.name} <span class="muted">{range === "all" ? "" : label}</span>
+          </div>
+          <div class="sub">
+            {isBiz ? `${form} profit & loss` : "Income statement"} · {shortDate(data.from)} – {shortDate(data.to)}
+          </div>
+        </div>
+        <div class="row wrap">
+          <Seg value={cols} onChange={setCols} label="Columns" options={[["total", "Total"], ["quarter", "Quarterly"], ["month", "Monthly"]]} />
+          <button class="btn sm" onClick={exportCsv}>
+            <span class="tiny-ico"><Icon.download /></span> CSV
+          </button>
+        </div>
+      </div>
+      {isBiz && (
+        <label class="switch-row">
+          <input type="checkbox" checked={showAll} onChange={(e) => setShowAll((e.target as HTMLInputElement).checked)} />
+          <span>Include {form} lines without activity</span>
+        </label>
+      )}
+      <div class="st-scroll">
+        <table class="table st-table">
+          {multi && (
+            <thead>
               <tr>
-                <td>
-                  <CatName account={c.account} />
-                  <div class="inline-bar" style={{ width: `${Math.max(2, c.share)}%` }} />
-                </td>
-                <td class="r num muted">{c.share}%</td>
-                <td class="r num">{c.amount}</td>
+                <th />
+                {periods.map((p) => (
+                  <th class="r">{periodLabel(p.start, data.interval)}</th>
+                ))}
+                <th class="r">Total</th>
               </tr>
-            ))}
+            </thead>
+          )}
+          <tbody>
+            <Section id="income" title={isBiz ? "Part I · Income" : "Income"} lines={income} totals={t.income} total={t.income_total} />
+            {(cogs.length > 0 || t.cost_of_goods_total !== 0) && (
+              <>
+                <Section id="cogs" title="Cost of goods sold" lines={cogs} totals={t.cost_of_goods} total={t.cost_of_goods_total} />
+                <tr class="st-total">
+                  <td>Gross profit</td>
+                  {multi && t.gross_profit.map((v: number) => <td class="r num">{money(v)}</td>)}
+                  <td class="r num">{money(t.gross_profit_total)}</td>
+                </tr>
+              </>
+            )}
+            <Section id="expenses" title={isBiz ? "Part II · Expenses" : "Expenses"} lines={expenses} totals={t.expenses} total={t.expenses_total} />
+            <tr class="st-net">
+              <td>{isBiz ? "Net profit (or loss)" : "Net income"}</td>
+              {multi && t.net.map((v: number) => <td class={`r num ${v < 0 ? "neg" : ""}`}>{money(v)}</td>)}
+              <td class={`r num ${t.net_total < 0 ? "neg" : ""}`}>{money(t.net_total)}</td>
+            </tr>
           </tbody>
         </table>
       </div>
-    </div>
-  );
-}
-
-function Trend() {
-  const { entity } = useApp();
-  const m = thisMonth();
-  const { data, error, loading } = useApi(`/reports/trend?from=${monthShift(m, -11)}&to=${m}${eq(entity)}`, [entity]);
-  const months: any[] = data?.months ?? [];
-  const option = useCallback(
-    (t: Theme) => ({
-      grid: { left: 4, right: 8, top: 30, bottom: 0, containLabel: true },
-      legend: { top: 0, left: 0, itemWidth: 10, itemHeight: 10, textStyle: { color: t.muted } },
-      tooltip: { trigger: "axis", valueFormatter: (v: number) => money(v, true) },
-      xAxis: { type: "category", data: months.map((x) => monthName(x.month)), axisLine: { lineStyle: { color: t.line } }, axisTick: { show: false }, axisLabel: { color: t.muted } },
-      yAxis: { type: "value", splitLine: { lineStyle: { color: t.line, type: "dashed" } }, axisLabel: { color: t.muted, formatter: (v: number) => compact(v) } },
-      series: [
-        { name: "Income", type: "bar", data: months.map((x) => x.income_cents), itemStyle: { color: t.in, borderRadius: [6, 6, 0, 0] }, barMaxWidth: 16 },
-        { name: "Spending", type: "bar", data: months.map((x) => x.expenses_cents), itemStyle: { color: t.out, borderRadius: [6, 6, 0, 0] }, barMaxWidth: 16 },
-        { name: "Net", type: "line", smooth: 0.3, data: months.map((x) => x.net_cents), symbol: "circle", symbolSize: 6, lineStyle: { width: 2.5, color: t.ink }, itemStyle: { color: t.ink } },
-      ],
-    }),
-    [data],
-  );
-  if (error) return <ErrorBox error={error} />;
-  if (loading || !data) return <Loading h={360} />;
-  const avgIn = months.reduce((a, x) => a + x.income_cents, 0) / Math.max(1, months.length);
-  const avgOut = months.reduce((a, x) => a + x.expenses_cents, 0) / Math.max(1, months.length);
-  return (
-    <div class="stack">
-      <div class="grid-2">
-        <div class="card tile">
-          <div class="label">Avg monthly income</div>
-          <div class="value num in">{money(avgIn, true)}</div>
-        </div>
-        <div class="card tile">
-          <div class="label">Avg monthly spending</div>
-          <div class="value num">{money(avgOut, true)}</div>
-        </div>
-      </div>
-      <div class="card">
-        <h2>Income vs spending</h2>
-        <div class="sub">Last 12 months</div>
-        <Chart option={option} class="chart tall" />
-      </div>
+      {isBiz && <div class="muted tiny" style={{ marginTop: 10 }}>For information only. Line numbers follow {form}; WMMA does not file taxes. Check with a tax professional.</div>}
     </div>
   );
 }

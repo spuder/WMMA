@@ -52,7 +52,7 @@ export async function setBudgets(
     } catch {
       throw new ServiceError(`item ${n}: month must be YYYY-MM`);
     }
-    if (typeof i.account !== "string" || !i.account.startsWith("Expenses:")) throw new ServiceError(`item ${n}: account must be an Expenses account`);
+    if (typeof i.account !== "string" || !/^(Expenses|Income):/.test(i.account)) throw new ServiceError(`item ${n}: account must be an Income or Expenses account`);
     const amount = money(i.amount, `item ${n}: amount`);
     if (M.isNegative(amount)) throw new ServiceError(`item ${n}: amount must not be negative`);
     return { entity: i.entity, account: i.account, month: i.month, amount };

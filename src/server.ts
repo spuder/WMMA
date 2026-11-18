@@ -26,6 +26,7 @@ import { importReiHub } from "./services/bank-imports";
 import { handleMcp } from "./mcp";
 import { checkedMileage, decodeVin, recordMileage, valuationHistory } from "./services/assets";
 import { cashflow, categories, netWorth, spending, trend } from "./services/reports";
+import { accountHistory, businesses, overview, recurring, series, statement } from "./services/insights";
 import { getSettings, putSettings } from "./services/settings";
 import { getTransaction, listMappings, patchTransaction, searchTransactions, splitTransaction, updateMapping } from "./services/transactions";
 import { ACCOUNT_KINDS as KINDS, ENTITY_TYPES, type EntityType } from "./db";
@@ -439,6 +440,35 @@ Object.assign(routes, {
   "GET /api/v1/reports/trend": async (req, _id, ctx) => {
     const q = new URL(req.url, "http://localhost").searchParams;
     return Response.json(await trend(ctx, { entity: q.get("entity"), from: str(q.get("from"), "from"), to: str(q.get("to"), "to") }));
+  },
+  "GET /api/v1/reports/overview": async (req, _id, ctx) => {
+    const q = new URL(req.url, "http://localhost").searchParams;
+    return Response.json(await overview(ctx, { entity: q.get("entity"), from: q.get("from"), to: q.get("to") }));
+  },
+  "GET /api/v1/reports/series": async (req, _id, ctx) => {
+    const q = new URL(req.url, "http://localhost").searchParams;
+    const stack = q.get("stack");
+    if (stack !== null && stack !== "income" && stack !== "expense") bad("stack must be income or expense");
+    const top = intParam(q, "top");
+    return Response.json(
+      await series(ctx, { entity: q.get("entity"), from: q.get("from"), to: q.get("to"), interval: q.get("interval"), stack: stack as "income" | "expense" | null, ...(top !== undefined ? { top } : {}) }),
+    );
+  },
+  "GET /api/v1/reports/balances": async (req, _id, ctx) => {
+    const q = new URL(req.url, "http://localhost").searchParams;
+    return Response.json(await accountHistory(ctx, { entity: q.get("entity"), from: str(q.get("from"), "from"), to: q.get("to"), interval: q.get("interval") }));
+  },
+  "GET /api/v1/reports/recurring": async (req, _id, ctx) => {
+    const q = new URL(req.url, "http://localhost").searchParams;
+    return Response.json(await recurring(ctx, { entity: q.get("entity") }));
+  },
+  "GET /api/v1/reports/businesses": async (req, _id, ctx) => {
+    const q = new URL(req.url, "http://localhost").searchParams;
+    return Response.json(await businesses(ctx, { from: q.get("from"), to: q.get("to"), interval: q.get("interval") }));
+  },
+  "GET /api/v1/reports/statement": async (req, _id, ctx) => {
+    const q = new URL(req.url, "http://localhost").searchParams;
+    return Response.json(await statement(ctx, { entity: str(q.get("entity"), "entity"), from: q.get("from"), to: q.get("to"), interval: q.get("interval") }));
   },
   "GET /api/v1/categories": async (_req, _id, ctx) => Response.json({ categories: await categories(ctx) }),
   "GET /api/v1/settings": async (_req, _id, ctx) => Response.json(await getSettings(ctx)),

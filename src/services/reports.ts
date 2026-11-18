@@ -103,10 +103,13 @@ export interface BudgetLine {
   rolledOver: string;
   available: string;
   available_cents: number;
+  budgeted_cents: number;
+  activity_cents: number;
+  rolled_over_cents: number;
 }
 
 /** Budget vs actual for one entity and month, with rollover from the first budgeted month. */
-export async function budgetReport(ctx: ServiceContext, q: { entity: string; month: string }): Promise<{ entity: string; month: string; lines: BudgetLine[]; unbudgetedSpending: string }> {
+export async function budgetReport(ctx: ServiceContext, q: { entity: string; month: string }) {
   try {
     validateMonth(q.month);
   } catch {
@@ -114,25 +117,42 @@ export async function budgetReport(ctx: ServiceContext, q: { entity: string; mon
   }
   if (!getEntity(ctx, q.entity)) throw new ServiceError(`unknown entity ${JSON.stringify(q.entity)}`, 404);
   const changes: BudgetChange[] = (await ctx.store.readBudgets()).filter((c) => c.entity === q.entity);
-  const accounts = [...new Set(changes.filter((c) => c.month <= q.month).map((c) => c.account))].sort();
+  const used = [...new Set(changes.filter((c) => c.month <= q.month).map((c) => c.account))].sort();
+  const accounts = used.filter((a) => a.startsWith("Expenses:"));
+  const incomeAccounts = used.filter((a) => a.startsWith("Income:"));
 
   // Monthly spending per account for this entity.
   const spend = new Map<string, Money>(); // key: account|YYYY-MM
+  const unbudgetedBy = new Map<string, Money>();
+  const incomeActual = new Map<string, Money>();
   let unbudgeted = M.ZERO;
   const end = nextMonth(q.month);
   for (const p of flatPostings(await ctx.hledger.transactions())) {
-    if (p.entity !== q.entity || !p.account.startsWith("Expenses:")) continue;
+    if (p.entity !== q.entity) continue;
     const m = p.date.slice(0, 7);
+    if (p.account.startsWith("Income:")) {
+      if (m === q.month) incomeActual.set(p.account, M.sub(incomeActual.get(p.account) ?? M.ZERO, p.amount));
+      continue;
+    }
+    if (!p.account.startsWith("Expenses:")) continue;
     if (m >= end) continue;
     if (!accounts.includes(p.account)) {
-      if (m === q.month) unbudgeted = M.add(unbudgeted, p.amount);
+      if (m === q.month) {
+        unbudgeted = M.add(unbudgeted, p.amount);
+        unbudgetedBy.set(p.account, M.add(unbudgetedBy.get(p.account) ?? M.ZERO, p.amount));
+      }
       continue;
     }
     const k = `${p.account}|${m}`;
     spend.set(k, M.add(spend.get(k) ?? M.ZERO, p.amount));
   }
+  const income = [...new Set([...incomeAccounts, ...incomeActual.keys()])].sort().map((account) => {
+    const planned = incomeAccounts.includes(account) ? effectiveAmount(changes, q.entity, account, q.month) : M.ZERO;
+    const actual = incomeActual.get(account) ?? M.ZERO;
+    return { account, budgeted: M.format(planned), budgeted_cents: M.toCents(planned), actual: M.format(actual), actual_cents: M.toCents(actual), planned: incomeAccounts.includes(account) };
+  }).filter((l) => l.planned || l.actual_cents !== 0);
 
-  const lines = accounts.map((account) => {
+  const lines: BudgetLine[] = accounts.map((account) => {
     const first = changes.filter((c) => c.account === account).map((c) => c.month).sort()[0]!;
     let carry = M.ZERO;
     let budgeted = M.ZERO;
@@ -151,9 +171,19 @@ export async function budgetReport(ctx: ServiceContext, q: { entity: string; mon
       rolledOver: M.format(rolled),
       available: M.format(carry),
       available_cents: M.toCents(carry),
+      budgeted_cents: M.toCents(budgeted),
+      activity_cents: M.toCents(activity),
+      rolled_over_cents: M.toCents(rolled),
     };
   });
-  return { entity: q.entity, month: q.month, lines, unbudgetedSpending: M.format(unbudgeted) };
+  return {
+    entity: q.entity,
+    month: q.month,
+    lines,
+    income,
+    unbudgeted: [...unbudgetedBy].filter(([, v]) => !M.isZero(v)).sort((a, b) => M.compare(b[1], a[1])).map(([account, v]) => ({ account, activity: M.format(v), activity_cents: M.toCents(v) })),
+    unbudgetedSpending: M.format(unbudgeted),
+  };
 }
 
 // ---- Cash flow, spending, net worth --------------------------------------
