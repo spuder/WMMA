@@ -1,8 +1,7 @@
 import { useCallback, useMemo, useState } from "preact/hooks";
 import { compact, money, monthShift, store, thisMonth, useApi } from "../api";
-import { EntitySwitcher, useApp } from "../app";
 import { Chart, type Theme } from "../components/chart";
-import { axis, Kpis, qs, Seg, valueAxis } from "../components/report-kit";
+import { axis, Kpis, qs, Seg, valueAxis, BusinessFilter, useScope } from "../components/report-kit";
 import { ErrorBox, Icon, Loading, Sheet } from "../components/ui";
 
 interface Assumptions {
@@ -67,10 +66,10 @@ export function project(nw: number, a: Assumptions, savings: number, spend: numb
 }
 
 export function Forecast() {
-  const { entity } = useApp();
+  const scope = useScope();
   const m = thisMonth();
-  const nw = useApi(`/reports/balances${qs({ from: `${m}-01`, interval: "month", entity })}`, [entity]);
-  const hist = useApi(`/reports/series${qs({ from: `${monthShift(m, -12)}-01`, to: `${monthShift(m, -1)}-28`, interval: "month", entity })}`, [entity]);
+  const nw = useApi(`/reports/balances${qs({ from: `${m}-01`, interval: "month", exclude: scope.param })}`, [scope.param]);
+  const hist = useApi(`/reports/series${qs({ from: `${monthShift(m, -12)}-01`, to: `${monthShift(m, -1)}-28`, interval: "month", exclude: scope.param })}`, [scope.param]);
   const [a, setA] = useState<Assumptions>(() => load("forecast.assumptions", DEFAULTS));
   const [events, setEvents] = useState<Event[]>(() => {
     try {
@@ -147,7 +146,7 @@ export function Forecast() {
           <button class="btn sm primary" onClick={() => setAdding(true)}>
             <span class="tiny-ico"><Icon.plus /></span> Event
           </button>
-          <EntitySwitcher />
+          <BusinessFilter />
         </div>
       </div>
       {!nw.data || !hist.data ? (

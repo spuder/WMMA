@@ -371,6 +371,12 @@ Object.assign(routes, {
   },
 } satisfies Record<string, Handler>);
 
+/** `exclude=a,b` -> ["a", "b"] (entity slugs to leave out of a report). */
+const excludeParam = (q: URLSearchParams): string[] | null => {
+  const v = q.get("exclude");
+  return v ? v.split(",").map((s) => s.trim()).filter(Boolean) : null;
+};
+
 const intParam = (q: URLSearchParams, k: string): number | undefined => {
   const v = q.get(k);
   if (v === null) return undefined;
@@ -426,12 +432,12 @@ Object.assign(routes, {
   "GET /api/v1/reports/cashflow": async (req, _id, ctx) => {
     const q = new URL(req.url, "http://localhost").searchParams;
     const depth = intParam(q, "depth");
-    return Response.json(await cashflow(ctx, { entity: q.get("entity"), from: str(q.get("from"), "from"), to: str(q.get("to"), "to"), ...(depth ? { depth } : {}) }));
+    return Response.json(await cashflow(ctx, { entity: q.get("entity"), exclude: excludeParam(q), from: str(q.get("from"), "from"), to: str(q.get("to"), "to"), ...(depth ? { depth } : {}) }));
   },
   "GET /api/v1/reports/spending": async (req, _id, ctx) => {
     const q = new URL(req.url, "http://localhost").searchParams;
     const depth = intParam(q, "depth");
-    return Response.json(await spending(ctx, { entity: q.get("entity"), from: str(q.get("from"), "from"), to: str(q.get("to"), "to"), ...(depth ? { depth } : {}) }));
+    return Response.json(await spending(ctx, { entity: q.get("entity"), exclude: excludeParam(q), from: str(q.get("from"), "from"), to: str(q.get("to"), "to"), ...(depth ? { depth } : {}) }));
   },
   "GET /api/v1/reports/networth": async (req, _id, ctx) => {
     const q = new URL(req.url, "http://localhost").searchParams;
@@ -443,7 +449,7 @@ Object.assign(routes, {
   },
   "GET /api/v1/reports/overview": async (req, _id, ctx) => {
     const q = new URL(req.url, "http://localhost").searchParams;
-    return Response.json(await overview(ctx, { entity: q.get("entity"), from: q.get("from"), to: q.get("to") }));
+    return Response.json(await overview(ctx, { entity: q.get("entity"), exclude: excludeParam(q), from: q.get("from"), to: q.get("to") }));
   },
   "GET /api/v1/reports/series": async (req, _id, ctx) => {
     const q = new URL(req.url, "http://localhost").searchParams;
@@ -451,20 +457,20 @@ Object.assign(routes, {
     if (stack !== null && stack !== "income" && stack !== "expense") bad("stack must be income or expense");
     const top = intParam(q, "top");
     return Response.json(
-      await series(ctx, { entity: q.get("entity"), from: q.get("from"), to: q.get("to"), interval: q.get("interval"), stack: stack as "income" | "expense" | null, ...(top !== undefined ? { top } : {}) }),
+      await series(ctx, { entity: q.get("entity"), exclude: excludeParam(q), from: q.get("from"), to: q.get("to"), interval: q.get("interval"), stack: stack as "income" | "expense" | null, ...(top !== undefined ? { top } : {}) }),
     );
   },
   "GET /api/v1/reports/balances": async (req, _id, ctx) => {
     const q = new URL(req.url, "http://localhost").searchParams;
-    return Response.json(await accountHistory(ctx, { entity: q.get("entity"), from: str(q.get("from"), "from"), to: q.get("to"), interval: q.get("interval") }));
+    return Response.json(await accountHistory(ctx, { entity: q.get("entity"), exclude: excludeParam(q), from: str(q.get("from"), "from"), to: q.get("to"), interval: q.get("interval") }));
   },
   "GET /api/v1/reports/recurring": async (req, _id, ctx) => {
     const q = new URL(req.url, "http://localhost").searchParams;
-    return Response.json(await recurring(ctx, { entity: q.get("entity") }));
+    return Response.json(await recurring(ctx, { entity: q.get("entity"), exclude: excludeParam(q) }));
   },
   "GET /api/v1/reports/businesses": async (req, _id, ctx) => {
     const q = new URL(req.url, "http://localhost").searchParams;
-    return Response.json(await businesses(ctx, { from: q.get("from"), to: q.get("to"), interval: q.get("interval") }));
+    return Response.json(await businesses(ctx, { from: q.get("from"), to: q.get("to"), interval: q.get("interval"), exclude: excludeParam(q) }));
   },
   "GET /api/v1/reports/statement": async (req, _id, ctx) => {
     const q = new URL(req.url, "http://localhost").searchParams;

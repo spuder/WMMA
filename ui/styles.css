@@ -794,3 +794,22 @@ mark.fz { background: transparent; color: var(--accent); font-weight: 750; text-
 /* forecast */
 .fc-table td, .fc-table th { white-space: nowrap; }
 .fc-retire td { background: var(--accent-soft); font-weight: 650; }
+
+/* business filter */
+.scope { display: inline-flex; align-items: center; gap: 6px; }
+.scope-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); flex: none; }
+.scope-opt { gap: 10px; }
+.scope-box { display: inline-grid; place-items: center; flex: none; width: 18px; height: 18px; border: 1.5px solid var(--line); border-radius: 5px; color: #fff; transition: background 0.12s, border-color 0.12s; }
+.scope-box svg { width: 13px; height: 13px; }
+.scope-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scope-opt:not(.checked) .scope-name { color: var(--muted); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--muted) 50%, transparent); }
+.menu-head .chip { height: 26px; padding: 0 9px; font-size: 12px; }
+
+/* cash flow chart paging */
+.cf-chart { position: relative; padding-left: 46px; padding-right: 46px; }
+.cf-arrow { position: absolute; top: 46%; z-index: 2; border-radius: 50%; box-shadow: var(--shadow); }
+.cf-arrow.left { left: 8px; }
+.cf-arrow.right { right: 8px; }
+.cf-arrow:disabled { opacity: 0.35; cursor: default; box-shadow: none; }
+.cf-hint { text-align: center; margin-top: 4px; }
+@media (max-width: 699.98px) { .cf-chart { padding-left: 12px; padding-right: 12px; padding-top: 48px; } .cf-arrow { top: 10px; } }

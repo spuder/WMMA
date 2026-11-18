@@ -1,8 +1,8 @@
 import { useCallback } from "preact/hooks";
 import { money, useApi } from "../api";
-import { businessStyle, EntitySwitcher, go, useApp } from "../app";
+import { businessStyle, go, useApp } from "../app";
 import { Chart, type Theme } from "../components/chart";
-import { axis, Donut, Kpis, periodLabel, qs, Seg, signed, type Slice, Spark, useStored, valueAxis } from "../components/report-kit";
+import { axis, Donut, Kpis, periodLabel, qs, Seg, signed, type Slice, Spark, useStored, valueAxis, BusinessFilter, useScope } from "../components/report-kit";
 import { ErrorBox, Loading } from "../components/ui";
 import { type AccountSeries, type Span, SPANS, spanRange, trimLeading } from "./NetWorth";
 
@@ -25,10 +25,11 @@ export function perf(a: AccountSeries) {
 }
 
 export function Investments() {
-  const { entity, entities } = useApp();
+  const { entities } = useApp();
+  const scope = useScope();
   const [span, setSpan] = useStored<Span>("investments.span", "1y", SPANS.map(([k]) => k));
   const r = spanRange(span);
-  const { data: raw, error } = useApi(`/reports/balances${qs({ from: r.from, interval: r.interval, entity })}`, [entity, span]);
+  const { data: raw, error } = useApi(`/reports/balances${qs({ from: r.from, interval: r.interval, exclude: scope.param })}`, [scope.param, span]);
   const all = raw ? (span === "all" ? trimLeading(raw) : raw) : null;
   const accounts: AccountSeries[] = (all?.accounts ?? []).filter((a: AccountSeries) => a.kind === "investment");
   const periods: any[] = all?.periods ?? [];
@@ -74,7 +75,7 @@ export function Investments() {
         <h1>Investments</h1>
         <div class="toolbar">
           <Seg value={span} onChange={setSpan} label="Timeframe" options={SPANS} />
-          <EntitySwitcher />
+          <BusinessFilter />
         </div>
       </div>
       {!all ? (

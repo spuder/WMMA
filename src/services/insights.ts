@@ -108,6 +108,21 @@ function checkEntity(ctx: ServiceContext, entity: string | null | undefined) {
   if (entity && !getEntity(ctx, entity)) throw new ServiceError(`unknown entity ${JSON.stringify(entity)}`, 404);
 }
 
+/** Which entities a report covers: one (`entity`), or everything except `exclude`. */
+export interface Scope {
+  entity?: string | null;
+  exclude?: readonly string[] | null;
+}
+/** Validate a scope and return a predicate over a posting's entity. */
+export function scopeFilter(ctx: ServiceContext | null, q: Scope): (entity: string | null) => boolean {
+  // Unknown slugs in `exclude` are ignored: leaving out something that doesn't exist is harmless.
+  if (ctx) checkEntity(ctx, q.entity);
+  const ex = new Set(q.exclude ?? []);
+  if (q.entity) return (e) => e === q.entity;
+  if (ex.size === 0) return () => true;
+  return (e) => e === null || !ex.has(e);
+}
+
 interface Line {
   account: string;
   cents: number;
@@ -167,8 +182,8 @@ interface KindStats {
 }
 
 /** Income and spending for [from, to] (all time when omitted): totals, categories, merchants and stats. */
-export async function overview(ctx: ServiceContext, q: { entity?: string | null; from?: string | null; to?: string | null; today?: string }) {
-  checkEntity(ctx, q.entity);
+export async function overview(ctx: ServiceContext, q: Scope & { from?: string | null; to?: string | null; today?: string }) {
+  const keep = scopeFilter(ctx, q);
   const all = txns(await ctx.hledger.transactions());
   const today = q.today ?? isoToday();
   const { from, to } = range(all, q, today);
@@ -182,7 +197,7 @@ export async function overview(ctx: ServiceContext, q: { entity?: string | null;
     let last: string | null = null;
     for (const t of all) {
       if (t.date < from || t.date > to) continue;
-      const mine = t.lines.filter((l) => pick(l.account) && (!q.entity || l.entity === q.entity));
+      const mine = t.lines.filter((l) => pick(l.account) && keep(l.entity));
       if (mine.length === 0) continue;
       const tc = mine.reduce((s, l) => s + sign * l.cents, 0);
       total += tc;
@@ -240,9 +255,9 @@ export async function overview(ctx: ServiceContext, q: { entity?: string | null;
  */
 export async function series(
   ctx: ServiceContext,
-  q: { entity?: string | null; from?: string | null; to?: string | null; interval?: string | null; stack?: "income" | "expense" | null; top?: number; today?: string },
+  q: Scope & { from?: string | null; to?: string | null; interval?: string | null; stack?: "income" | "expense" | null; top?: number; today?: string },
 ) {
-  checkEntity(ctx, q.entity);
+  const keep = scopeFilter(ctx, q);
   const interval = checkInterval(q.interval);
   const all = txns(await ctx.hledger.transactions());
   const { from, to } = range(all, q, q.today ?? isoToday());
@@ -256,7 +271,7 @@ export async function series(
     const i = idx.get(periodStart(t.date, interval));
     if (i === undefined) continue;
     for (const l of t.lines) {
-      if (q.entity && l.entity !== q.entity) continue;
+      if (!keep(l.entity)) continue;
       if (isIncome(l.account)) inc[i]! -= l.cents;
       else if (isExpense(l.account)) exp[i]! += l.cents;
       else continue;
@@ -304,8 +319,8 @@ function kindOf(account: string): AccountKind {
  * market moves recorded against Equity:Unrealized). With `entity`, only postings
  * tagged with that entity count.
  */
-export async function accountHistory(ctx: ServiceContext, q: { entity?: string | null; from: string; to?: string | null; interval?: string | null; today?: string }) {
-  checkEntity(ctx, q.entity);
+export async function accountHistory(ctx: ServiceContext, q: Scope & { from: string; to?: string | null; interval?: string | null; today?: string }) {
+  const keep = scopeFilter(ctx, q);
   const interval = checkInterval(q.interval);
   const to = q.to || (q.today ?? isoToday());
   checkDay(q.from, "from");
@@ -335,7 +350,7 @@ export async function accountHistory(ctx: ServiceContext, q: { entity?: string |
     const valuation = t.tags.get("kind") === "valuation";
     for (const l of t.lines) {
       if (!l.account.startsWith("Assets:") && !l.account.startsWith("Liabilities:")) continue;
-      if (q.entity && l.entity !== q.entity) continue;
+      if (!keep(l.entity)) continue;
       running.set(l.account, (running.get(l.account) ?? 0) + l.cents);
       if (t.date >= q.from && i < periods.length) {
         const r = row(l.account);
@@ -425,12 +440,13 @@ const median = (xs: number[]) => {
 };
 
 /** Detect recurring income and charges: same payee, steady cadence, similar amounts. */
-export function detectRecurring(raw: HledgerTransaction[], q: { entity?: string | null; today: string }): RecurringItem[] {
+export function detectRecurring(raw: HledgerTransaction[], q: Scope & { today: string }): RecurringItem[] {
+  const keep = scopeFilter(null, q);
   const since = addDays(q.today, -800);
   const groups = new Map<string, { payee: string; kind: "expense" | "income"; byDate: Map<string, number>; cats: Map<string, number>; ents: Map<string, number> }>();
   for (const t of txns(raw)) {
     if (t.date < since || t.date > q.today || t.tags.get("kind") === "transfer" || t.tags.get("kind") === "valuation") continue;
-    const mine = t.lines.filter((l) => (isIncome(l.account) || isExpense(l.account)) && (!q.entity || l.entity === q.entity));
+    const mine = t.lines.filter((l) => (isIncome(l.account) || isExpense(l.account)) && keep(l.entity));
     if (mine.length === 0) continue;
     const exp = mine.filter((l) => isExpense(l.account)).reduce((s, l) => s + l.cents, 0);
     const inc = -mine.filter((l) => isIncome(l.account)).reduce((s, l) => s + l.cents, 0);
@@ -491,10 +507,10 @@ export function detectRecurring(raw: HledgerTransaction[], q: { entity?: string 
   return out.sort((a, b) => (a.next_date < b.next_date ? -1 : a.next_date > b.next_date ? 1 : b.amount_cents - a.amount_cents));
 }
 
-export async function recurring(ctx: ServiceContext, q: { entity?: string | null; today?: string }) {
-  checkEntity(ctx, q.entity);
+export async function recurring(ctx: ServiceContext, q: Scope & { today?: string }) {
+  scopeFilter(ctx, q);
   const today = q.today ?? isoToday();
-  const items = detectRecurring(await ctx.hledger.transactions(), { entity: q.entity ?? null, today });
+  const items = detectRecurring(await ctx.hledger.transactions(), { entity: q.entity ?? null, exclude: q.exclude ?? null, today });
   const live = items.filter((i) => i.status !== "inactive");
   const sum = (k: "expense" | "income") => live.filter((i) => i.kind === k).reduce((s, i) => s + i.monthly_cents, 0);
   return { entity: q.entity ?? null, today, items, monthly_expense_cents: sum("expense"), monthly_income_cents: sum("income") };
@@ -503,13 +519,14 @@ export async function recurring(ctx: ServiceContext, q: { entity?: string | null
 // ---- business P&L ----------------------------------------------------------
 
 /** Income, expenses and net per entity for [from, to], with a monthly net series. */
-export async function businesses(ctx: ServiceContext, q: { from?: string | null; to?: string | null; interval?: string | null; today?: string }) {
+export async function businesses(ctx: ServiceContext, q: { from?: string | null; to?: string | null; interval?: string | null; exclude?: readonly string[] | null; today?: string }) {
+  const keep = scopeFilter(ctx, { exclude: q.exclude ?? null });
   const interval = checkInterval(q.interval);
   const all = txns(await ctx.hledger.transactions());
   const { from, to } = range(all, q, q.today ?? isoToday());
   const periods = periodsBetween(from, to, interval);
   const idx = new Map(periods.map((p, i) => [periodStart(p.start, interval), i]));
-  const ents = listEntities(ctx, "all");
+  const ents = listEntities(ctx, "all").filter((e) => keep(e.slug));
   const acc = new Map(ents.map((e) => [e.slug, { income: 0, expenses: 0, inc: periods.map(() => 0), exp: periods.map(() => 0) }]));
   for (const t of all) {
     if (t.date < from || t.date > to) continue;

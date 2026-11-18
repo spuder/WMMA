@@ -1,7 +1,7 @@
 import { useState } from "preact/hooks";
 import { categoryMeta, money, monthEnd, monthName, monthShift, thisMonth, today, useApi } from "../api";
-import { businessStyle, EntitySwitcher, go, useApp } from "../app";
-import { Kpis, qs, Seg, shortDate, useStored } from "../components/report-kit";
+import { businessStyle, go, useApp } from "../app";
+import { Kpis, qs, Seg, shortDate, useStored, BusinessFilter, useScope } from "../components/report-kit";
 import { Avatar, CatName, ErrorBox, Icon, Loading } from "../components/ui";
 
 interface Item {
@@ -58,8 +58,9 @@ function occurrences(i: Item, from: string, to: string): string[] {
 }
 
 export function Recurring() {
-  const { entity, entities } = useApp();
-  const { data, error } = useApi(`/reports/recurring${qs({ entity })}`, [entity]);
+  const { entities } = useApp();
+  const scope = useScope();
+  const { data, error } = useApi(`/reports/recurring${qs({ exclude: scope.param })}`, [scope.param]);
   const [kind, setKind] = useStored<"expense" | "income" | "all">("recurring.kind", "expense", ["expense", "income", "all"]);
   const [view, setView] = useStored<"list" | "calendar">("recurring.view", "list", ["list", "calendar"]);
   const [month, setMonth] = useState(thisMonth());
@@ -77,7 +78,7 @@ export function Recurring() {
         <h1>Recurring</h1>
         <div class="toolbar">
           <Seg value={view} onChange={setView} label="View" options={[["list", "List"], ["calendar", "Calendar"]]} />
-          <EntitySwitcher />
+          <BusinessFilter />
         </div>
       </div>
       {!data ? (
@@ -122,7 +123,7 @@ export function Recurring() {
                         <strong>{i.payee}</strong>
                         <span class="meta">
                           {i.count} payments · last {shortDate(i.last_date)}
-                          {e && !entity && (
+                          {e && (
                             <span class="business-tag" style={businessStyle(e.slug, e.color)}>
                               {e.name}
                             </span>

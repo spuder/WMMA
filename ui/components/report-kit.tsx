@@ -1,8 +1,8 @@
 /** Building blocks shared by the report pages: ranges, KPI cards, breakdown bars, summaries, charts. */
 import type { ComponentChildren } from "preact";
-import { useCallback, useState } from "preact/hooks";
+import { useCallback, useEffect, useState } from "preact/hooks";
 import { catLabel, categoryMeta, compact, dayLabel, money, monthEnd, monthShift, monthStart, store, thisMonth, today, useApi } from "../api";
-import { go } from "../app";
+import { businessStyle, go, useApp } from "../app";
 import { Chart, type Theme } from "./chart";
 import { Avatar, CatName, CellMenu, Icon, Loading, MenuOption } from "./ui";
 
@@ -103,6 +103,106 @@ export function Seg<T extends string>({ value, options, onChange, label }: { val
           {l}
         </button>
       ))}
+    </div>
+  );
+}
+
+// ---- business scope ---------------------------------------------------------
+
+const EXCLUDE_KEY = "reports.exclude";
+const scopeListeners = new Set<() => void>();
+function readExclude(): string[] {
+  try {
+    const v = JSON.parse(store.get(EXCLUDE_KEY) ?? "[]");
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Which businesses the report pages include. Shared by every report page and
+ * remembered in this browser; stored as the excluded slugs so new businesses
+ * show up by default.
+ */
+export function useScope() {
+  const [exclude, setRaw] = useState<string[]>(readExclude);
+  useEffect(() => {
+    const on = () => setRaw(readExclude());
+    scopeListeners.add(on);
+    return () => {
+      scopeListeners.delete(on);
+    };
+  }, []);
+  const set = (xs: string[]) => {
+    store.set(EXCLUDE_KEY, xs.length ? JSON.stringify([...new Set(xs)].sort()) : null);
+    scopeListeners.forEach((l) => l());
+  };
+  return {
+    exclude,
+    /** The `exclude` query parameter, or null for everything. */
+    param: exclude.length ? exclude.join(",") : null,
+    set,
+    keep: (e: string | null) => e === null || !exclude.includes(e),
+  };
+}
+
+/** Monarch-style "Business" filter: tick the profiles a report includes. */
+export function BusinessFilter() {
+  const { entities } = useApp();
+  const scope = useScope();
+  const off = new Set(scope.exclude.filter((s) => entities.some((e) => e.slug === s)));
+  const on = entities.filter((e) => !off.has(e.slug));
+  const label = off.size === 0 ? "All businesses" : on.length === 1 ? on[0]!.name : on.length === 0 ? "None selected" : off.size === 1 ? `Excluding ${entities.find((e) => off.has(e.slug))!.name}` : `${on.length} of ${entities.length}`;
+  const toggle = (slug: string) => scope.set(off.has(slug) ? [...off].filter((s) => s !== slug) : [...off, slug]);
+  if (entities.length < 2) return null;
+  return (
+    <div class="scope">
+      {off.size > 0 && (
+        <button class="linkbtn" onClick={() => scope.set([])}>
+          Clear
+        </button>
+      )}
+      <CellMenu
+        tool
+        label="Businesses in this report"
+        width={300}
+        value={
+          <>
+            <span class="tool-ico"><Icon.folder /></span>
+            {label}
+            {off.size > 0 && <span class="scope-dot" aria-label="filtered" />}
+          </>
+        }
+      >
+        {() => (
+          <>
+            <div class="menu-head spread">
+              <strong>Include in reports</strong>
+              <span class="row" style={{ gap: 4 }}>
+                <button class="chip" onClick={() => scope.set([])}>All</button>
+                <button class="chip" onClick={() => scope.set(entities.filter((e) => e.type !== "personal").map((e) => e.slug))}>Personal</button>
+              </span>
+            </div>
+            {entities.map((e, i) => {
+              const checked = !off.has(e.slug);
+              return (
+                <button class={`menu-opt scope-opt${checked ? " checked" : ""}`} style={{ animationDelay: `${i * 18}ms` }} role="menuitemcheckbox" aria-checked={checked} onClick={() => toggle(e.slug)}>
+                  <span class="scope-box" style={checked ? { background: businessStyle(e.slug, e.color).color, borderColor: businessStyle(e.slug, e.color).color } : {}}>
+                    {checked && <Icon.check />}
+                  </span>
+                  <span class="business-icon compact" style={businessStyle(e.slug, e.color)}>
+                    {e.type === "personal" ? "👤" : <Icon.folder />}
+                  </span>
+                  <span class="scope-name">{e.name}</span>
+                  <span class="muted tiny">{e.type === "personal" ? "Personal" : "Business"}</span>
+                </button>
+              );
+            })}
+            <div class="menu-note">Unticked profiles are left out of totals, charts and transactions, so one business can't skew the numbers.</div>
+          </>
+        )}
+      </CellMenu>
     </div>
   );
 }
@@ -314,7 +414,7 @@ export function FlowBars({ periods, interval, selected, onSelect, height = "char
     (t: Theme) => {
       const fade = (i: number, c: string) => (selected === null || selected === undefined || selected === i ? c : `${c}55`);
       return {
-        grid: { left: 4, right: 10, top: 16, bottom: 0, containLabel: true },
+        grid: { left: 4, right: 10, top: periods.some((p, i) => i > 0 && p.start.slice(0, 4) !== periods[i - 1]!.start.slice(0, 4)) && interval !== "year" ? 30 : 16, bottom: 0, containLabel: true },
         tooltip: {
           trigger: "axis",
           axisPointer: { type: "shadow", shadowStyle: { color: `${t.muted}14` } },
@@ -331,7 +431,27 @@ export function FlowBars({ periods, interval, selected, onSelect, height = "char
         series: [
           { name: "Income", type: "bar", stack: "flow", barMaxWidth: 42, data: periods.map((p, i) => ({ value: p.income_cents, itemStyle: { color: fade(i, t.in), borderRadius: [5, 5, 0, 0] } })) },
           { name: "Expenses", type: "bar", stack: "flow", barMaxWidth: 42, data: periods.map((p, i) => ({ value: -p.expenses_cents, itemStyle: { color: fade(i, t.out), borderRadius: [0, 0, 5, 5] } })) },
-          { name: "Net", type: "line", data: periods.map((p) => p.net_cents), symbol: "circle", symbolSize: 5, lineStyle: { width: 2.2, color: t.ink }, itemStyle: { color: t.ink }, z: 5 },
+          {
+            name: "Net",
+            type: "line",
+            data: periods.map((p) => p.net_cents),
+            symbol: "circle",
+            symbolSize: 5,
+            lineStyle: { width: 2.2, color: t.ink },
+            itemStyle: { color: t.ink },
+            z: 5,
+            // Year dividers like Monarch's "← 2025 | 2026 →".
+            markLine:
+              interval === "year"
+                ? undefined
+                : {
+                    silent: true,
+                    symbol: "none",
+                    lineStyle: { color: t.line, type: "solid", width: 1 },
+                    label: { position: "end", color: t.muted, fontSize: 11, formatter: (m: any) => `← ${Number(m.name) - 1}   ${m.name} →` },
+                    data: periods.flatMap((p, i) => (i > 0 && p.start.slice(0, 4) !== periods[i - 1]!.start.slice(0, 4) ? [{ xAxis: i - 0.5, name: p.start.slice(0, 4) }] : [])),
+                  },
+          },
         ],
       };
     },
@@ -341,8 +461,8 @@ export function FlowBars({ periods, interval, selected, onSelect, height = "char
 }
 
 /** Sankey of income categories -> income -> expense categories (plus savings or deficit). */
-export function FlowSankey({ entity, from, to }: { entity: string | null; from: string | null; to: string | null }) {
-  const { data, loading } = useApi(`/reports/cashflow${qs({ from: from ?? "1900-01-01", to: to ?? today(), depth: 3, entity })}`, [entity, from, to]);
+export function FlowSankey({ exclude, from, to }: { exclude: string | null; from: string | null; to: string | null }) {
+  const { data, loading } = useApi(`/reports/cashflow${qs({ from: from ?? "1900-01-01", to: to ?? today(), depth: 3, exclude })}`, [exclude, from, to]);
   const option = useCallback(
     (t: Theme) => {
       const color = (kind: string, i: number) => (kind === "income" ? t.in : kind === "hub" ? t.accent : kind === "savings" ? t.accent : kind === "deficit" ? t.out : t.palette[(i % (t.palette.length - 1)) + 1]);
@@ -465,14 +585,14 @@ export function Spark({ values, tone }: { values: number[]; tone?: "in" | "out" 
 // ---- transactions in a period -------------------------------------------------
 
 /** Recent transactions of one kind in [from, to], grouped by day like Activity. */
-export function PeriodTransactions({ entity, from, to, kind }: { entity: string | null; from: string | null; to: string | null; kind: "income" | "expense" }) {
+export function PeriodTransactions({ keep, from, to, kind }: { keep: (entity: string | null) => boolean; from: string | null; to: string | null; kind: "income" | "expense" }) {
   const [limit, setLimit] = useState(60);
-  const { data, loading } = useApi(`/transactions${qs({ from, to, entity, limit: 1000 })}`, [entity, from, to]);
+  const { data, loading } = useApi(`/transactions${qs({ from, to, limit: 1000 })}`, [from, to]);
   if (loading || !data) return <Loading h={300} />;
   const re = kind === "income" ? /^Income:/ : /^Expenses:/;
   const rows = (data.transactions as any[])
     .map((t) => {
-      const ps = t.postings.filter((p: any) => re.test(p.account) && (!entity || p.entity === entity));
+      const ps = t.postings.filter((p: any) => re.test(p.account) && keep(p.entity));
       return ps.length ? { t, cat: ps[0].account as string, cents: ps.reduce((s: number, p: any) => s + p.amount_cents, 0) * (kind === "income" ? -1 : 1) } : null;
     })
     .filter((x): x is { t: any; cat: string; cents: number } => x !== null);

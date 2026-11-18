@@ -1,8 +1,8 @@
 import { useCallback, useState } from "preact/hooks";
 import { compact, money, monthShift, thisMonth, today, useApi } from "../api";
-import { businessStyle, EntitySwitcher, go, useApp } from "../app";
+import { businessStyle, go, useApp } from "../app";
 import { Chart, type Theme } from "../components/chart";
-import { axis, csvMoney, downloadCsv, type Interval, periodLabel, qs, Seg, Spark, useStored, valueAxis } from "../components/report-kit";
+import { axis, csvMoney, downloadCsv, type Interval, periodLabel, qs, Seg, Spark, useStored, valueAxis, BusinessFilter, useScope } from "../components/report-kit";
 import { ErrorBox, Icon, Loading } from "../components/ui";
 
 export type Span = "1m" | "3m" | "6m" | "ytd" | "1y" | "5y" | "all";
@@ -82,13 +82,14 @@ const Change = ({ now, then, invert }: { now: number; then: number; invert?: boo
 };
 
 export function NetWorth() {
-  const { entity, entities } = useApp();
+  const { entities } = useApp();
+  const scope = useScope();
   const [span, setSpan] = useStored<Span>("networth.span", "1y", SPANS.map(([k]) => k));
   const [chart, setChart] = useStored<"net" | "stack">("networth.chart", "net", ["net", "stack"]);
   const [mode, setMode] = useState<"totals" | "percent">("totals");
   const [closed, setClosed] = useState<Record<string, boolean>>({});
   const r = spanRange(span);
-  const { data: raw, error } = useApi(`/reports/balances${qs({ from: r.from, interval: r.interval, entity })}`, [entity, span]);
+  const { data: raw, error } = useApi(`/reports/balances${qs({ from: r.from, interval: r.interval, exclude: scope.param })}`, [scope.param, span]);
   const data = raw ? (span === "all" ? trimLeading(raw) : raw) : null;
   const option = useCallback(
     (t: Theme) => {
@@ -151,7 +152,7 @@ export function NetWorth() {
       <div class="topbar">
         <h1>Net Worth</h1>
         <div class="toolbar">
-          <EntitySwitcher />
+          <BusinessFilter />
         </div>
       </div>
       <div class="card chart-card">

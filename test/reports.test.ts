@@ -81,6 +81,11 @@ describe("recurring detection", () => {
     const stopped = ["2025-11-02", "2025-12-02", "2026-01-02", "2026-02-02"].map((d) => tx(d, "OLD GYM", "Expenses:Fitness", 3000));
     expect(detectRecurring([...irregular, ...varying, ...transfers, ...stopped], { today })).toEqual([]);
   });
+  test("recurring respects excluded entities", () => {
+    const subs = monthly("NETFLIX", "12", 1599);
+    expect(detectRecurring(subs, { today, exclude: ["personal"] })).toEqual([]);
+    expect(detectRecurring(subs, { today, exclude: ["acme"] })).toHaveLength(1);
+  });
   test("a missed charge is late, and entity filtering applies", () => {
     const late = monthly("INSURER", "01", 12000, 6, "Expenses:Insurance").slice(0, 5); // last on Oct 1, Nov 1 missed
     const items = detectRecurring(late, { today: "2026-11-20" });
@@ -162,6 +167,21 @@ describe.skipIf(!hledgerWebBin)("report endpoints", () => {
     // All time when the range is left out.
     expect((await call("GET", "/api/v1/reports/overview")).json.from).toBe("2026-01-01");
     expect((await call("GET", "/api/v1/reports/overview?entity=nope")).status).toBe(404);
+  });
+
+  test("exclude leaves businesses out of every report", async () => {
+    const o = (await call("GET", "/api/v1/reports/overview?from=2026-01-01&to=2026-03-31&exclude=acme")).json;
+    expect([o.income.total_cents, o.expenses.total_cents]).toEqual([400000, 135000]);
+    expect(o.income.merchants.map((m: any) => m.name)).toEqual(["PAYROLL"]);
+    const s = (await call("GET", "/api/v1/reports/series?from=2026-02-01&to=2026-02-28&exclude=acme")).json;
+    expect(s.periods[0]).toMatchObject({ income_cents: 0, expenses_cents: 45000 });
+    const b = (await call("GET", "/api/v1/reports/businesses?from=2026-01-01&to=2026-03-31&exclude=acme")).json;
+    expect(b.entities.map((e: any) => e.slug)).toEqual(["personal"]);
+    const cf = (await call("GET", "/api/v1/reports/cashflow?from=2026-01-01&to=2026-03-31&exclude=acme")).json;
+    expect(cf.nodes.map((n: any) => n.id)).not.toContain("Income:GrossReceipts");
+    // Excluding everyone leaves nothing; unknown slugs are ignored.
+    expect((await call("GET", "/api/v1/reports/overview?from=2026-01-01&to=2026-03-31&exclude=acme,personal")).json.net_cents).toBe(0);
+    expect((await call("GET", "/api/v1/reports/overview?from=2026-01-01&to=2026-03-31&exclude=gone")).json.net_cents).toBe(715000);
   });
 
   test("series: income and expenses per period, with category stacks", async () => {

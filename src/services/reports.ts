@@ -6,6 +6,7 @@ import * as M from "../money";
 import type { Money } from "../money";
 import { getEntity } from "./accounts";
 import { ServiceError, type ServiceContext } from "./context";
+import { scopeFilter } from "./insights";
 
 export interface FlatPosting {
   wmmaId: string | null;
@@ -66,13 +67,13 @@ export interface Pnl {
 }
 
 /** Profit and loss for one entity (or all, combined) over [from, to] inclusive. */
-export async function pnl(ctx: ServiceContext, q: { entity?: string | null; from: string; to: string }): Promise<Pnl> {
+export async function pnl(ctx: ServiceContext, q: { entity?: string | null; exclude?: readonly string[] | null; from: string; to: string }): Promise<Pnl> {
   checkRange(q.from, q.to);
-  if (q.entity && !getEntity(ctx, q.entity)) throw new ServiceError(`unknown entity ${JSON.stringify(q.entity)}`, 404);
+  const keep = scopeFilter(ctx, q);
   const sums = new Map<string, Money>();
   for (const p of flatPostings(await ctx.hledger.transactions())) {
     if (p.date < q.from || p.date > q.to) continue;
-    if (q.entity && p.entity !== q.entity) continue;
+    if (!keep(p.entity)) continue;
     if (!p.account.startsWith("Income:") && !p.account.startsWith("Expenses:")) continue;
     sums.set(p.account, M.add(sums.get(p.account) ?? M.ZERO, p.amount));
   }
@@ -189,7 +190,7 @@ export async function budgetReport(ctx: ServiceContext, q: { entity: string; mon
 // ---- Cash flow, spending, net worth --------------------------------------
 
 /** Sankey-ready income -> expenses flow for an entity (or all) over [from, to]. */
-export async function cashflow(ctx: ServiceContext, q: { entity?: string | null; from: string; to: string; depth?: number }) {
+export async function cashflow(ctx: ServiceContext, q: { entity?: string | null; exclude?: readonly string[] | null; from: string; to: string; depth?: number }) {
   const p = await pnl(ctx, q);
   const depth = q.depth ?? 2;
   const group = (a: string) => a.split(":").slice(0, depth).join(":");
@@ -223,7 +224,7 @@ export async function cashflow(ctx: ServiceContext, q: { entity?: string | null;
 }
 
 /** Spending by category (Expenses), grouped to `depth` account levels. */
-export async function spending(ctx: ServiceContext, q: { entity?: string | null; from: string; to: string; depth?: number }) {
+export async function spending(ctx: ServiceContext, q: { entity?: string | null; exclude?: readonly string[] | null; from: string; to: string; depth?: number }) {
   const p = await pnl(ctx, q);
   const depth = q.depth ?? 2;
   const m = new Map<string, number>();

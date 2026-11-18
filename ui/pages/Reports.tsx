@@ -1,6 +1,6 @@
 import { useCallback, useState } from "preact/hooks";
 import { catLabel, compact, money, useApi } from "../api";
-import { businessStyle, EntitySwitcher, go, useApp } from "../app";
+import { businessStyle, go, useApp } from "../app";
 import { Chart, type Theme } from "../components/chart";
 import {
   axis,
@@ -29,8 +29,7 @@ import {
   StackBars,
   Summary,
   useStored,
-  valueAxis,
-} from "../components/report-kit";
+  valueAxis, BusinessFilter, useScope } from "../components/report-kit";
 import { CatName, ErrorBox, Icon, Loading } from "../components/ui";
 
 type Tab = "cashflow" | "spending" | "income" | "pnl";
@@ -61,7 +60,7 @@ export function Reports({ query }: { query: URLSearchParams }) {
         </div>
         <div class="toolbar">
           <RangeMenu value={range} onChange={setRange} />
-          {tab !== "pnl" && <EntitySwitcher />}
+          <BusinessFilter />
         </div>
       </div>
       {tab === "cashflow" && <CashflowReport from={r.from} to={r.to} label={r.label} />}
@@ -80,13 +79,13 @@ function autoInterval(from: string | null, to: string | null): Interval {
 }
 
 function CashflowReport({ from, to, label }: { from: string | null; to: string | null; label: string }) {
-  const { entity } = useApp();
+  const scope = useScope();
   const [view, setView] = useStored<"bars" | "sankey">("reports.cf.view", "bars", ["bars", "sankey"]);
   const [interval, setInterval] = useStored<Interval | "auto">("reports.cf.interval", "auto", ["auto", "week", "month", "quarter", "year"]);
   const [by, setBy] = useStored<By>("reports.cf.by", "category", ["category", "group", "merchant"]);
   const iv = interval === "auto" ? autoInterval(from, to) : interval;
-  const ov = useApi(`/reports/overview${qs({ from, to, entity })}`, [entity, from, to]);
-  const se = useApi(`/reports/series${qs({ from, to, entity, interval: iv })}`, [entity, from, to, iv]);
+  const ov = useApi(`/reports/overview${qs({ from, to, exclude: scope.param })}`, [scope.param, from, to]);
+  const se = useApi(`/reports/series${qs({ from, to, exclude: scope.param, interval: iv })}`, [scope.param, from, to, iv]);
   if (ov.error) return <ErrorBox error={ov.error} />;
   const d = ov.data;
   return (
@@ -121,7 +120,7 @@ function CashflowReport({ from, to, label }: { from: string | null; to: string |
             )}
           </div>
         </div>
-        {view === "sankey" ? <FlowSankey entity={entity} from={d?.from ?? from} to={d?.to ?? to} /> : se.data ? <FlowBars periods={se.data.periods} interval={se.data.interval} /> : <Loading h={380} />}
+        {view === "sankey" ? <FlowSankey exclude={scope.param} from={d?.from ?? from} to={d?.to ?? to} /> : se.data ? <FlowBars periods={se.data.periods} interval={se.data.interval} /> : <Loading h={380} />}
       </div>
       <div class="grid">
         <div class="card span-8">
@@ -180,12 +179,12 @@ function CashflowReport({ from, to, label }: { from: string | null; to: string |
 }
 
 function KindReport({ kind, from, to, label }: { kind: "expense" | "income"; from: string | null; to: string | null; label: string }) {
-  const { entity } = useApp();
+  const scope = useScope();
   const [view, setView] = useStored<"pie" | "bars">(`reports.${kind}.view`, "pie", ["pie", "bars"]);
   const [by, setBy] = useStored<By>(`reports.${kind}.by`, "category", ["category", "group", "merchant"]);
   const iv = autoInterval(from, to);
-  const ov = useApi(`/reports/overview${qs({ from, to, entity })}`, [entity, from, to]);
-  const se = useApi(view === "bars" ? `/reports/series${qs({ from, to, entity, interval: iv, stack: kind, top: 8 })}` : null, [entity, from, to, view]);
+  const ov = useApi(`/reports/overview${qs({ from, to, exclude: scope.param })}`, [scope.param, from, to]);
+  const se = useApi(view === "bars" ? `/reports/series${qs({ from, to, exclude: scope.param, interval: iv, stack: kind, top: 8 })}` : null, [scope.param, from, to, view]);
   if (ov.error) return <ErrorBox error={ov.error} />;
   const d = ov.data;
   const k = d ? (kind === "income" ? d.income : d.expenses) : null;
@@ -217,7 +216,7 @@ function KindReport({ kind, from, to, label }: { kind: "expense" | "income"; fro
           <div class="card-head">
             <h2>Transactions</h2>
           </div>
-          <PeriodTransactions entity={entity} from={d?.from ?? from} to={d?.to ?? to} kind={kind} />
+          <PeriodTransactions keep={scope.keep} from={d?.from ?? from} to={d?.to ?? to} kind={kind} />
         </div>
         <div class="span-4 stack">
           {k && (
@@ -264,8 +263,9 @@ const FORM_NAME: Record<string, string> = {
 
 function ProfitLoss({ from, to, label, range }: { from: string | null; to: string | null; label: string; range: RangeKey }) {
   const { entities } = useApp();
+  const scope = useScope();
   const iv = autoInterval(from, to) === "day" || autoInterval(from, to) === "week" ? "week" : "month";
-  const biz = useApi(`/reports/businesses${qs({ from, to, interval: iv })}`, [from, to, iv]);
+  const biz = useApi(`/reports/businesses${qs({ from, to, interval: iv, exclude: scope.param })}`, [from, to, iv, scope.param]);
   const [pick, setPick] = useStored<string>("reports.pnl.entity", "");
   const list: any[] = biz.data?.entities ?? [];
   const businesses = list.filter((e) => e.type !== "personal");
