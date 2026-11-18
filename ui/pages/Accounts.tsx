@@ -1,7 +1,7 @@
 import { useState } from "preact/hooks";
 import { api, money, today, useApi } from "../api";
 import { ErrorBox, Loading, Sheet, toast } from "../components/ui";
-import { useApp } from "../app";
+import { businessStyle, useApp } from "../app";
 
 const KIND_LABEL: Record<string, string> = {
   bank: "💵 Cash · checking & savings",
@@ -43,17 +43,18 @@ export function Accounts() {
       </div>
       <section class="stack" style={{ gap: 8 }}>
         <div class="spread">
-          <h2 style={{ margin: 0, fontSize: 18 }}>Entities</h2>
+          <h2 style={{ margin: 0, fontSize: 18 }}>Businesses & personal finances</h2>
           <button class="btn" onClick={() => setSheet("entity")}>
-            + Entity
+            + Add business
           </button>
         </div>
-        <div class="muted small">Create a personal or business entity first. Every account is assigned to an entity.</div>
+        <div class="muted small">Set up a business or personal profile, then assign accounts and transactions to it. Filter activity and reports by profile.</div>
         {all.error && <ErrorBox error={all.error} />}
         <div class="card" style={{ paddingTop: 4, paddingBottom: 4 }}>
           <div class="list">
             {(all.data?.entities ?? []).map((e: any) => (
               <div class="item">
+                <span class="business-icon" style={businessStyle(e.slug)}>{e.type === "personal" ? "👤" : "💼"}</span>
                 <div class="body">
                   <div class="title">
                     {e.name} {e.status === "archived" && <span class="pill zero">archived</span>}
@@ -68,7 +69,7 @@ export function Accounts() {
               </div>
             ))}
             {!all.loading && !all.error && (all.data?.entities ?? []).length === 0 && (
-              <div class="empty">No entities yet. Add a personal or business entity above before creating accounts.</div>
+              <div class="empty">No businesses or personal profiles yet. Add one above before creating accounts.</div>
             )}
             {all.loading && <Loading h={64} />}
           </div>
@@ -78,10 +79,10 @@ export function Accounts() {
       <div class="spread" style={{ marginTop: 8 }}>
         <div>
           <h2 style={{ margin: 0, fontSize: 18 }}>Accounts</h2>
-          <div class="muted small">Add accounts after creating their personal or business entity.</div>
+          <div class="muted small">Add accounts after creating the business or personal profile they belong to.</div>
         </div>
         <button class="btn" disabled={entities.length === 0} onClick={() => setSheet("account")}>
-          {entities.length === 0 ? "Create an entity first" : "+ Account"}
+          {entities.length === 0 ? "Create a business first" : "+ Account"}
         </button>
       </div>
       {accts.error && <ErrorBox error={accts.error} />}
@@ -149,7 +150,7 @@ export function Accounts() {
         </div>
       )}
 
-      <Sheet open={sheet === "entity"} onClose={() => setSheet(null)} title="New entity">
+      <Sheet open={sheet === "entity"} onClose={() => setSheet(null)} title="Add business or personal profile">
         <NewEntity
           onDone={() => {
             setSheet(null);
@@ -220,7 +221,7 @@ function NewEntity({ onDone }: { onDone: () => void }) {
   const save = async () => {
     try {
       await api("/entities", { body: { name, type } });
-      toast(`${name} added with its ${TYPE_LABEL[type]} categories`);
+      toast(`${name} added as ${TYPE_LABEL[type]}`);
       onDone();
     } catch (e) {
       toast((e as Error).message);
@@ -233,15 +234,16 @@ function NewEntity({ onDone }: { onDone: () => void }) {
         <input class="input" value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} placeholder="Acme LLC" />
       </div>
       <div class="field">
-        <label>Type (sets up categories that match the tax form)</label>
+        <label>Is this a business or personal profile?</label>
         <select class="input" value={type} onChange={(e) => setType((e.target as HTMLSelectElement).value)}>
           {Object.entries(TYPE_LABEL).map(([k, l]) => (
             <option value={k}>{l}</option>
           ))}
         </select>
+        <div class="muted small">Business types also set up matching tax categories. Transactions and accounts can be assigned to this profile.</div>
       </div>
       <button class="btn primary block" disabled={!name.trim()} onClick={save}>
-        Add entity
+        Add {type === "personal" ? "personal profile" : "business"}
       </button>
     </div>
   );
@@ -309,7 +311,7 @@ function NewAccount({ onDone }: { onDone: () => void }) {
           ))}
         </select>
         {matchingEntities.length === 0 && (
-          <div class="muted small">No {ownerType} entity yet. Add one with “+ Entity” before creating this account.</div>
+          <div class="muted small">No {ownerType} profile yet. Add one with “+ Add business” before creating this account.</div>
         )}
       </div>
       <button class="btn primary block" disabled={!name.trim() || !ent || matchingEntities.length === 0} onClick={save}>

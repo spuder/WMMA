@@ -11,7 +11,7 @@ const greeting = () => {
 };
 
 export function Dashboard() {
-  const { entity, reviewCount } = useApp();
+  const { entity, entities, reviewCount } = useApp();
   const accounts = useApi<{ accounts: any[] }>("/accounts");
   const m = thisMonth();
   const eq = entity ? `&entity=${encodeURIComponent(entity)}` : "";
@@ -205,7 +205,7 @@ export function Dashboard() {
           ) : (
             <div class="list">
               {recent.data.transactions.map((t: any) => (
-                <TxnRow t={t} onClick={() => go(`/transactions?id=${t.wmma_id}`)} />
+                <TxnRow t={t} entities={entities} onClick={() => go(`/transactions?id=${t.wmma_id}`)} />
               ))}
             </div>
           )}

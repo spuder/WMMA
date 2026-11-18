@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { api, catLabel, dayLabel, leaf, money } from "../api";
 import { Avatar, CategoryPicker, ErrorBox, Icon, Loading, Sheet, toast } from "../components/ui";
-import { EntitySwitcher, go, useApp } from "../app";
+import { businessStyle, EntitySwitcher, go, transactionEntity, useApp } from "../app";
 
 export interface Txn {
   wmma_id: string;
@@ -36,8 +36,10 @@ export function summarize(t: Txn): { amount: number; category: string; uncategor
   return { amount, category, uncategorized };
 }
 
-export function TxnRow({ t, onClick }: { t: Txn; onClick?: () => void }) {
+export function TxnRow({ t, entities, onClick }: { t: Txn; entities: Array<{ slug: string; name: string; type: string }>; onClick?: () => void }) {
   const s = summarize(t);
+  const entity = transactionEntity(t);
+  const owner = entities.find((e) => e.slug === entity);
   return (
     <div class="item tap" onClick={onClick} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onClick?.()}>
       <Avatar name={t.payee} />
@@ -47,6 +49,7 @@ export function TxnRow({ t, onClick }: { t: Txn; onClick?: () => void }) {
           {s.uncategorized ? <span style={{ color: "var(--warn)", fontWeight: 650 }}>Needs category</span> : s.category}
           {t.note ? ` · ${t.note}` : ""}
         </div>
+        <div><span class="business-tag" style={entity ? businessStyle(entity) : { color: "var(--muted)", background: "var(--surface-2)", borderColor: "var(--line)" }}>{entity ? `${owner?.type === "personal" ? "👤" : "💼"} ${owner?.name ?? entity}` : "＋ Assign business"}</span></div>
       </div>
       <div class={`amount num ${s.amount > 0 ? "in" : ""}`} style={{ fontWeight: 650 }}>
         {s.amount > 0 ? "+" : ""}
@@ -57,7 +60,7 @@ export function TxnRow({ t, onClick }: { t: Txn; onClick?: () => void }) {
 }
 
 export function Transactions({ query }: { query: URLSearchParams }) {
-  const { entity } = useApp();
+  const { entity, entities } = useApp();
   const [text, setText] = useState(query.get("q") ?? "");
   const [debounced, setDebounced] = useState(text);
   const [rows, setRows] = useState<Txn[] | null>(null);
@@ -138,7 +141,7 @@ export function Transactions({ query }: { query: URLSearchParams }) {
               <div class="dategroup upper">{dayLabel(d)}</div>
               <div class="list">
                 {list.map((t) => (
-                  <TxnRow t={t} onClick={() => go(`/transactions?id=${t.wmma_id}${text ? `&q=${encodeURIComponent(text)}` : ""}`)} />
+                  <TxnRow t={t} entities={entities} onClick={() => go(`/transactions?id=${t.wmma_id}${text ? `&q=${encodeURIComponent(text)}` : ""}`)} />
                 ))}
               </div>
             </div>
@@ -231,8 +234,10 @@ function TxnSheet({ id, onClose, onChanged }: { id: string; onClose: () => void;
             ))}
           </div>
           <div class="field">
-            <label>Entity</label>
-            <select class="input" value={t.tags["entity"] ?? ""} onChange={(e) => patch({ entity: (e.target as HTMLSelectElement).value }, "Entity updated")}>
+            <label>Business or personal</label>
+            <div class="muted tiny">Choose which business or personal finances this transaction belongs to.</div>
+            <select class="input" value={transactionEntity(t) ?? ""} onChange={(e) => patch({ entity: (e.target as HTMLSelectElement).value }, "Business updated")}>
+              <option value="" disabled>Choose a business or personal profile</option>
               {entities.map((e) => (
                 <option value={e.slug}>{e.name}</option>
               ))}

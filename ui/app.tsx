@@ -51,13 +51,14 @@ export function EntitySwitcher() {
   return (
     <>
       <button class="entity-pill" onClick={() => setOpen(true)} aria-label="Choose entity">
-        <span class="dot" style={current ? {} : { background: "var(--muted)" }} />
-        <span>{current?.name ?? "All entities"}</span>
+        <span class="dot" style={current ? { background: businessStyle(current.slug).color } : { background: "var(--muted)" }} />
+        <span>{current?.name ?? "All finances"}</span>
         <Icon.down />
       </button>
       <Sheet open={open} onClose={() => setOpen(false)} title="Show">
+        <div class="muted small" style={{ margin: "0 4px 8px" }}>Choose a business or personal profile to filter this view.</div>
         <div class="list">
-          {[{ slug: null as string | null, name: "All entities", type: "combined" }, ...entities].map((e) => (
+          {[{ slug: null as string | null, name: "All finances", type: "combined" }, ...entities].map((e) => (
             <button
               class="catbtn"
               onClick={() => {
@@ -65,8 +66,9 @@ export function EntitySwitcher() {
                 setOpen(false);
               }}
             >
-              <span>
-                {e.name} <span class="muted small">· {e.type.replace(/_/g, " ")}</span>
+              <span class="row" style={{ gap: 9 }}>
+                <span class="business-icon" style={e.slug ? businessStyle(e.slug) : {}}>{e.type === "personal" ? "👤" : e.type === "combined" ? "🌈" : "💼"}</span>
+                <span>{e.name} <span class="muted small">· {e.type === "personal" ? "Personal" : e.type === "combined" ? "Everything" : "Business"}</span></span>
               </span>
               {entity === e.slug && (
                 <span style={{ color: "var(--accent)", width: 20, height: 20, display: "inline-flex" }}>
@@ -79,5 +81,17 @@ export function EntitySwitcher() {
       </Sheet>
     </>
   );
+}
+
+const BUSINESS_COLORS = ["#0ea5e9", "#d946ef", "#8b5cf6", "#f97316", "#16a34a", "#e11d48", "#ca8a04"];
+export function businessStyle(slug: string): Record<string, string> {
+  let hash = 0;
+  for (const c of slug) hash = (hash * 31 + c.charCodeAt(0)) | 0;
+  const color = BUSINESS_COLORS[(hash >>> 0) % BUSINESS_COLORS.length]!;
+  return { color, background: `${color}20`, borderColor: `${color}55` };
+}
+
+export function transactionEntity(t: { tags: Record<string, string>; postings: Array<{ entity: string | null }> }): string | null {
+  return t.tags.entity ?? t.postings.find((p) => p.entity)?.entity ?? null;
 }
 

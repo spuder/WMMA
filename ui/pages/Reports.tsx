@@ -84,7 +84,7 @@ function Pnl({ range }: { range: Range }) {
   if (error) return <ErrorBox error={error} />;
   if (loading || !data) return <Loading h={320} />;
   const max = Math.max(1, ...data.income.map((l: any) => l.amount_cents), ...data.expenses.map((l: any) => l.amount_cents));
-  const name = entity ? (entities.find((e) => e.slug === entity)?.name ?? entity) : "All entities";
+  const name = entity ? (entities.find((e) => e.slug === entity)?.name ?? entity) : "All finances";
   return (
     <div class="grid">
       <div class="card hero span-12">
@@ -195,7 +195,7 @@ function Budget() {
       toast((e as Error).message);
     }
   };
-  if (!ent) return <div class="empty">Add an entity first</div>;
+  if (!ent) return <div class="empty">Add a business or personal profile first</div>;
   const lines: any[] = data?.lines ?? [];
   const cents = (s: string) => Math.round(Number(s.replace(/[$,]/g, "")) * 100);
   const totalBudget = lines.reduce((a, l) => a + cents(l.budgeted), 0);
@@ -216,7 +216,7 @@ function Budget() {
           + Budget
         </button>
       </div>
-      {!entity && <div class="muted small">Showing {entities.find((e) => e.slug === ent)?.name}. Pick an entity above to switch.</div>}
+      {!entity && <div class="muted small">Showing {entities.find((e) => e.slug === ent)?.name}. Pick a business or personal profile above to switch.</div>}
       {error && <ErrorBox error={error} />}
       {loading && <Loading h={300} />}
       {data && (

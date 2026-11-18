@@ -228,7 +228,7 @@ function CardBody({ item, entityName }: { item: Item; entityName: (s: string | n
       <dl class="facts">
         <dt>Account</dt>
         <dd>{leaf(item.account)}</dd>
-        <dt>Entity</dt>
+        <dt>Business / personal</dt>
         <dd>{entityName(item.entity)}</dd>
       </dl>
       {top ? (
