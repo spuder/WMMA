@@ -169,7 +169,8 @@ export function Transactions({ query }: { query: URLSearchParams }) {
 function TxnSheet({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: (t: Txn) => void }) {
   const { entities, categories, refreshReview } = useApp();
   const [t, setT] = useState<Txn | null>(null);
-  const [mode, setMode] = useState<"view" | "category" | "split">("view");
+  const [mode, setMode] = useState<"view" | "split">("view");
+  const [expanded, setExpanded] = useState<"category" | "business" | null>(null);
   const [memo, setMemo] = useState("");
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -189,6 +190,7 @@ function TxnSheet({ id, onClose, onChanged }: { id: string; onClose: () => void;
       refreshReview();
       toast(msg);
       setMode("view");
+      setExpanded(null);
     } catch (e) {
       toast((e as Error).message);
     }
@@ -197,7 +199,7 @@ function TxnSheet({ id, onClose, onChanged }: { id: string; onClose: () => void;
   const s = t ? summarize(t) : null;
   const catPostings = t?.postings.filter((p) => isCat(p.account)) ?? [];
   return (
-    <Sheet open onClose={onClose} title={mode === "category" ? "Category" : mode === "split" ? "Split" : "Transaction"}>
+    <Sheet open onClose={onClose} title={mode === "split" ? "Split" : "Transaction"}>
       {error && <ErrorBox error={error} />}
       {!t && !error && <Loading h={200} />}
       {t && s && mode === "view" && (
@@ -214,7 +216,7 @@ function TxnSheet({ id, onClose, onChanged }: { id: string; onClose: () => void;
             </div>
           </div>
           {catPostings.length === 1 && (
-            <button class="card flat spread" style={{ cursor: "pointer", textAlign: "left" }} onClick={() => setMode("category")}>
+            <button class={`card flat spread choice-row${expanded === "category" ? " open" : ""}`} onClick={() => setExpanded((current) => current === "category" ? null : "category")}>
               <span>
                 <span class="upper">Category</span>
                 <br />
@@ -222,6 +224,11 @@ function TxnSheet({ id, onClose, onChanged }: { id: string; onClose: () => void;
               </span>
               <Icon.chevron />
             </button>
+          )}
+          {catPostings.length === 1 && expanded === "category" && (
+            <div class="choice-options">
+              <CategoryPicker categories={categories} direction={s.amount < 0 ? "out" : "in"} onPick={(a) => patch({ category: { to: a, from: catPostings[0]?.account } }, `Moved to ${leaf(a)}`)} />
+            </div>
           )}
           <div class="card flat stack" style={{ gap: 8 }}>
             <div class="upper">Postings</div>
@@ -235,16 +242,34 @@ function TxnSheet({ id, onClose, onChanged }: { id: string; onClose: () => void;
               </div>
             ))}
           </div>
-          <div class="field">
-            <label>Business or personal</label>
-            <div class="muted tiny">Choose which business or personal finances this transaction belongs to.</div>
-            <select class="input" value={transactionEntity(t) ?? ""} onChange={(e) => patch({ entity: (e.target as HTMLSelectElement).value }, "Business updated")}>
-              <option value="" disabled>Choose a business or personal profile</option>
-              {entities.map((e) => (
-                <option value={e.slug}>{e.name}</option>
-              ))}
-            </select>
-          </div>
+          {(() => {
+            const entity = transactionEntity(t);
+            const owner = entities.find((e) => e.slug === entity);
+            return <>
+              <button class={`card flat spread choice-row${expanded === "business" ? " open" : ""}`} onClick={() => setExpanded((current) => current === "business" ? null : "business")}>
+                <span style={{ textAlign: "left" }}>
+                  <span class="upper">Business or personal</span>
+                  <br />
+                  <strong class="row" style={{ gap: 7 }}>
+                    <span class="business-icon compact" style={entity ? businessStyle(entity, owner?.color) : {}}>{owner?.type === "personal" ? "👤" : <Icon.folder />}</span>
+                    {owner?.name ?? "Choose a profile"}
+                  </strong>
+                </span>
+                <Icon.chevron />
+              </button>
+              {expanded === "business" && <div class="choice-options catlist">
+                {entities.map((e) => (
+                  <button class="catbtn" onClick={() => patch({ entity: e.slug }, "Business updated")}>
+                    <span class="row" style={{ gap: 9 }}>
+                      <span class="business-icon compact" style={businessStyle(e.slug, e.color)}>{e.type === "personal" ? "👤" : <Icon.folder />}</span>
+                      {e.name}
+                    </span>
+                    {e.slug === entity && <span style={{ color: "var(--accent)", display: "inline-flex" }}><Icon.check /></span>}
+                  </button>
+                ))}
+              </div>}
+            </>;
+          })()}
           <div class="field">
             <label>Memo</label>
             <div class="row">
@@ -266,9 +291,6 @@ function TxnSheet({ id, onClose, onChanged }: { id: string; onClose: () => void;
             {t.tags["orig_category"] && ` · was “${t.tags["orig_category"]}”`}
           </div>
         </div>
-      )}
-      {t && s && mode === "category" && (
-        <CategoryPicker categories={categories} direction={s.amount < 0 ? "out" : "in"} onPick={(a) => patch({ category: { to: a, from: catPostings[0]?.account } }, `Moved to ${leaf(a)}`)} />
       )}
       {t && mode === "split" && catPostings[0] && <SplitForm t={t} from={catPostings[0]} onDone={(n) => (setT(n), onChanged(n), setMode("view"))} />}
     </Sheet>
