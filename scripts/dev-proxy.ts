@@ -12,18 +12,20 @@ if (!user) {
 }
 const target = `http://127.0.0.1:${process.env.WMMA_PORT || "3000"}`;
 const port = Number(process.env.DEV_PROXY_PORT || 8080);
+const hostname = process.env.DEV_PROXY_HOST || "127.0.0.1";
+const name = process.env.WMMA_DEV_NAME || user;
 Bun.serve({
-  hostname: "127.0.0.1",
+  hostname,
   port,
   async fetch(req) {
     const url = new URL(req.url);
     const headers = new Headers(req.headers);
     headers.delete("Tailscale-User-Login");
     headers.set("Tailscale-User-Login", user);
-    headers.set("Tailscale-User-Name", "Dev User");
+    headers.set("Tailscale-User-Name", name);
     return fetch(target + url.pathname + url.search, { method: req.method, headers, body: req.body, redirect: "manual" });
   },
 });
-console.log(`dev proxy: http://127.0.0.1:${port} -> ${target} as ${user}`);
+console.log(`dev proxy: http://${hostname}:${port} -> ${target} as ${user}`);
 
 export {};

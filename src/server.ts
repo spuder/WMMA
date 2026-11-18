@@ -127,7 +127,7 @@ const routes: Record<string, Handler> = {
     } catch {
       // reported as null
     }
-    return Response.json({ user: identity.login, hledgerWeb: hledgerVersion, timezone: config.tz });
+    return Response.json({ user: identity.login, name: identity.name, hledgerWeb: hledgerVersion, timezone: config.tz });
   },
 
   "GET /api/v1/accounts": async (_req, _id, ctx) => Response.json({ accounts: await listAccountsWithBalances(ctx) }),
