@@ -190,6 +190,12 @@ Then open `https://wmma.<your-tailnet>.ts.net`. Only Tailscale users in `WMMA_AL
 | `JEV_API_KEY` | Jev (TypeSafe) API key; optional `JEV_BASE_URL`, `JEV_MODEL` |
 | `WMMA_SECRET_KEY` | ≥16 chars; encrypts secrets set in the UI (`/data/secrets.enc`). Needed only to set the Jev key from the UI |
 
+## Website
+
+The product site is plain HTML, CSS and JS in [`site/`](site), with no build step. Preview it with `bunx serve site` (or any static server).
+Pushes to `main` that touch `site/` publish it to GitHub Pages through [`.github/workflows/pages.yml`](.github/workflows/pages.yml).
+The figures shown on it are made up.
+
 ## Development
 
 Requires [Bun](https://bun.sh) 1.4.4 (`mise install`) and, for the integration tests, `hledger` and `hledger-web` on `PATH` (or `HLEDGER_BIN` / `HLEDGER_WEB_BIN`). Tests needing them are skipped otherwise.
