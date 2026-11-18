@@ -40,8 +40,48 @@ export function Accounts() {
     <div class="stack">
       <div class="topbar">
         <h1>Accounts</h1>
-        <button class="btn" onClick={() => setSheet("account")}>
-          + Account
+      </div>
+      <section class="stack" style={{ gap: 8 }}>
+        <div class="spread">
+          <h2 style={{ margin: 0, fontSize: 18 }}>Entities</h2>
+          <button class="btn" onClick={() => setSheet("entity")}>
+            + Entity
+          </button>
+        </div>
+        <div class="muted small">Create a personal or business entity first. Every account is assigned to an entity.</div>
+        {all.error && <ErrorBox error={all.error} />}
+        <div class="card" style={{ paddingTop: 4, paddingBottom: 4 }}>
+          <div class="list">
+            {(all.data?.entities ?? []).map((e: any) => (
+              <div class="item">
+                <div class="body">
+                  <div class="title">
+                    {e.name} {e.status === "archived" && <span class="pill zero">archived</span>}
+                  </div>
+                  <div class="meta">{TYPE_LABEL[e.type] ?? e.type}</div>
+                </div>
+                {e.status === "active" && (
+                  <button class="btn ghost small danger" onClick={() => setSheet({ archive: e })}>
+                    Archive
+                  </button>
+                )}
+              </div>
+            ))}
+            {!all.loading && !all.error && (all.data?.entities ?? []).length === 0 && (
+              <div class="empty">No entities yet. Add a personal or business entity above before creating accounts.</div>
+            )}
+            {all.loading && <Loading h={64} />}
+          </div>
+        </div>
+      </section>
+
+      <div class="spread" style={{ marginTop: 8 }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 18 }}>Accounts</h2>
+          <div class="muted small">Add accounts after creating their personal or business entity.</div>
+        </div>
+        <button class="btn" disabled={entities.length === 0} onClick={() => setSheet("account")}>
+          {entities.length === 0 ? "Create an entity first" : "+ Account"}
         </button>
       </div>
       {accts.error && <ErrorBox error={accts.error} />}
@@ -89,37 +129,6 @@ export function Accounts() {
           {list.length === 0 && <div class="card span-12 empty">No accounts yet. Add one, or import from YNAB / your bank.</div>}
         </div>
       )}
-
-      <div class="spread" style={{ marginTop: 8 }}>
-        <h2 style={{ margin: 0, fontSize: 18 }}>Entities</h2>
-        <button class="btn" onClick={() => setSheet("entity")}>
-          + Entity
-        </button>
-      </div>
-      {all.error && <ErrorBox error={all.error} />}
-      <div class="card" style={{ paddingTop: 4, paddingBottom: 4 }}>
-        <div class="list">
-          {(all.data?.entities ?? []).map((e: any) => (
-            <div class="item">
-              <div class="body">
-                <div class="title">
-                  {e.name} {e.status === "archived" && <span class="pill zero">archived</span>}
-                </div>
-                <div class="meta">{TYPE_LABEL[e.type] ?? e.type}</div>
-              </div>
-              {e.status === "active" && (
-                <button class="btn ghost small danger" onClick={() => setSheet({ archive: e })}>
-                  Archive
-                </button>
-              )}
-            </div>
-          ))}
-          {!all.loading && !all.error && (all.data?.entities ?? []).length === 0 && (
-            <div class="empty">No entities yet. Add an entity to organize accounts for your household or business.</div>
-          )}
-          {all.loading && <Loading h={64} />}
-        </div>
-      </div>
 
       <Sheet open={sheet === "entity"} onClose={() => setSheet(null)} title="New entity">
         <NewEntity
