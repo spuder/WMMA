@@ -13,6 +13,10 @@ export interface AccountRow {
   default_entity: string;
   simplefin_id: string | null;
   website_url: string | null;
+  /** JSON-encoded AssetDetails for vehicle / real_estate / other_asset accounts. */
+  details: string | null;
+  /** The loan or mortgage owed against this asset, if any. */
+  linked_loan: string | null;
   status: "open" | "closed";
   created_at: string;
 }
@@ -112,6 +116,12 @@ export async function listAccountsWithBalances(ctx: ServiceContext) {
   return listAccounts(ctx).map((a) => {
     const b = balances.get(a.hledger_account) ?? M.ZERO;
     const contributed = contributions.get(a.hledger_account) ?? M.ZERO;
-    return { ...a, balance_cents: M.toCents(b), balance: M.format(b), contributed_cents: M.toCents(contributed) };
+    let details: unknown = null;
+    try {
+      details = a.details ? JSON.parse(a.details) : null;
+    } catch {
+      // unreadable details are reported as none
+    }
+    return { ...a, details, balance_cents: M.toCents(b), balance: M.format(b), contributed_cents: M.toCents(contributed) };
   });
 }

@@ -2,7 +2,7 @@ import { authenticate, type Identity } from "./auth/tailscale";
 import { ACCOUNT_KINDS, type AccountKind } from "./db";
 import { YnabApiError } from "./importers/ynab/api";
 import type { DateFormat } from "./importers/ynab/csv";
-import { listAccountsWithBalances } from "./services/accounts";
+import { getAccount, listAccountsWithBalances } from "./services/accounts";
 import { ServiceError, type ServiceContext } from "./services/context";
 import { importYnabApi, importYnabCsv, listImportRuns, type YnabImportOptions } from "./services/imports";
 import {
@@ -24,6 +24,7 @@ import { listBudgets, recordTransfer, recordValuation, setBudgets } from "./serv
 import { budgetReport, pnl } from "./services/reports";
 import { importReiHub } from "./services/bank-imports";
 import { handleMcp } from "./mcp";
+import { checkedMileage, decodeVin, recordMileage, valuationHistory } from "./services/assets";
 import { cashflow, categories, netWorth, spending, trend } from "./services/reports";
 import { getSettings, putSettings } from "./services/settings";
 import { getTransaction, listMappings, patchTransaction, searchTransactions, splitTransaction, updateMapping } from "./services/transactions";
@@ -301,7 +302,21 @@ Object.assign(routes, {
     const b = ((await jsonBody(req)) ?? {}) as Record<string, unknown>;
     if (!KINDS.includes(b.kind as AccountKind)) bad(`kind must be one of ${KINDS.join(", ")}`);
     if (b.websiteUrl !== undefined && b.websiteUrl !== null && typeof b.websiteUrl !== "string") bad("websiteUrl must be a string or null");
-    return Response.json(await addAccount(ctx, identity.login, { name: str(b.name, "name"), kind: b.kind as AccountKind, entity: str(b.entity, "entity"), ...(b.websiteUrl !== undefined ? { websiteUrl: b.websiteUrl as string | null } : {}) }), { status: 201 });
+    if (b.linkedLoan !== undefined && b.linkedLoan !== null && typeof b.linkedLoan !== "string") bad("linkedLoan must be a string or null");
+    if (b.value !== undefined && (typeof b.value !== "object" || b.value === null)) bad("value must be { value, date? }");
+    const value = b.value as { value?: unknown; date?: unknown } | undefined;
+    return Response.json(
+      await addAccount(ctx, identity.login, {
+        name: str(b.name, "name"),
+        kind: b.kind as AccountKind,
+        entity: str(b.entity, "entity"),
+        ...(b.websiteUrl !== undefined ? { websiteUrl: b.websiteUrl as string | null } : {}),
+        ...(b.details !== undefined ? { details: b.details } : {}),
+        ...(b.linkedLoan !== undefined ? { linkedLoan: b.linkedLoan as string | null } : {}),
+        ...(value ? { value: { value: value.value, ...(value.date !== undefined ? { date: value.date } : {}) } } : {}),
+      }),
+      { status: 201 },
+    );
   },
   "PATCH /api/v1/accounts/:slug": async (req, identity, ctx, params) => {
     const b = ((await jsonBody(req)) ?? {}) as Record<string, unknown>;
@@ -310,9 +325,13 @@ Object.assign(routes, {
         ...(b.defaultEntity !== undefined ? { defaultEntity: str(b.defaultEntity, "defaultEntity") } : {}),
         ...(b.websiteUrl !== undefined ? { websiteUrl: b.websiteUrl === null ? null : str(b.websiteUrl, "websiteUrl") } : {}),
         ...(b.close !== undefined ? { close: { date: str((b.close as Record<string, unknown> | null)?.date, "close.date") } } : {}),
+        ...(b.details !== undefined ? { details: b.details } : {}),
+        ...(b.linkedLoan !== undefined ? { linkedLoan: b.linkedLoan === null ? null : str(b.linkedLoan, "linkedLoan") } : {}),
       }),
     );
   },
+  "GET /api/v1/accounts/:slug/valuations": (_req, _id, ctx, params) => Response.json({ valuations: valuationHistory(ctx, params["slug"]!) }),
+  "GET /api/v1/vin/:vin": async (_req, _id, _ctx, params) => Response.json(await decodeVin(params["vin"]!)),
   "GET /api/v1/budgets": async (req, _id, ctx) => {
     const entity = new URL(req.url, "http://localhost").searchParams.get("entity") ?? undefined;
     return Response.json({ budgets: await listBudgets(ctx, entity) });
@@ -331,7 +350,12 @@ Object.assign(routes, {
   },
   "POST /api/v1/valuations": async (req, identity, ctx) => {
     const b = ((await jsonBody(req)) ?? {}) as Record<string, unknown>;
-    return Response.json(await recordValuation(ctx, identity.login, { account: str(b.account, "account"), date: b.date, value: b.value }), { status: 201 });
+    const account = getAccount(ctx, str(b.account, "account"));
+    // Vehicles: an optional odometer reading taken with the valuation, validated first.
+    const miles = account ? checkedMileage(account, b.mileage) : undefined;
+    const result = await recordValuation(ctx, identity.login, { account: str(b.account, "account"), date: b.date, value: b.value });
+    if (account && miles !== undefined) recordMileage(ctx, account, miles, b.date as string);
+    return Response.json(result, { status: 201 });
   },
   "GET /api/v1/reports/pnl": async (req, _id, ctx) => {
     const q = new URL(req.url, "http://localhost").searchParams;

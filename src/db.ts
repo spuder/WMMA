@@ -128,6 +128,9 @@ const MIGRATIONS: string[] = [
   `ALTER TABLE entities ADD COLUMN color TEXT;`,
   // Account names imported before U+FFFD (mangled ®/™ from banks) was stripped.
   `UPDATE accounts SET name = trim(replace(replace(name, char(65533), ''), '  ', ' ')) WHERE instr(name, char(65533)) > 0;`,
+  // Physical assets (vehicles, real estate, other): JSON details and an optional loan/mortgage against them.
+  `ALTER TABLE accounts ADD COLUMN details TEXT;
+   ALTER TABLE accounts ADD COLUMN linked_loan TEXT REFERENCES accounts(slug);`,
 ];
 
 export function openDb(path: string): Database {
