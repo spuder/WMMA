@@ -1,8 +1,32 @@
-<img src="assets/icon.svg" width="64" height="64" alt="">
+<p align="center">
+  <img src="site/img/logo.svg" width="120" height="120" alt="WMMA logo">
+</p>
 
-# WMMA — Where My Money At
+<h1 align="center">WMMA — Where My Money At</h1>
 
-Self-hosted personal and multi-business finance: budgets, P&L per business, beautiful reports, and AI access over MCP. Plain-text [hledger](https://hledger.org) journals are the source of truth.
+<p align="center">
+  <b>Self-hosted finance for your household and every business you run.</b><br>
+  Budgets with rollover, a P&amp;L for each business, cash-flow and net-worth reports, swipe-to-categorize, and AI access over MCP.
+  Imports from YNAB, QFX/OFX, CSV, SimpleFIN and REI Hub. Plain-text <a href="https://hledger.org">hledger</a> journals are the source of truth, and it runs in one Docker container on your tailnet.
+</p>
+
+<p align="center">
+  <a href="https://spuder.github.io/WMMA/"><img alt="Website: spuder.github.io/WMMA" src="https://img.shields.io/badge/website-spuder.github.io%2FWMMA-1f7a5a?style=for-the-badge&logo=githubpages&logoColor=white&labelColor=555"></a>
+  <a href="#run-with-docker-compose"><img alt="Self-host: compose.yaml" src="https://img.shields.io/badge/self--host-compose.yaml-3b74c4?style=for-the-badge&logo=tailscale&logoColor=white&labelColor=555"></a>
+  <a href="#ai-access-mcp"><img alt="AI: MCP" src="https://img.shields.io/badge/AI-MCP-7b5cc4?style=for-the-badge&logo=modelcontextprotocol&logoColor=white&labelColor=555"></a>
+  <a href="https://github.com/spuder/WMMA/actions/workflows/ci.yml"><img alt="CI status" src="https://img.shields.io/github/actions/workflow/status/spuder/WMMA/ci.yml?branch=main&style=for-the-badge&label=ci&logo=githubactions&logoColor=white&labelColor=555"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-c98a12?style=for-the-badge&labelColor=555"></a>
+</p>
+
+<p align="center">
+  <a href="https://spuder.github.io/WMMA/">Website</a> ·
+  <a href="#run-with-docker-compose">Self-hosting</a> ·
+  <a href="#importing-from-ynab">Import from YNAB</a> ·
+  <a href="#web-ui">Web UI</a> ·
+  <a href="#ai-access-mcp">AI (MCP)</a> ·
+  <a href="#rest-api-apiv1">REST API</a> ·
+  <a href="SPEC.md">Spec</a>
+</p>
 
 See [SPEC.md](SPEC.md) for the full design and milestones.
 
@@ -207,6 +231,12 @@ Then open `https://wmma.<your-tailnet>.ts.net`. Only Tailscale users in `WMMA_AL
 | `SIMPLEFIN_SYNC_CRON` | SimpleFIN sync schedule (default `0 6 * * *`); connect accounts in Settings |
 | `JEV_API_KEY` | Jev (TypeSafe) API key; optional `JEV_BASE_URL`, `JEV_MODEL` |
 | `WMMA_SECRET_KEY` | Optional legacy migration key; new deployments generate a key in the persistent `wmma-secret-key` volume |
+
+## Website
+
+The product site is plain HTML, CSS and JS in [`site/`](site), with no build step. Preview it with `bunx serve site` (or any static server).
+Pushes to `main` that touch `site/` publish it to GitHub Pages through [`.github/workflows/pages.yml`](.github/workflows/pages.yml).
+The figures shown on it are made up.
 
 ## Development
 

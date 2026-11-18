@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WMMA: Where My Money At</title>
+  <meta name="description" content="WMMA is open-source, self-hosted finance for your household and your businesses: budgets, a P&L for every business, reports worth opening, swipe-to-categorize and AI access over MCP, on plain-text hledger journals you own.">
+  <meta name="theme-color" content="#f6f5f1" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0f1113" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="img/logo.svg" type="image/svg+xml">
+  <link rel="preload" href="fonts/instrument-serif.woff2" as="font" type="font/woff2" crossorigin>
+  <meta property="og:title" content="WMMA: Where My Money At">
+  <meta property="og:description" content="Self-hosted finance for your household and your businesses, on plain-text journals you own.">
+  <meta property="og:type" content="website">
+  <link rel="stylesheet" href="style.css">
+  <script>document.documentElement.classList.add('js')</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav" id="top">
+    <div class="wrap nav-inner">
+      <a class="brand" href="#top" aria-label="WMMA home"><img src="img/logo.svg" alt="" width="26" height="26"><span>WMMA</span></a>
+      <nav aria-label="Main">
+        <a href="#features">Features</a>
+        <a href="#plain-text">Plain text</a>
+        <a href="#self-host">Self-host</a>
+      </nav>
+      <a class="gh-link" href="https://github.com/spuder/WMMA" aria-label="WMMA on GitHub"><svg class="gh" viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>GitHub</span></a>
+      <a class="btn btn-small" href="#self-host">Get started</a>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- ───────────── Hero ───────────── -->
+    <section class="hero">
+      <div class="wrap">
+        <p class="eyebrow reveal"><span class="dot" aria-hidden="true"></span>Open source · Self-hosted · MIT</p>
+        <h1 class="reveal">Know where your<br>money’s <em>at.</em></h1>
+        <p class="lead reveal">
+          WMMA is calm, self-hosted finance for your household and every business you run.
+          Budgets, a P&amp;L for each business, reports worth opening, and an assistant that can read your books,
+          all on plain-text journals that stay on your server.
+        </p>
+        <div class="cta reveal">
+          <a class="btn" href="#self-host">Host it yourself <span aria-hidden="true">→</span></a>
+          <a class="btn btn-ghost" href="https://github.com/spuder/WMMA"><svg class="gh" viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> View on GitHub</a>
+        </div>
+        <p class="fine reveal">Free and MIT licensed. The source, docs and issues are all <a href="https://github.com/spuder/WMMA">on GitHub</a>.</p>
+
+        <div class="stage reveal" aria-label="WMMA on a laptop and a phone">
+          <!-- Desktop: Home dashboard -->
+          <figure class="window" aria-hidden="true">
+            <div class="chrome"><span></span><span></span><span></span><i>wmma.your-tailnet.ts.net</i></div>
+            <div class="app">
+              <div class="app-top">
+                <span class="pill"><b class="sw" style="--c: var(--ink-3)"></b>All entities</span>
+                <div class="tabs"><b class="on">Home</b><b>Review <em>7</em></b><b>Activity</b><b>Reports</b><b>Accounts</b></div>
+              </div>
+              <div class="app-grid">
+                <div class="tile nw">
+                  <small>Net worth</small>
+                  <strong class="num">$412,860</strong>
+                  <span class="delta up">▲ $9,718 this month</span>
+                  <svg class="area" viewBox="0 0 400 120" preserveAspectRatio="none">
+                    <defs><linearGradient id="nwfill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="var(--accent)" stop-opacity=".22"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>
+                    <path d="M0,92 C18,92 18,88 36,88 C55,88 55,90 73,90 C91,90 91,80 109,80 C127,80 127,78 145,78 C164,78 164,70 182,70 C200,70 200,72 218,72 C237,72 237,60 255,60 C273,60 273,56 291,56 C309,56 309,50 327,50 C346,50 346,42 364,42 C382,42 382,34 400,34 L400,120 L0,120 Z" fill="url(#nwfill)"/>
+                    <path d="M0,92 C18,92 18,88 36,88 C55,88 55,90 73,90 C91,90 91,80 109,80 C127,80 127,78 145,78 C164,78 164,70 182,70 C200,70 200,72 218,72 C237,72 237,60 255,60 C273,60 273,56 291,56 C309,56 309,50 327,50 C346,50 346,42 364,42 C382,42 382,34 400,34" fill="none" stroke="var(--accent)" stroke-width="2.4" vector-effect="non-scaling-stroke"/>
+                  </svg>
+                </div>
+                <div class="tile mini"><small>Income · Oct</small><strong class="num in">$9,240</strong><span class="bar"><i style="width: 100%; --c: var(--in)"></i></span></div>
+                <div class="tile mini"><small>Spending · Oct</small><strong class="num">$5,118</strong><span class="bar"><i style="width: 55%; --c: var(--out)"></i></span></div>
+                <div class="tile donut-tile">
+                  <small>Where it went</small>
+                  <div class="donut-row">
+                    <svg class="donut" viewBox="0 0 42 42">
+                      <circle r="15.915" cx="21" cy="21" stroke="var(--c0)" stroke-dasharray="37 63" stroke-dashoffset="25"/>
+                      <circle r="15.915" cx="21" cy="21" stroke="var(--c1)" stroke-dasharray="17 83" stroke-dashoffset="-13"/>
+                      <circle r="15.915" cx="21" cy="21" stroke="var(--c2)" stroke-dasharray="11 89" stroke-dashoffset="-31"/>
+                      <circle r="15.915" cx="21" cy="21" stroke="var(--c4)" stroke-dasharray="8 92" stroke-dashoffset="-43"/>
+                      <circle r="15.915" cx="21" cy="21" stroke="var(--c6)" stroke-dasharray="22 78" stroke-dashoffset="-52"/>
+                    </svg>
+                    <ul class="legend">
+                      <li><b style="--c: var(--c0)"></b>Housing<span>38%</span></li>
+                      <li><b style="--c: var(--c1)"></b>Food<span>18%</span></li>
+                      <li><b style="--c: var(--c2)"></b>Transport<span>12%</span></li>
+                      <li><b style="--c: var(--c4)"></b>Software<span>9%</span></li>
+                      <li><b style="--c: var(--c6)"></b>Everything else<span>23%</span></li>
+                    </ul>
+                  </div>
+                </div>
+                <div class="tile activity">
+                  <small>Recent activity</small>
+                  <ul class="rows">
+                    <li><span class="av" style="--c: var(--c1)">T</span><span class="who">Trader Joe’s<i>Food · Groceries</i></span><b class="num">−$64.82</b></li>
+                    <li><span class="av" style="--c: var(--c0)">S</span><span class="who">Stripe payout<i>Studio LLC · Sales</i></span><b class="num in">+$2,400.00</b></li>
+                    <li><span class="av" style="--c: var(--c2)">S</span><span class="who">Shell<i>Transport · Fuel</i></span><b class="num">−$48.20</b></li>
+                    <li><span class="av" style="--c: var(--c4)">F</span><span class="who">Figma<i>Studio LLC · Software</i></span><b class="num">−$15.00</b></li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </figure>
+
+          <!-- Phone: swipe review -->
+          <figure class="phone" aria-hidden="true">
+            <div class="notch"></div>
+            <div class="ph-top">
+              <span class="ph-title">Review</span>
+              <span class="ph-left"><b data-left>7</b> left</span>
+            </div>
+            <div class="ph-progress"><i data-progress style="width: 30%"></i></div>
+            <div class="deck">
+              <div class="card behind-2"></div>
+              <div class="card behind-1"></div>
+              <div class="card top" data-card>
+                <span class="stamp">✓ <span data-stamp>Groceries</span></span>
+                <small data-meta>Oct 14 · Rewards Card</small>
+                <strong data-payee>Trader Joe’s</strong>
+                <span class="amt num" data-amount>−$64.82</span>
+                <div class="suggest">
+                  <small>Jev suggests</small>
+                  <span class="chip on" data-cat>Food › Groceries</span>
+                  <span class="conf"><i data-conf style="width: 86%"></i></span>
+                </div>
+              </div>
+            </div>
+            <div class="ph-actions">
+              <span class="act">← Other</span>
+              <span class="act yes">Accept →</span>
+            </div>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────────── Principles ───────────── -->
+    <section class="principles" aria-label="Principles">
+      <div class="wrap trio">
+        <div class="reveal">
+          <h3>Your journals, your server</h3>
+          <p>Every dollar lives in plain-text <a href="https://hledger.org">hledger</a> journals in one folder you can read, query and back up.</p>
+        </div>
+        <div class="reveal">
+          <h3>Exact to the cent</h3>
+          <p>Money is integer cents from import to report. No floating point anywhere near your balances.</p>
+        </div>
+        <div class="reveal">
+          <h3>Only on your tailnet</h3>
+          <p>No passwords and no public port. Tailscale tells WMMA who you are, and only people you allow get in.</p>
+        </div>
+      </div>
+    </section>
+
+    <div id="features"></div>
+
+    <!-- ───────────── Review ───────────── -->
+    <section class="feature">
+      <div class="wrap row">
+        <div class="copy reveal">
+          <p class="kicker">Categorize</p>
+          <h2>Categorizing, reduced to a&nbsp;swipe.</h2>
+          <p>Every import runs new transactions through your rules, then through Jev’s suggestions, and leaves only the uncertain ones for you. Swipe right to accept, left to choose another category. Accept a payee three times and WMMA writes the rule for you.</p>
+          <ul class="ticks">
+            <li>Suggestions above 90% confidence are applied for you</li>
+            <li>Keyboard friendly: <kbd>→</kbd> accept, <kbd>←</kbd> change, <kbd>S</kbd> save for later</li>
+            <li>Split a transaction across categories or businesses</li>
+          </ul>
+        </div>
+        <figure class="panel reveal" aria-label="Rules, then Jev, then your review queue">
+          <ol class="pipeline">
+            <li><span class="step">1</span><div><b>Rules</b><small>Payee, amount and account matches</small></div><span class="count num">212</span></li>
+            <li><span class="step">2</span><div><b>Jev</b><small>Applied at ≥ 0.90 confidence</small></div><span class="count num">41</span></li>
+            <li class="you"><span class="step">3</span><div><b>You</b><small>A short swipe through the rest</small></div><span class="count num">7</span></li>
+          </ol>
+          <div class="toast">
+            <span class="spark" aria-hidden="true">✦</span>
+            <div><b>New rule learned</b><small>Payee contains “trader joe” → Food:Groceries</small></div>
+          </div>
+        </figure>
+      </div>
+    </section>
+
+    <!-- ───────────── Businesses ───────────── -->
+    <section class="feature alt">
+      <div class="wrap row flip">
+        <div class="copy reveal">
+          <p class="kicker">Businesses</p>
+          <h2>A P&amp;L for every business you&nbsp;run.</h2>
+          <p>Your household, an LLC, a rental: each one is an entity with categories drawn from its tax form. Move money between them with proper due-to and due-from entries, and archive one when it closes without losing a line of history.</p>
+          <div class="chips">
+            <span>Personal</span><span>Schedule C</span><span>1120-S</span><span>1065</span><span>Schedule E</span>
+          </div>
+        </div>
+        <figure class="panel statement reveal" aria-label="Profit and loss statement for Studio LLC">
+          <header><span class="pill"><b class="sw" style="--c: var(--c4)"></b>Studio LLC</span><small>Jan – Oct 2026</small></header>
+          <table>
+            <tbody>
+              <tr class="group"><th colspan="2">Income</th></tr>
+              <tr><td>Client work</td><td class="num">84,200.00</td></tr>
+              <tr><td>Licensing</td><td class="num">1,150.00</td></tr>
+              <tr class="sub"><td>Total income</td><td class="num">85,350.00</td></tr>
+              <tr class="group"><th colspan="2">Expenses</th></tr>
+              <tr><td>Contract labor</td><td class="num">18,600.00</td></tr>
+              <tr><td>Home office</td><td class="num">3,120.00</td></tr>
+              <tr><td>Software</td><td class="num">2,412.00</td></tr>
+              <tr><td>Travel</td><td class="num">1,940.00</td></tr>
+              <tr class="sub"><td>Total expenses</td><td class="num">26,072.00</td></tr>
+            </tbody>
+            <tfoot><tr><td>Net income</td><td class="num in">$59,278.00</td></tr></tfoot>
+          </table>
+        </figure>
+      </div>
+    </section>
+
+    <!-- ───────────── Reports ───────────── -->
+    <section class="feature">
+      <div class="wrap row">
+        <div class="copy reveal">
+          <p class="kicker">Reports</p>
+          <h2>Reports worth&nbsp;opening.</h2>
+          <p>See where the month went in a single cash-flow picture. Then go deeper with budget against actual (with rollover), net worth over time, spending by category and a twelve-month trend, for one entity or all of them together.</p>
+          <ul class="ticks">
+            <li>Tap a budget line to change it</li>
+            <li>Houses, vehicles and investments count toward net worth</li>
+          </ul>
+        </div>
+        <figure class="panel sankey-panel reveal" aria-label="Cash-flow diagram from income sources to spending categories">
+          <svg class="sankey" viewBox="0 0 660 320" role="img" aria-labelledby="sk-t">
+            <title id="sk-t">Salary, Studio LLC and rental income flow into Housing, Food, Transport, Taxes and Savings</title>
+            <g class="flows">
+              <path style="--c: var(--c0)" d="M100,20 C207,20 207,40 315,40 L315,160 C207,160 207,140 100,140 Z"/>
+              <path style="--c: var(--c4)" d="M100,155 C207,155 207,160 315,160 L315,240 C207,240 207,235 100,235 Z"/>
+              <path style="--c: var(--c2)" d="M100,250 C207,250 207,240 315,240 L315,280 C207,280 207,290 100,290 Z"/>
+              <path style="--c: var(--c1)" d="M325,40 C432,40 432,10 540,10 L540,80 C432,80 432,110 325,110 Z"/>
+              <path style="--c: var(--c3)" d="M325,110 C432,110 432,95 540,95 L540,135 C432,135 432,150 325,150 Z"/>
+              <path style="--c: var(--c6)" d="M325,150 C432,150 432,150 540,150 L540,175 C432,175 432,175 325,175 Z"/>
+              <path style="--c: var(--c5)" d="M325,175 C432,175 432,190 540,190 L540,235 C432,235 432,220 325,220 Z"/>
+              <path style="--c: var(--c0)" d="M325,220 C432,220 432,250 540,250 L540,310 C432,310 432,280 325,280 Z"/>
+            </g>
+            <g class="nodes">
+              <rect x="92" y="20" width="8" height="120" rx="2" style="--c: var(--c0)"/>
+              <rect x="92" y="155" width="8" height="80" rx="2" style="--c: var(--c4)"/>
+              <rect x="92" y="250" width="8" height="40" rx="2" style="--c: var(--c2)"/>
+              <rect x="315" y="40" width="10" height="240" rx="2" class="mid"/>
+              <rect x="540" y="10" width="8" height="70" rx="2" style="--c: var(--c1)"/>
+              <rect x="540" y="95" width="8" height="40" rx="2" style="--c: var(--c3)"/>
+              <rect x="540" y="150" width="8" height="25" rx="2" style="--c: var(--c6)"/>
+              <rect x="540" y="190" width="8" height="45" rx="2" style="--c: var(--c5)"/>
+              <rect x="540" y="250" width="8" height="60" rx="2" style="--c: var(--c0)"/>
+            </g>
+            <g class="labels">
+              <text x="82" y="76" text-anchor="end">Salary</text><text x="82" y="92" text-anchor="end" class="v">$6,000</text>
+              <text x="82" y="191" text-anchor="end">Studio LLC</text><text x="82" y="207" text-anchor="end" class="v">$4,000</text>
+              <text x="82" y="266" text-anchor="end">Rental</text><text x="82" y="282" text-anchor="end" class="v">$2,000</text>
+              <text x="558" y="41">Housing</text><text x="558" y="57" class="v">$3,500</text>
+              <text x="558" y="112">Food</text><text x="558" y="128" class="v">$2,000</text>
+              <text x="558" y="160">Transport</text><text x="558" y="176" class="v">$1,250</text>
+              <text x="558" y="210">Taxes</text><text x="558" y="226" class="v">$2,250</text>
+              <text x="558" y="277">Savings</text><text x="558" y="293" class="v">$3,000</text>
+            </g>
+          </svg>
+        </figure>
+      </div>
+    </section>
+
+    <!-- ───────────── Imports ───────────── -->
+    <section class="feature alt">
+      <div class="wrap row flip">
+        <div class="copy reveal">
+          <p class="kicker">Imports</p>
+          <h2>Bring it all in.&nbsp;Once.</h2>
+          <p>Pull your full history and past budgets from YNAB, drop in QFX or CSV statements, or let SimpleFIN sync every morning. Every import is safe to run again, overlapping sources merge instead of duplicating, and the original files are kept exactly as they arrived.</p>
+          <ul class="ticks">
+            <li>One column profile per bank for CSV statements</li>
+            <li>Running balances checked against YNAB after import</li>
+          </ul>
+        </div>
+        <figure class="panel reveal" aria-label="Recent imports">
+          <ul class="sources">
+            <li><span class="src" style="--c: var(--c1)">Y</span><div><b>YNAB</b><small>Full history and past budgets</small></div><span class="status"><b class="num">4,812</b> imported</span></li>
+            <li><span class="src" style="--c: var(--c0)">S</span><div><b>SimpleFIN</b><small>Every morning at 6:00</small></div><span class="status"><b class="num">12</b> new</span></li>
+            <li><span class="src" style="--c: var(--c2)">Q</span><div><b>QFX statement</b><small>Rewards Card · October</small></div><span class="status merged"><b class="num">3</b> merged</span></li>
+            <li><span class="src" style="--c: var(--c5)">R</span><div><b>REI Hub CSV</b><small>Rental · Q3</small></div><span class="status"><b class="num">41</b> new</span></li>
+          </ul>
+          <p class="panel-foot"><span class="ok" aria-hidden="true">✓</span> Re-ran YNAB import: 0 duplicates added</p>
+        </figure>
+      </div>
+    </section>
+
+    <!-- ───────────── AI / MCP ───────────── -->
+    <section class="feature">
+      <div class="wrap row">
+        <div class="copy reveal">
+          <p class="kicker">AI over MCP</p>
+          <h2>Ask your books&nbsp;anything.</h2>
+          <p>WMMA serves the Model Context Protocol from the same address as the app. Connect Claude or any MCP client and it can read your reports and search transactions. With the write tools, it can also categorize, split, set budgets and record valuations. Every call is written to the audit log.</p>
+          <div class="cmd"><code>claude mcp add --transport http wmma https://wmma.&lt;tailnet&gt;.ts.net/mcp</code></div>
+        </div>
+        <figure class="panel chat reveal" aria-label="An assistant answering a question with WMMA">
+          <p class="msg me">What did Studio LLC spend on software this year? More than last year?</p>
+          <p class="tool"><span>get_pnl</span> entity: studio · 2025–2026</p>
+          <p class="msg ai"><b class="num">$2,412</b> so far in 2026, up 18% from <b class="num">$2,044</b> in all of 2025. Figma and GitHub make up most of it, and a new monthly charge from Linear started in June.</p>
+          <p class="tool"><span>search_transactions</span> payee: linear</p>
+        </figure>
+      </div>
+    </section>
+
+    <!-- ───────────── Plain text ───────────── -->
+    <section class="plain" id="plain-text">
+      <div class="wrap row">
+        <div class="copy reveal">
+          <p class="kicker light">Plain text</p>
+          <h2>Plain text, all the way&nbsp;down.</h2>
+          <p>Every transaction WMMA records is written to an hledger journal in your data folder, tagged with where it came from and how it was categorized. Open it in any editor or query it with hledger. If WMMA ever goes away, your books don’t.</p>
+          <p class="muted">Journals are only written by WMMA, imports are never modified, and every change from the app, the API or an assistant is appended to <code>audit.log</code> with a before and after.</p>
+        </div>
+        <div class="code reveal">
+          <div class="code-head"><span>data/journals/accounts/rewards-card.journal</span></div>
+<pre><code><span class="d">2026-10-14</span> <span class="s">*</span> Trader Joe’s  <span class="t">; wmma_id:01JA8Q, source:simplefin, entity:household, cat_by:rule</span>
+    <span class="a">Expenses:Food:Groceries</span>            <span class="n">$64.82</span>
+    <span class="a">Liabilities:Credit:RewardsCard</span>    <span class="n">$-64.82</span>
+
+<span class="d">2026-10-15</span> <span class="s">*</span> Figma  <span class="t">; wmma_id:01JA9C, source:qfx, entity:studio, cat_by:jev, jev_conf:0.97</span>
+    <span class="a">Expenses:Software</span>                  <span class="n">$15.00</span>
+    <span class="a">Liabilities:Credit:RewardsCard</span>    <span class="n">$-15.00</span></code></pre>
+          <div class="code-foot"><code>$ hledger -f main.journal bal Expenses --tag entity=studio</code></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────────── Small things ───────────── -->
+    <section class="grid-section">
+      <div class="wrap">
+        <h2 class="center reveal">The rest, done carefully.</h2>
+        <div class="cards">
+          <article class="card reveal"><h3>Budgets with rollover</h3><p>Monthly budgets per entity. Leftovers and overspending carry into next month.</p></article>
+          <article class="card reveal"><h3>Assets that count</h3><p>Track a house, a car or a brokerage account, record what it’s worth, and watch net worth follow.</p></article>
+          <article class="card reveal"><h3>Transfers between entities</h3><p>An owner draw or a capital contribution books both sides correctly, every time.</p></article>
+          <article class="card reveal"><h3>A REST API</h3><p>Everything the app does is in <code>/api/v1</code> for scripts, shortcuts and dashboards.</p></article>
+          <article class="card reveal"><h3>Made for your phone</h3><p>Mobile first, with big touch targets. Add it to your home screen and it feels like an app.</p></article>
+          <article class="card reveal"><h3>Light and dark</h3><p>Warm paper by day, deep ink by night. Follows your system, or pick one.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────────── Self-host ───────────── -->
+    <section class="selfhost" id="self-host">
+      <div class="wrap row">
+        <div class="copy reveal">
+          <p class="kicker">Self-host</p>
+          <h2>One container, on your&nbsp;tailnet.</h2>
+          <ol class="steps">
+            <li><b>Configure.</b> Copy <code>.env.example</code> to <code>.env</code>, then add a Tailscale auth key and the logins allowed in.</li>
+            <li><b>Start.</b> Docker Compose runs WMMA next to a Tailscale sidecar. No ports are published.</li>
+            <li><b>Open.</b> Visit <code>https://wmma.&lt;your-tailnet&gt;.ts.net</code> on your phone or laptop.</li>
+          </ol>
+          <p class="muted">Full setup, imports and the CLI are in the <a href="https://github.com/spuder/WMMA#readme">README on GitHub</a>. Data lives in <code>./data</code>. Back it up like any other folder. Secrets can come from 1Password with <code>op run</code>.</p>
+        </div>
+        <div class="code reveal">
+          <div class="code-head"><span>Terminal</span><button type="button" data-copy="install">Copy</button></div>
+<pre id="install"><code>git clone https://github.com/spuder/WMMA.git
+cd WMMA
+cp .env.example .env    # TS_AUTHKEY, WMMA_ALLOWED_USERS
+docker compose up -d --build</code></pre>
+          <div class="code-foot"><span>Coming from YNAB?</span> <code>wmma import ynab-api --include-budgets</code></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────────── Closing ───────────── -->
+    <section class="closing">
+      <div class="wrap center">
+        <img class="reveal" src="img/logo.svg" alt="" width="64" height="64">
+        <h2 class="reveal">Your money. Your server.<br><em>Your books.</em></h2>
+        <div class="cta reveal">
+          <a class="btn" href="#self-host">Get started</a>
+          <a class="btn btn-ghost" href="https://github.com/spuder/WMMA"><svg class="gh" viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> Star on GitHub</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer-inner">
+      <p><b>WMMA</b>, Where My Money At. An independent open-source project under the MIT license. Not affiliated with YNAB, Monarch, Tailscale or hledger. Figures on this page are illustrative.</p>
+      <p class="links"><a href="https://github.com/spuder/WMMA">GitHub</a><a href="https://github.com/spuder/WMMA#readme">Docs</a><a href="https://github.com/spuder/WMMA/blob/main/SPEC.md">Spec</a><a href="https://github.com/spuder/WMMA/issues">Issues</a><a href="https://github.com/spuder/WMMA/blob/main/LICENSE">License</a></p>
+    </div>
+  </footer>
+
+  <script src="script.js" defer></script>
+</body>
+</html>
