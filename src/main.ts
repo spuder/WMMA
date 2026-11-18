@@ -4,7 +4,10 @@ import { ConfigError, loadConfig } from "./config";
 import { openDb } from "./db";
 import { HledgerWeb } from "./hledger/web";
 import { JournalStore } from "./journal/store";
+import { schedule } from "./scheduler";
 import { createFetchHandler } from "./server";
+import { syncSimplefin } from "./services/bank-imports";
+import type { ServiceContext } from "./services/context";
 
 async function healthcheck(): Promise<never> {
   const port = process.env.WMMA_PORT || "3000";
@@ -37,17 +40,28 @@ async function serve(): Promise<void> {
   const version = await hledger.start();
   console.log(`hledger-web ${version} on 127.0.0.1:${config.hledgerWebPort}`);
 
+  const ctx: ServiceContext = { config, db, store, audit, hledger: hledger.client };
   const server = Bun.serve({
     hostname: config.host,
     port: config.port,
     maxRequestBodySize: 64 * 1024 * 1024,
     idleTimeout: 255, // long YNAB imports
-    fetch: createFetchHandler({ config, db, store, audit, hledger: hledger.client }),
+    fetch: createFetchHandler(ctx),
   });
+
+  let stopCron = () => {};
+  if (config.simplefinAccessUrl) {
+    stopCron = schedule(config.simplefinSyncCron, config.tz, async () => {
+      const r = await syncSimplefin(ctx, "system:scheduler");
+      console.log(`SimpleFIN sync: +${r.added} new, ${r.merged} merged, ${r.skippedDuplicates} duplicates, ${r.needsReview} to review`);
+    });
+    console.log(`SimpleFIN sync scheduled: "${config.simplefinSyncCron}" (${config.tz})`);
+  }
   console.log(`WMMA listening on http://${server.hostname}:${server.port} (data: ${config.dataDir})`);
 
   const shutdown = async (sig: string) => {
     console.log(`${sig} received, shutting down`);
+    stopCron();
     await server.stop();
     await hledger.stop();
     db.close();

@@ -60,6 +60,36 @@ const MIGRATIONS: string[] = [
     value TEXT NOT NULL
   );
   `,
+  `
+  -- Incoming records that matched more than one existing entry (SPEC §13.2).
+  CREATE TABLE duplicate_candidates (
+    id           TEXT PRIMARY KEY,
+    run_id       TEXT NOT NULL,
+    source       TEXT NOT NULL,
+    source_id    TEXT NOT NULL,
+    account_slug TEXT NOT NULL REFERENCES accounts(slug),
+    record       TEXT NOT NULL,
+    candidates   TEXT NOT NULL,
+    status       TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'imported', 'merged', 'discarded')),
+    created_at   TEXT NOT NULL,
+    resolved_at  TEXT,
+    UNIQUE (source, source_id)
+  );
+  -- Column mappings for generic bank CSVs.
+  CREATE TABLE csv_profiles (
+    name    TEXT PRIMARY KEY,
+    config  TEXT NOT NULL,
+    updated TEXT NOT NULL
+  );
+  -- Balances reported by a source (SimpleFIN, OFX LEDGERBAL), for checks and net worth.
+  CREATE TABLE balance_snapshots (
+    account_slug  TEXT NOT NULL REFERENCES accounts(slug),
+    as_of         TEXT NOT NULL,
+    source        TEXT NOT NULL,
+    balance_cents INTEGER NOT NULL,
+    PRIMARY KEY (account_slug, as_of, source)
+  );
+  `,
 ];
 
 export function openDb(path: string): Database {

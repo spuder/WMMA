@@ -51,6 +51,7 @@ export interface HledgerTransaction {
   tdescription: string;
   ttags: Array<[string, string]>;
   tpostings: HledgerPosting[];
+  tsourcepos: Array<{ sourceName: string; sourceLine: number }>;
 }
 
 export class HledgerWeb {

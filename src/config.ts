@@ -1,3 +1,5 @@
+import { parseCron } from "./scheduler";
+
 export interface Config {
   dataDir: string;
   host: string;
@@ -6,6 +8,8 @@ export interface Config {
   tz: string;
   hledgerWebBin: string;
   hledgerWebPort: number;
+  simplefinAccessUrl: string | null;
+  simplefinSyncCron: string;
 }
 
 export class ConfigError extends Error {
@@ -17,6 +21,15 @@ function port(name: string, raw: string | undefined, dflt: number): number {
   const n = Number(raw);
   if (!Number.isInteger(n) || n < 1 || n > 65535) throw new ConfigError(`${name} must be a TCP port, got ${JSON.stringify(raw)}`);
   return n;
+}
+
+function cron(name: string, expr: string): string {
+  try {
+    parseCron(expr);
+  } catch (e) {
+    throw new ConfigError(`${name}: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  return expr;
 }
 
 export function parseAllowedUsers(raw: string | undefined): Set<string> {
@@ -42,5 +55,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     tz: env.WMMA_TZ || "UTC",
     hledgerWebBin: env.HLEDGER_WEB_BIN || "hledger-web",
     hledgerWebPort: port("HLEDGER_WEB_PORT", env.HLEDGER_WEB_PORT, 5000),
+    simplefinAccessUrl: env.SIMPLEFIN_ACCESS_URL || null,
+    simplefinSyncCron: cron("SIMPLEFIN_SYNC_CRON", env.SIMPLEFIN_SYNC_CRON || "0 6 * * *"),
   };
 }

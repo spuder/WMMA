@@ -88,13 +88,13 @@ const YNAB_PREFIX: Record<string, string> = { savings: "Assets:Savings", cash: "
 
 /** One import at a time per process. */
 let importQueue: Promise<unknown> = Promise.resolve();
-function serial<T>(fn: () => Promise<T>): Promise<T> {
+export function serial<T>(fn: () => Promise<T>): Promise<T> {
   const run = importQueue.then(fn, fn);
   importQueue = run.catch(() => {});
   return run;
 }
 
-async function storeRaw(ctx: ServiceContext, sub: string, name: string, content: string): Promise<string> {
+export async function storeRaw(ctx: ServiceContext, sub: string, name: string, content: string): Promise<string> {
   const dir = join(ctx.store.paths.imports, sub);
   await mkdir(dir, { recursive: true });
   const sha = createHash("sha256").update(content).digest("hex").slice(0, 16);

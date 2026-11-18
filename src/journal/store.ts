@@ -4,8 +4,8 @@
  * hledger-web never sees a half-written journal.
  */
 import { mkdir, open, readdir, readFile, rename, rm, stat } from "node:fs/promises";
-import { join } from "node:path";
-import { formatAccountDirective, formatTransaction, type AccountType, type Tags, type Transaction } from "./format";
+import { join, resolve, sep } from "node:path";
+import { formatAccountDirective, formatTags, formatTransaction, parseTagComment, validateDate, validateTags, type AccountType, type Tags, type Transaction } from "./format";
 
 export const IMPORT_SOURCES = ["ynab", "qfx", "csv", "simplefin", "reihub"] as const;
 
@@ -144,6 +144,28 @@ export class JournalStore {
       const base = isNew ? HEADER : existing.endsWith("\n") ? existing : existing + "\n";
       if (txns.length > 0 || isNew) await atomicWrite(path, `${base}\n${text}`);
       if (isNew) await this.#writeMain();
+    });
+  }
+
+  /**
+   * Rewrite the header of the transaction tagged wmma_id:<id> in `file`:
+   * optionally change its date and set/replace tags. Postings are untouched.
+   */
+  async updateTransactionHeader(file: string, wmmaId: string, update: { date?: string; setTags?: Tags }): Promise<void> {
+    const path = resolve(file);
+    if (!path.startsWith(resolve(this.paths.journals) + sep)) throw new Error(`refusing to edit a file outside the journals folder: ${file}`);
+    if (update.date) validateDate(update.date);
+    return this.#serial(async () => {
+      const lines = (await readFile(path, "utf8")).split("\n");
+      const idx = lines.findIndex((l) => /^\d{4}-\d{2}-\d{2} /.test(l) && new RegExp(`[;,] ?wmma_id:${wmmaId.replace(/[^A-Za-z0-9_-]/g, "")}(,|$)`).test(l));
+      if (idx < 0) throw new Error(`transaction ${wmmaId} not found in ${file}`);
+      const line = lines[idx]!;
+      const semi = line.indexOf("  ; ");
+      const head = semi < 0 ? line : line.slice(0, semi);
+      const tags = { ...parseTagComment(semi < 0 ? "" : line.slice(semi + 4)), ...(update.setTags ?? {}) };
+      validateTags(tags);
+      lines[idx] = `${update.date ?? head.slice(0, 10)}${head.slice(10)}  ; ${formatTags(tags)}`;
+      await atomicWrite(path, lines.join("\n"));
     });
   }
 

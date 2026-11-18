@@ -11,12 +11,20 @@ const USAGE = `usage:
   wmma healthcheck
   wmma import ynab-api  [--plan ID] [options]
   wmma import ynab-csv  <register.csv> [--date-format MM/DD/YYYY|DD/MM/YYYY|YYYY-MM-DD] [options]
+  wmma import qfx       <file.qfx> [--account SLUG] [options]
+  wmma import csv       <file.csv> --profile NAME --account SLUG
+  wmma sync simplefin   [--start-date YYYY-MM-DD] [options]
+  wmma csv-profile set  <name> <profile.json>
+  wmma csv-profiles
+  wmma duplicates
+  wmma duplicate <id> import|discard|merge [--wmma-id ID]
   wmma import-runs
   wmma accounts
 
 options:
   --default-entity SLUG          entity for new accounts (default: personal)
-  --account "NAME=KIND[:ENTITY]" first-import assignment, repeatable
+  --account "NAME=KIND[:ENTITY]" first-import assignment, repeatable (ynab-*)
+  --account SLUG                 existing WMMA account (qfx, csv)
                                  KIND: bank credit investment vehicle real_estate other_asset loan
   --user LOGIN                   act as this Tailscale user (default: first of WMMA_ALLOWED_USERS)
 `;
@@ -44,6 +52,9 @@ export async function runCli(cmd: string, argv: string[]): Promise<number> {
         "default-entity": { type: "string" },
         account: { type: "string", multiple: true },
         user: { type: "string" },
+        profile: { type: "string" },
+        "start-date": { type: "string" },
+        "wmma-id": { type: "string" },
         help: { type: "boolean", short: "h" },
       },
     });
@@ -59,21 +70,37 @@ export async function runCli(cmd: string, argv: string[]): Promise<number> {
       ...(values["default-entity"] ? { defaultEntity: values["default-entity"] } : {}),
       ...(values.plan ? { planId: values.plan } : {}),
       ...(values["date-format"] ? { dateFormat: values["date-format"] } : {}),
-      ...(values.account ? { accounts: accountsOption(values.account) } : {}),
+      ...(values.profile ? { profile: values.profile } : {}),
+      ...(values["start-date"] ? { startDate: values["start-date"] } : {}),
     };
+    const single = values.account?.length === 1 && !values.account[0]!.includes("=") ? values.account[0] : undefined;
+    const withAccounts = single
+      ? { ...options, account: single }
+      : { ...options, ...(values.account ? { accounts: accountsOption(values.account) } : {}) };
 
     let res: Response;
     const sub = cmd === "import" ? positionals.shift() : undefined;
     if (cmd === "import" && sub === "ynab-api") {
-      res = await fetch(`${base}/imports/ynab-api`, { method: "POST", headers, body: JSON.stringify(options) });
-    } else if (cmd === "import" && sub === "ynab-csv") {
+      res = await fetch(`${base}/imports/ynab-api`, { method: "POST", headers, body: JSON.stringify(withAccounts) });
+    } else if (cmd === "import" && (sub === "ynab-csv" || sub === "qfx" || sub === "csv")) {
       const path = positionals.shift();
-      if (!path) throw new Error("missing CSV path");
+      if (!path) throw new Error("missing file path");
       const form = new FormData();
-      form.set("type", "ynab-csv");
+      form.set("type", sub);
       form.set("file", Bun.file(path), path.split("/").pop());
-      form.set("options", JSON.stringify(options));
+      form.set("options", JSON.stringify(withAccounts));
       res = await fetch(`${base}/imports`, { method: "POST", headers, body: form });
+    } else if (cmd === "sync" && positionals[0] === "simplefin") {
+      res = await fetch(`${base}/sync/simplefin`, { method: "POST", headers, body: JSON.stringify(withAccounts) });
+    } else if (cmd === "csv-profile" && positionals[0] === "set" && positionals[1] && positionals[2]) {
+      res = await fetch(`${base}/csv-profiles/${encodeURIComponent(positionals[1])}`, { method: "PUT", headers, body: await Bun.file(positionals[2]).text() });
+    } else if (cmd === "csv-profiles") {
+      res = await fetch(`${base}/csv-profiles`, { headers });
+    } else if (cmd === "duplicates") {
+      res = await fetch(`${base}/duplicates`, { headers });
+    } else if (cmd === "duplicate" && positionals[0] && positionals[1]) {
+      const body = { action: positionals[1], ...(values["wmma-id"] ? { wmmaId: values["wmma-id"] } : {}) };
+      res = await fetch(`${base}/duplicates/${encodeURIComponent(positionals[0])}`, { method: "POST", headers, body: JSON.stringify(body) });
     } else if (cmd === "import-runs") {
       res = await fetch(`${base}/import-runs`, { headers });
     } else if (cmd === "accounts") {

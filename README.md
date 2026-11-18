@@ -10,6 +10,7 @@ See [SPEC.md](SPEC.md) for the full design and milestones.
 
 - **M1 skeleton:** Bun/TypeScript service, `Money` module, journal writer, Tailscale identity auth, hledger-web (read-only, localhost), Docker image and Compose file.
 - **M2 YNAB import:** API and register-CSV importers. Re-running adds nothing; the result reports per-account balances against YNAB.
+- **M3 bank imports:** QFX/OFX, generic CSV (per-bank column profiles), SimpleFIN (daily + on demand). Overlapping imports from different sources merge instead of duplicating.
 
 ## Importing from YNAB
 
@@ -31,7 +32,29 @@ docker compose exec wmma wmma accounts
 
 `--account "NAME=KIND[:ENTITY]"` sets the kind and default entity for an account the first time it is seen (CSV exports don't say whether an account is a credit card, so set those). Every import is safe to re-run.
 
-REST: `POST /api/v1/imports/ynab-api` (JSON options), `POST /api/v1/imports` (multipart: `type=ynab-csv`, `file`, `options`), `GET /api/v1/import-runs`, `GET /api/v1/accounts`.
+## Bank imports
+
+```sh
+# QFX/OFX (bank or credit card). First time: --account SLUG links to an existing account,
+# otherwise one is created from the statement.
+wmma import qfx /data/chase-march.qfx
+
+# Generic CSV: define a column profile once per bank, then import into an account.
+echo '{"columns":{"date":"Date","payee":"Description","amount":"Amount"}}' > /data/chase.json
+wmma csv-profile set chase /data/chase.json
+wmma import csv /data/chase-march.csv --profile chase --account main-checking
+
+# SimpleFIN (needs SIMPLEFIN_ACCESS_URL). Also runs on SIMPLEFIN_SYNC_CRON.
+wmma sync simplefin
+
+# Records that could match more than one existing transaction
+wmma duplicates
+wmma duplicate <id> merge --wmma-id <ID>   # or: import | discard
+```
+
+Profile fields: `columns.{date,payee,memo,amount | debit+credit,id}`, `dateFormat`, `invertAmount`, `delimiter`, `skipRows`.
+
+REST: `POST /api/v1/imports/ynab-api` (JSON options), `POST /api/v1/imports` (multipart: `type=ynab-csv`, `file`, `options`), `GET /api/v1/import-runs`, `GET /api/v1/accounts`, `POST /api/v1/sync/simplefin`, `GET|PUT /api/v1/csv-profiles[/:name]`, `GET /api/v1/duplicates`, `POST /api/v1/duplicates/:id`.
 
 ## Run with Docker Compose
 
@@ -50,7 +73,9 @@ Then open `https://wmma.<your-tailnet>.ts.net`. Only Tailscale users in `WMMA_AL
 | `WMMA_ALLOWED_USERS` | comma-separated Tailscale login names (required) |
 | `WMMA_TZ` | timezone, default `UTC` |
 | `WMMA_DATA_DIR` | default `/data` |
-| `JEV_API_KEY`, `SIMPLEFIN_ACCESS_URL`, `SIMPLEFIN_SYNC_CRON`, `YNAB_TOKEN` | used by later milestones |
+| `YNAB_TOKEN` | YNAB personal access token (for `import ynab-api`) |
+| `SIMPLEFIN_ACCESS_URL`, `SIMPLEFIN_SYNC_CRON` | SimpleFIN access URL; sync schedule (default `0 6 * * *`) |
+| `JEV_API_KEY` | used from M4 |
 
 ## Development
 

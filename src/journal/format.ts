@@ -78,7 +78,7 @@ function validateFreeText(what: string, s: string, allowEmpty: boolean): void {
   if (s !== s.trim() || /[\r\n\t;|]/.test(s)) fail(`invalid ${what} ${JSON.stringify(s)}`);
 }
 
-function validateTags(tags: Tags): void {
+export function validateTags(tags: Tags): void {
   for (const [k, v] of Object.entries(tags)) {
     if (!TAG_NAME_RE.test(k)) fail(`invalid tag name ${JSON.stringify(k)}`);
     if (v !== v.trim() || /[\r\n,]/.test(v)) fail(`invalid value for tag ${k}: ${JSON.stringify(v)}`);
@@ -108,6 +108,17 @@ function orderedTagEntries(tags: Tags): Array<[string, string]> {
     .filter((k) => !known.has(k))
     .sort();
   for (const k of rest) out.push([k, tags[k]!]);
+  return out;
+}
+
+/** Parse a tag comment as WMMA writes it ("k:v, k2:v2"). */
+export function parseTagComment(s: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const part of s.split(",")) {
+    const i = part.indexOf(":");
+    if (i < 1) continue;
+    out[part.slice(0, i).trim()] = part.slice(i + 1).trim();
+  }
   return out;
 }
 
