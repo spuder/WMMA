@@ -16,6 +16,7 @@ import {
   type BankAccountAssignment,
 } from "./services/bank-imports";
 import { SimplefinError } from "./importers/simplefin";
+import { categorize, createRule, listReview, listRules, resolveReview } from "./services/categorize";
 
 type Handler = (req: Request, identity: Identity, ctx: ServiceContext, params: Record<string, string>) => Response | Promise<Response>;
 
@@ -175,6 +176,30 @@ const routes: Record<string, Handler> = {
     bad('action must be "import", "merge" or "discard"');
   },
 };
+
+Object.assign(routes, {
+  "GET /api/v1/review": (req, _id, ctx) => {
+    const status = new URL(req.url).searchParams.get("status") ?? "pending";
+    if (!["pending", "accepted", "changed"].includes(status)) bad("invalid status");
+    return Response.json({ items: listReview(ctx, status) });
+  },
+  "POST /api/v1/review/:id": async (req, identity, ctx, params) => {
+    const body = (await jsonBody(req)) as { account?: unknown } | undefined;
+    if (typeof body?.account !== "string") bad("account is required");
+    return Response.json(await resolveReview(ctx, identity.login, params["id"]!, body.account));
+  },
+  "GET /api/v1/rules": (_req, _id, ctx) => Response.json({ rules: listRules(ctx) }),
+  "POST /api/v1/rules": async (req, identity, ctx) => {
+    const body = (await jsonBody(req)) as { match?: unknown; target?: unknown; entityOverride?: unknown } | undefined;
+    if (typeof body?.target !== "string") bad("target is required");
+    if (body.entityOverride !== undefined && body.entityOverride !== null && typeof body.entityOverride !== "string") bad("entityOverride must be a string");
+    return Response.json(
+      await createRule(ctx, identity.login, { match: body.match, target: body.target, entityOverride: (body.entityOverride as string | null | undefined) ?? null }),
+      { status: 201 },
+    );
+  },
+  "POST /api/v1/categorize": async (_req, identity, ctx) => Response.json(await categorize(ctx, identity.login)),
+} satisfies Record<string, Handler>);
 
 const compiled = Object.entries(routes).map(([key, handler]) => {
   const [method, path] = key.split(" ") as [string, string];

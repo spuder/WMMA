@@ -3,6 +3,7 @@ import { runCli } from "./cli";
 import { ConfigError, loadConfig } from "./config";
 import { openDb } from "./db";
 import { HledgerWeb } from "./hledger/web";
+import { JevClient } from "./jev";
 import { JournalStore } from "./journal/store";
 import { schedule } from "./scheduler";
 import { createFetchHandler } from "./server";
@@ -40,7 +41,9 @@ async function serve(): Promise<void> {
   const version = await hledger.start();
   console.log(`hledger-web ${version} on 127.0.0.1:${config.hledgerWebPort}`);
 
-  const ctx: ServiceContext = { config, db, store, audit, hledger: hledger.client };
+  const jev = config.jev.apiKey ? new JevClient({ apiKey: config.jev.apiKey, baseUrl: config.jev.baseUrl, model: config.jev.model }) : null;
+  if (!jev) console.log("JEV_API_KEY not set: uncategorised transactions go straight to the review queue");
+  const ctx: ServiceContext = { config, db, store, audit, hledger: hledger.client, jev };
   const server = Bun.serve({
     hostname: config.host,
     port: config.port,

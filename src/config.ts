@@ -10,6 +10,7 @@ export interface Config {
   hledgerWebPort: number;
   simplefinAccessUrl: string | null;
   simplefinSyncCron: string;
+  jev: { apiKey: string | null; baseUrl: string; model: string };
 }
 
 export class ConfigError extends Error {
@@ -57,5 +58,10 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     hledgerWebPort: port("HLEDGER_WEB_PORT", env.HLEDGER_WEB_PORT, 5000),
     simplefinAccessUrl: env.SIMPLEFIN_ACCESS_URL || null,
     simplefinSyncCron: cron("SIMPLEFIN_SYNC_CRON", env.SIMPLEFIN_SYNC_CRON || "0 6 * * *"),
+    jev: {
+      apiKey: env.JEV_API_KEY || null,
+      baseUrl: env.JEV_BASE_URL || "https://api.typesafe.ai",
+      model: env.JEV_MODEL || "jev-latest",
+    },
   };
 }

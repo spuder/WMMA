@@ -90,6 +90,40 @@ const MIGRATIONS: string[] = [
     PRIMARY KEY (account_slug, as_of, source)
   );
   `,
+  `
+  CREATE TABLE rules (
+    id              TEXT PRIMARY KEY,
+    -- JSON: {payeeKey?, payeeContains?, amountMin?, amountMax?, account?} (amounts in signed cents)
+    match           TEXT NOT NULL,
+    target_account  TEXT NOT NULL,
+    entity_override TEXT REFERENCES entities(slug),
+    created_from    TEXT NOT NULL CHECK (created_from IN ('swipe', 'manual')),
+    hit_count       INTEGER NOT NULL DEFAULT 0,
+    created_at      TEXT NOT NULL
+  );
+  CREATE TABLE swipe_counts (
+    payee_key      TEXT NOT NULL,
+    target_account TEXT NOT NULL,
+    accepted_count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (payee_key, target_account)
+  );
+  CREATE TABLE review_queue (
+    wmma_id      TEXT PRIMARY KEY,
+    -- JSON: top choices [{account, probability}] (empty if Jev was unavailable)
+    jev_choices  TEXT NOT NULL,
+    status       TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'changed')),
+    date         TEXT NOT NULL,
+    payee        TEXT NOT NULL,
+    amount_cents INTEGER NOT NULL,
+    account      TEXT NOT NULL,
+    entity       TEXT,
+    reason       TEXT,
+    chosen       TEXT,
+    created_at   TEXT NOT NULL,
+    resolved_at  TEXT
+  );
+  CREATE INDEX review_queue_status ON review_queue(status, date);
+  `,
 ];
 
 export function openDb(path: string): Database {

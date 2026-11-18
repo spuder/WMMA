@@ -5,7 +5,7 @@
  */
 import { mkdir, open, readdir, readFile, rename, rm, stat } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
-import { formatAccountDirective, formatTags, formatTransaction, parseTagComment, validateDate, validateTags, type AccountType, type Tags, type Transaction } from "./format";
+import { formatAccountDirective, formatTags, formatTransaction, parseTagComment, validateAccount, validateDate, validateTags, type AccountType, type Tags, type Transaction } from "./format";
 
 export const IMPORT_SOURCES = ["ynab", "qfx", "csv", "simplefin", "reihub"] as const;
 
@@ -152,6 +152,18 @@ export class JournalStore {
    * optionally change its date and set/replace tags. Postings are untouched.
    */
   async updateTransactionHeader(file: string, wmmaId: string, update: { date?: string; setTags?: Tags }): Promise<void> {
+    return this.updateTransaction(file, wmmaId, update);
+  }
+
+  /**
+   * Edit the transaction tagged wmma_id:<id> in `file`: header date/tags, and
+   * optionally move one posting from account `from` to `to`.
+   */
+  async updateTransaction(
+    file: string,
+    wmmaId: string,
+    update: { date?: string; setTags?: Tags; replaceAccount?: { from: string; to: string } },
+  ): Promise<void> {
     const path = resolve(file);
     if (!path.startsWith(resolve(this.paths.journals) + sep)) throw new Error(`refusing to edit a file outside the journals folder: ${file}`);
     if (update.date) validateDate(update.date);
@@ -165,6 +177,19 @@ export class JournalStore {
       const tags = { ...parseTagComment(semi < 0 ? "" : line.slice(semi + 4)), ...(update.setTags ?? {}) };
       validateTags(tags);
       lines[idx] = `${update.date ?? head.slice(0, 10)}${head.slice(10)}  ; ${formatTags(tags)}`;
+      if (update.replaceAccount) {
+        const { from, to } = update.replaceAccount;
+        validateAccount(to);
+        let replaced = 0;
+        for (let i = idx + 1; i < lines.length && lines[i]!.startsWith("    "); i++) {
+          const m = /^ {4}(\S(?:.*?\S)?)( {2,}.*)$/.exec(lines[i]!);
+          if (m && m[1] === from && replaced === 0) {
+            lines[i] = `    ${to}${m[2]}`;
+            replaced++;
+          }
+        }
+        if (replaced === 0) throw new Error(`transaction ${wmmaId} has no posting to ${from}`);
+      }
       await atomicWrite(path, lines.join("\n"));
     });
   }

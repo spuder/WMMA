@@ -24,7 +24,8 @@ import {
 } from "./accounts";
 import { ServiceError, type ServiceContext } from "./context";
 import { allRefs, applyMatch, parseAltIds, planMatches, refKey, type ExistingEntry, type IncomingRecord } from "./dedup";
-import { serial, storeRaw } from "./imports";
+import { runCategorization, serial, storeRaw } from "./imports";
+import type { CategorizeSummary } from "./categorize";
 
 export type BankSource = "qfx" | "csv" | "simplefin";
 
@@ -53,6 +54,7 @@ export interface BankImportResult {
   createdAccounts: Array<{ slug: string; name: string; hledgerAccount: string; kind: AccountKind; entity: string; kindGuessed: boolean }>;
   balances: Array<{ account: string; asOf: string; source: string; wmma: string; match: boolean }>;
   errors: string[];
+  categorization: CategorizeSummary | { error: string };
 }
 
 interface ResolvedBank {
@@ -243,6 +245,7 @@ async function ingest(
       createdAccounts,
       balances,
       errors,
+      categorization: await runCategorization(ctx, actor, fresh.map((f) => String(f.txn.tags["wmma_id"]))),
     };
   } catch (e) {
     errors.push(e instanceof Error ? e.message : String(e));

@@ -25,6 +25,7 @@ import {
   type AccountRow,
 } from "./accounts";
 import { ServiceError, type ServiceContext } from "./context";
+import { categorize, type CategorizeSummary } from "./categorize";
 
 export interface AccountAssignment {
   entity?: string;
@@ -57,6 +58,7 @@ export interface ImportResult {
   createdEntities: string[];
   newMappings: number;
   balances: BalanceCheck[];
+  categorization: CategorizeSummary | { error: string };
 }
 
 export function ynabKind(t: YnabAccountType | null): AccountKind | null {
@@ -80,6 +82,16 @@ export function ynabKind(t: YnabAccountType | null): AccountKind | null {
       return "loan";
     default:
       return null;
+  }
+}
+
+/** Categorise newly added entries; never fails the import. */
+export async function runCategorization(ctx: ServiceContext, actor: string, wmmaIds: string[]): Promise<CategorizeSummary | { error: string }> {
+  if (wmmaIds.length === 0) return { considered: 0, byRule: 0, byJev: 0, queued: 0, jevCalls: 0, errors: [] };
+  try {
+    return await categorize(ctx, actor, { wmmaIds: new Set(wmmaIds) });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
   }
 }
 
@@ -232,6 +244,7 @@ async function importDataset(
       createdEntities,
       newMappings: conv.newMappings.size,
       balances,
+      categorization: await runCategorization(ctx, actor, fresh.map((c) => String(c.txn.tags["wmma_id"]))),
     };
     await ctx.audit.append({
       actor,

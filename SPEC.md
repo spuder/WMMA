@@ -238,7 +238,7 @@ Raised during spec review. Resolve before the milestone noted.
 3. **Budget rollover (before M5).** hledger's budget report does not roll unspent amounts forward. Rollover must be computed by WMMA from periodic transactions + actuals.
 4. **Jev key storage (before M6).** `settings` is non-secret only, yet the Jev key may be set in the UI. Decide where it lives (e.g. a separate `secrets` table encrypted with a key from env, or a `0600` file under `/data`).
 5. **hledger-web write capability (M1) — resolved.** hledger-web has its own add-transaction form. WMMA runs it with `--allow=view` (the flag in hledger 1.52; older docs call it `--capabilities`) to enforce "journals are written only by WMMA".
-6. **Jev API reference (before M4).** Link Jev's API docs and confirm the request/response shape and whether 0.90 is a sensible confidence threshold for its scores.
+6. **Jev API reference (M4) — partly resolved.** No official TypeSafe docs were found on Context7; two independent third-party clients (`jevrb`, `jevper`) agree on the API: `POST https://api.typesafe.ai/v1/systemone`, `Authorization: Bearer <key>`, body `{state, model, questions: {id: {type: "choice", instructions, criteria: {option: description}}}}` (≤ 255 options), response `answers.<id> = {choice, probabilities, confidence}`. WMMA applies a category when `confidence` ≥ 0.90. Confirm against TypeSafe's official docs when available; the base URL and model are configurable (`JEV_BASE_URL`, `JEV_MODEL`).
 
 ### Implementation notes (decisions taken while building; revisit if wrong)
 

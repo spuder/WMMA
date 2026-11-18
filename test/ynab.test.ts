@@ -241,8 +241,11 @@ describe.skipIf(!hledgerWebBin)("YNAB API import (end to end)", () => {
       ["ynab-api", 0],
       ["ynab-api", 14],
     ]);
-    const audit = (await readFile(env.ctx.store.paths.audit, "utf8")).trim().split("\n").map((l) => JSON.parse(l));
+    const all = (await readFile(env.ctx.store.paths.audit, "utf8")).trim().split("\n").map((l) => JSON.parse(l));
+    const audit = all.filter((a) => a.operation === "import.ynab-api");
     expect(audit.length).toBe(2);
+    // No Jev key in this test: uncategorised entries were queued for review, and that was audited.
+    expect(all.some((a) => a.operation === "categorize")).toBe(true);
     expect(audit[0]).toMatchObject({ actor: "alice@example.com", operation: "import.ynab-api" });
     expect(audit[0].after.added.length).toBe(14);
     expect(JSON.stringify(audit)).not.toContain('"t"'); // token never logged
