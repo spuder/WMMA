@@ -39,6 +39,15 @@ export async function getSettings(ctx: ServiceContext): Promise<SettingsView> {
   };
 }
 
+function checkedSettings(settings: unknown): Record<string, string | null> {
+  if (typeof settings !== "object" || settings === null) throw new ServiceError("settings must be an object");
+  for (const [k, v] of Object.entries(settings)) {
+    if (!WRITABLE.test(k)) throw new ServiceError(`setting ${JSON.stringify(k)} is not writable (allowed: ui.*)`);
+    if (v !== null && !(typeof v === "string" && v.length <= 4096)) throw new ServiceError(`setting ${k} must be a string (max 4096 chars) or null`);
+  }
+  return settings as Record<string, string | null>;
+}
+
 export function jevFromConfig(ctx: ServiceContext, key: string | null): JevClient | null {
   return key ? new JevClient({ apiKey: key, baseUrl: ctx.config.jev.baseUrl, model: ctx.config.jev.model }) : null;
 }
@@ -48,53 +57,41 @@ export async function putSettings(
   actor: string,
   input: { settings?: Record<string, unknown>; jevApiKey?: string | null; simplefinSetupToken?: string; simplefinDisconnect?: boolean },
 ): Promise<SettingsView> {
-  const before = await getSettings(ctx);
-  if (input.settings !== undefined) {
-    if (typeof input.settings !== "object" || input.settings === null) throw new ServiceError("settings must be an object");
-    const put = ctx.db.query("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
-    const del = ctx.db.query("DELETE FROM settings WHERE key = ?");
-    for (const [k, v] of Object.entries(input.settings)) {
-      if (!WRITABLE.test(k)) throw new ServiceError(`setting ${JSON.stringify(k)} is not writable (allowed: ui.*)`);
-      if (v === null) del.run(k);
-      else if (typeof v === "string" && v.length <= 4096) put.run(k, v);
-      else throw new ServiceError(`setting ${k} must be a string (max 4096 chars) or null`);
-    }
-  }
+  // Validate everything (including the network claim) before writing anything,
+  // so a rejected request never leaves a half-applied, unaudited change behind.
+  const settingsEntries = input.settings === undefined ? [] : Object.entries(checkedSettings(input.settings));
+  let jevKey: string | null | undefined;
   if (input.jevApiKey !== undefined) {
     if (ctx.config.jev.apiKey) throw new ServiceError("JEV_API_KEY is set in the environment, which takes precedence; change it there", 409);
     if (input.jevApiKey !== null && (typeof input.jevApiKey !== "string" || input.jevApiKey.trim().length < 8)) throw new ServiceError("jevApiKey looks too short");
     if (!ctx.secrets) throw new ServiceError("secret storage is not available", 422);
-    try {
-      await ctx.secrets.set("jev_api_key", input.jevApiKey === null ? null : input.jevApiKey.trim());
-    } catch (e) {
-      if (e instanceof SecretsError) throw new ServiceError(e.message, 422);
-      throw e;
-    }
-    ctx.jev = jevFromConfig(ctx, input.jevApiKey === null ? null : input.jevApiKey.trim());
+    jevKey = input.jevApiKey === null ? null : input.jevApiKey.trim();
   }
   if (input.simplefinSetupToken !== undefined && input.simplefinDisconnect) {
     throw new ServiceError("Connect or disconnect SimpleFIN in one request, not both");
   }
-  if (input.simplefinSetupToken !== undefined) {
-    if (!ctx.secrets?.enabled) throw new ServiceError("encrypted secret storage is not available", 422);
-    const accessUrl = await claimAccessUrl(input.simplefinSetupToken);
-    try {
-      await ctx.secrets.set("simplefin_access_url", accessUrl);
-    } catch (e) {
-      if (e instanceof SecretsError) throw new ServiceError(e.message, 422);
-      throw e;
-    }
-    ctx.db.query("DELETE FROM settings WHERE key = ?").run("simplefin.last_sync");
+  if ((input.simplefinSetupToken !== undefined || input.simplefinDisconnect) && !ctx.secrets?.enabled) {
+    throw new ServiceError("encrypted secret storage is not available", 422);
   }
-  if (input.simplefinDisconnect) {
-    if (!ctx.secrets?.enabled) throw new ServiceError("secret storage is not available", 422);
-    try {
-      await ctx.secrets.set("simplefin_access_url", null);
-    } catch (e) {
-      if (e instanceof SecretsError) throw new ServiceError(e.message, 422);
-      throw e;
-    }
-    ctx.db.query("DELETE FROM settings WHERE key = ?").run("simplefin.last_sync");
+  const simplefinUrl =
+    input.simplefinSetupToken !== undefined ? await claimAccessUrl(input.simplefinSetupToken) : input.simplefinDisconnect ? null : undefined;
+
+  const before = await getSettings(ctx);
+  try {
+    if (jevKey !== undefined) await ctx.secrets!.set("jev_api_key", jevKey);
+    if (simplefinUrl !== undefined) await ctx.secrets!.set("simplefin_access_url", simplefinUrl);
+  } catch (e) {
+    if (e instanceof SecretsError) throw new ServiceError(e.message, 422);
+    throw e;
+  }
+  if (jevKey !== undefined) ctx.jev = jevFromConfig(ctx, jevKey);
+  if (simplefinUrl !== undefined) ctx.db.query("DELETE FROM settings WHERE key = ?").run("simplefin.last_sync");
+  if (settingsEntries.length) {
+    const put = ctx.db.query("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
+    const del = ctx.db.query("DELETE FROM settings WHERE key = ?");
+    ctx.db.transaction(() => {
+      for (const [k, v] of settingsEntries) v === null ? del.run(k) : put.run(k, v);
+    })();
   }
   const after = await getSettings(ctx);
   // The key itself is never logged.

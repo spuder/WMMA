@@ -13,7 +13,10 @@ import { JournalStore } from "../src/journal/store";
 import { cents, toCents } from "../src/money";
 import { cronMatches, parseCron } from "../src/scheduler";
 import { createFetchHandler } from "../src/server";
-import { existingEntries, importBankCsv, importQfx, putCsvProfile, syncSimplefin } from "../src/services/bank-imports";
+import { SecretStore } from "../src/secrets";
+import { existingEntries, importBankCsv, importQfx, putCsvProfile, saveSimplefinAccountMappings, syncSimplefin } from "../src/services/bank-imports";
+import { createAccount, ensureEntity, getAccount } from "../src/services/accounts";
+import { updateAccount } from "../src/services/entities";
 import type { ServiceContext } from "../src/services/context";
 import { allRefs, planMatches, type ExistingEntry, type IncomingRecord } from "../src/services/dedup";
 import { freePort, hledgerBin, hledgerWebBin } from "./helpers";
@@ -266,7 +269,9 @@ describe.skipIf(!hledgerWebBin)("overlapping imports from different sources (M3 
   const sfFetch = (async () => Response.json(sf)) as unknown as typeof fetch;
 
   beforeAll(async () => {
-    env = await makeCtx({ SIMPLEFIN_ACCESS_URL: "https://u:p@bridge.example.com/simplefin" });
+    env = await makeCtx();
+    env.ctx.secrets = new SecretStore(join(env.dir, "secrets.enc"), "test passphrase 0123456789");
+    await env.ctx.secrets.set("simplefin_access_url", "https://u:p@bridge.example.com/simplefin");
     await putCsvProfile(env.ctx, me, "testbank", { columns: { date: "Date", payee: "Description", amount: "Amount" } });
   });
   afterAll(async () => {
@@ -363,5 +368,26 @@ describe.skipIf(!hledgerWebBin)("overlapping imports from different sources (M3 
     const withErr = (async () => Response.json({ ...sf, errlist: [{ code: "con.auth", msg: "Reconnect your bank" }] })) as unknown as typeof fetch;
     const r = await syncSimplefin(env.ctx, me, { fetch: withErr });
     expect(r.errors).toEqual(["con.auth: Reconnect your bank"]);
+  });
+
+  test("per-sync overrides never replace saved mappings or a changed profile", async () => {
+    ensureEntity(env.ctx, "side-biz", "schedule_c");
+    const saved = { "sf-acct-1": { slug: "main-checking", entity: "personal" } };
+    env.ctx.db.query("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run("simplefin.account_mappings", JSON.stringify(saved));
+    await updateAccount(env.ctx, me, "main-checking", { defaultEntity: "side-biz" });
+    const [bank] = normaliseSimplefin(sf, "America/Denver");
+    // A name-keyed override used to drop every account (422) and overwrite the saved mappings.
+    const r = await syncSimplefin(env.ctx, me, { fetch: sfFetch, accounts: { [bank!.name]: { kind: "bank" } } });
+    expect(r.skippedDuplicates).toBe(7);
+    const after = env.ctx.db.query("SELECT value FROM settings WHERE key = ?").get("simplefin.account_mappings") as { value: string };
+    expect(JSON.parse(after.value)).toEqual(saved);
+    expect(getAccount(env.ctx, "main-checking")!.default_entity).toBe("side-biz");
+  });
+
+  test("one WMMA account cannot be mapped to two SimpleFIN accounts", async () => {
+    const spare = createAccount(env.ctx, { name: "Spare Checking", kind: "bank", entity: "personal" });
+    await expect(
+      saveSimplefinAccountMappings(env.ctx, me, { "sf-x": { slug: spare.slug, entity: "personal" }, "sf-y": { slug: spare.slug, entity: "personal" } }),
+    ).rejects.toThrow(/more than one SimpleFIN account/);
   });
 });

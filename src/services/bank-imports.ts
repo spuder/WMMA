@@ -14,7 +14,7 @@ import { parseBankCsv, validateProfile, CsvProfileError, type CsvProfile } from 
 import { OfxError, parseOfx } from "../importers/ofx";
 import { defaultReiHubAccount, parseReiHubCsv, type ReiHubColumns, type ReiHubRecord } from "../importers/reihub/csv";
 import type { DateFormat } from "../importers/ynab/csv";
-import { addEntity } from "./entities";
+import { addEntity, updateAccount } from "./entities";
 import { fetchAccounts, normaliseSimplefin, simplefinErrors } from "../importers/simplefin";
 import {
   balancesFrom,
@@ -102,13 +102,13 @@ function resolveBankAccounts(
   return ctx.db.transaction(() =>
     datas.map((data) => {
       const assign = opts.accounts?.[data.externalKey] ?? opts.accounts?.[data.name] ?? {};
-      let account = assign.slug
-        ? getAccount(ctx, assign.slug)
-        : findAccountBySource(ctx, sourceKey, data.externalKey) ??
-          (source === "simplefin" ? (ctx.db.query("SELECT * FROM accounts WHERE simplefin_id = ?").get(data.externalKey) as AccountRow | null) : null);
-      if (!account && assign.slug) {
-        account = getAccount(ctx, assign.slug);
-        if (!account) throw new ServiceError(`unknown account ${JSON.stringify(assign.slug)}`, 404);
+      const linked =
+        findAccountBySource(ctx, sourceKey, data.externalKey) ??
+        (source === "simplefin" ? (ctx.db.query("SELECT * FROM accounts WHERE simplefin_id = ?").get(data.externalKey) as AccountRow | null) : null);
+      let account = assign.slug ? getAccount(ctx, assign.slug) : linked;
+      if (!account && assign.slug) throw new ServiceError(`unknown account ${JSON.stringify(assign.slug)}`, 404);
+      if (account && source === "simplefin" && account.simplefin_id && account.simplefin_id !== data.externalKey) {
+        throw new ServiceError(`${account.name} is already linked to another SimpleFIN account`, 409);
       }
       if (!account) {
         const entity = assign.entity ?? opts.defaultEntity ?? "personal";
@@ -117,7 +117,10 @@ function resolveBankAccounts(
         account = createAccount(ctx, { name: assign.name ?? data.name, kind, entity });
         created.push({ slug: account.slug, name: account.name, hledgerAccount: account.hledger_account, kind, entity, kindGuessed: !assign.kind && !data.kindHint });
       }
-      if (assign.entity && account.default_entity !== assign.entity) {
+      // The profile assignment applies when an account is first linked to this source;
+      // later imports never override a profile changed since (e.g. via PATCH /accounts).
+      if (assign.entity && linked?.slug !== account.slug && account.default_entity !== assign.entity) {
+        ensureEntity(ctx, assign.entity);
         ctx.db.query("UPDATE accounts SET default_entity = ? WHERE slug = ?").run(assign.entity, account.slug);
         account = getAccount(ctx, account.slug)!;
       }
@@ -367,15 +370,10 @@ export function syncSimplefin(
     if (Number.isNaN(start.getTime())) throw new ServiceError("startDate must be YYYY-MM-DD");
     const syncedAt = nowIso();
     const set = await fetchAccounts(url, { startDate: start, ...(opts.fetch ? { fetch: opts.fetch } : {}) });
-    const savedMappings = ctx.db.query("SELECT value FROM settings WHERE key = ?").get("simplefin.account_mappings") as { value: string } | null;
-    const assignments = opts.accounts ?? (savedMappings ? JSON.parse(savedMappings.value) as BankImportOptions["accounts"] : undefined);
-    const datas = normaliseSimplefin(set, ctx.config.tz).filter((data) =>
-      assignments ? Boolean(assignments[data.externalKey]) && assignments[data.externalKey]?.skip !== true : true,
-    );
+    const all = normaliseSimplefin(set, ctx.config.tz);
+    const assignments = mergeSimplefinAssignments(all, savedSimplefinMappings(ctx), opts.accounts);
+    const datas = all.filter((data) => (assignments ? Boolean(assignments[data.externalKey]) && assignments[data.externalKey]?.skip !== true : true));
     if (datas.length === 0) throw new ServiceError("Select at least one SimpleFIN account to sync", 422);
-    if (opts.accounts) {
-      ctx.db.query("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run("simplefin.account_mappings", JSON.stringify(opts.accounts));
-    }
     const file = await storeRaw(ctx, "simplefin", `accounts-${syncedAt.replace(/[:.]/g, "")}.json`, JSON.stringify(set, null, 1));
     const result = await ingest(ctx, actor, {
       source: "simplefin",
@@ -388,6 +386,29 @@ export function syncSimplefin(
     ctx.db.query("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(SIMPLEFIN_LAST_SYNC, syncedAt);
     return result;
   });
+}
+
+function savedSimplefinMappings(ctx: ServiceContext): Record<string, BankAccountAssignment> | undefined {
+  const row = ctx.db.query("SELECT value FROM settings WHERE key = ?").get("simplefin.account_mappings") as { value: string } | null;
+  return row ? (JSON.parse(row.value) as Record<string, BankAccountAssignment>) : undefined;
+}
+
+/**
+ * Per-sync overrides (keyed by SimpleFIN id or account name) layered over the
+ * mappings saved by the setup wizard. Overrides apply to this sync only.
+ */
+function mergeSimplefinAssignments(
+  datas: BankAccountData[],
+  saved: Record<string, BankAccountAssignment> | undefined,
+  overrides: BankImportOptions["accounts"],
+): Record<string, BankAccountAssignment> | undefined {
+  if (!overrides) return saved;
+  const merged: Record<string, BankAccountAssignment> = { ...saved };
+  for (const data of datas) {
+    const o = overrides[data.externalKey] ?? overrides[data.name];
+    if (o) merged[data.externalKey] = { ...merged[data.externalKey], ...o };
+  }
+  return merged;
 }
 
 export async function previewSimplefinAccounts(ctx: ServiceContext): Promise<Array<{ id: string; name: string; kindHint: AccountKind | null; balance: string; asOf: string; linkedAccountSlug: string | null }>> {
@@ -404,6 +425,7 @@ export async function previewSimplefinAccounts(ctx: ServiceContext): Promise<Arr
 export async function saveSimplefinAccountMappings(ctx: ServiceContext, actor: string, mappings: Record<string, BankAccountAssignment>): Promise<void> {
   const entries = Object.entries(mappings);
   if (entries.length === 0 || entries.every(([, a]) => a.skip)) throw new ServiceError("Choose at least one SimpleFIN account to connect");
+  const targets = new Set<string>();
   for (const [id, assignment] of entries) {
     if (!id || id.length > 256) throw new ServiceError("invalid SimpleFIN account id");
     if (assignment.skip) continue;
@@ -413,10 +435,21 @@ export async function saveSimplefinAccountMappings(ctx: ServiceContext, actor: s
       const account = getAccount(ctx, assignment.slug);
       if (!account || account.status !== "open") throw new ServiceError(`WMMA account ${JSON.stringify(assignment.slug)} is unavailable`, 404);
       if (account.simplefin_id && account.simplefin_id !== id) throw new ServiceError(`${account.name} is already linked to another SimpleFIN account`);
+      if (targets.has(account.slug)) throw new ServiceError(`${account.name} is chosen for more than one SimpleFIN account`);
+      targets.add(account.slug);
     }
   }
   const before = ctx.db.query("SELECT value FROM settings WHERE key = ?").get("simplefin.account_mappings") as { value: string } | null;
   ctx.db.query("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run("simplefin.account_mappings", JSON.stringify(mappings));
+  // A profile chosen in the wizard for an already-linked account is an explicit
+  // change: apply it now, audited, rather than silently on every sync.
+  for (const [id, assignment] of entries) {
+    if (assignment.skip || !assignment.entity) continue;
+    const account = assignment.slug
+      ? getAccount(ctx, assignment.slug)
+      : (ctx.db.query("SELECT * FROM accounts WHERE simplefin_id = ?").get(id) as AccountRow | null);
+    if (account && account.default_entity !== assignment.entity) await updateAccount(ctx, actor, account.slug, { defaultEntity: assignment.entity });
+  }
   await ctx.audit.append({ actor, operation: "simplefin.accounts.configure", inputs: { accounts: Object.fromEntries(entries.map(([id, a]) => [id, a.skip ? { skip: true } : { entity: a.entity, kind: a.kind, slug: a.slug }])) }, before: before ? JSON.parse(before.value) : null, after: mappings });
 }
 

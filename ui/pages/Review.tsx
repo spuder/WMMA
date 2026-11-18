@@ -224,7 +224,8 @@ export function Review() {
                 editingEntity={editingEntity === card.wmma_id}
                 onEditEntity={() => setEditingEntity((current) => current === card.wmma_id ? null : card.wmma_id)}
                 onChangeEntity={(nextEntity) => changeEntity(card, nextEntity)}
-                onPickSuggestion={(account) => resolve(card, account, account === top?.account ? "right" : "left")}
+                onPickSuggestion={(account) => !busy && resolve(card, account, account === top?.account ? "right" : "left")}
+                busy={busy}
                 note={notes[card.wmma_id]}
                 onSaveNote={(note) => saveNote(card, note)}
               />
@@ -274,6 +275,7 @@ function CardBody({
   onEditEntity,
   onChangeEntity,
   onPickSuggestion,
+  busy = false,
   note,
   onSaveNote,
 }: {
@@ -284,6 +286,7 @@ function CardBody({
   onEditEntity?: () => void;
   onChangeEntity?: (entity: string) => void;
   onPickSuggestion?: (account: string) => void;
+  busy?: boolean;
   note?: string | null | undefined;
   onSaveNote?: (note: string) => void;
 }) {
@@ -348,7 +351,7 @@ function CardBody({
           </div>
           {onPickSuggestion && <div class="jev-options">
             {item.jev_choices.slice(0, 6).map((choice, index) => (
-              <button key={choice.account} style={{ color: jevColor(index), borderColor: `${jevColor(index)}88`, background: `${jevColor(index)}14` }} onPointerDown={(e) => e.stopPropagation()} onClick={() => onPickSuggestion(choice.account)}>
+              <button key={choice.account} disabled={busy} style={{ color: jevColor(index), borderColor: `${jevColor(index)}88`, background: `${jevColor(index)}14` }} onPointerDown={(e) => e.stopPropagation()} onClick={() => onPickSuggestion(choice.account)}>
                 {catLabel(choice.account)} <span>{Math.round(choice.probability * 100)}%</span>
               </button>
             ))}

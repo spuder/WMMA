@@ -482,7 +482,9 @@ export function createFetchHandler(ctx: ServiceContext): (req: Request) => Promi
     } catch (e) {
       if (e instanceof ServiceError) return Response.json({ error: e.message }, { status: e.status });
       if (e instanceof YnabApiError) return Response.json({ error: e.message }, { status: 502 });
-      if (e instanceof SimplefinError) return Response.json({ error: e.message }, { status: e.status >= 400 && e.status <= 599 ? e.status : 502 });
+      // Only statuses WMMA chose (bad user input) pass through; SimpleFIN's own 401/403/429
+      // must not masquerade as WMMA's auth errors, so everything else is a gateway error.
+      if (e instanceof SimplefinError) return Response.json({ error: e.message }, { status: e.status === 422 ? 422 : 502 });
       console.error(e);
       return Response.json({ error: "internal error" }, { status: 500 });
     }

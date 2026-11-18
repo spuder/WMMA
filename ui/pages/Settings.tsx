@@ -335,7 +335,10 @@ function SimplefinSetupWizard({
                       ) : (
                         <select class="input" value={mapping.slug ?? ""} onChange={(e) => onChange(account.id, { slug: (e.target as HTMLSelectElement).value || undefined })}>
                           <option value="">Create a new account</option>
-                          {existingAccounts.map((existing) => <option value={existing.slug}>{existing.name} · {profiles.find((entity) => entity.slug === existing.default_entity)?.name ?? existing.default_entity}</option>)}
+                          {existingAccounts.map((existing) => {
+                            const taken = accounts.some((other) => other.id !== account.id && (other.linkedAccountSlug === existing.slug || (!mappings[other.id]?.skip && mappings[other.id]?.slug === existing.slug)));
+                            return <option value={existing.slug} disabled={taken}>{existing.name} · {profiles.find((entity) => entity.slug === existing.default_entity)?.name ?? existing.default_entity}{taken ? " (already chosen)" : ""}</option>;
+                          })}
                         </select>
                       )}
                     </div>
