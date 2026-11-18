@@ -245,6 +245,13 @@ Object.assign(routes, {
     if (typeof body?.account !== "string") bad("account is required");
     return Response.json(await resolveReview(ctx, identity.login, params["id"]!, body.account));
   },
+  "PATCH /api/v1/review/:id": async (req, identity, ctx, params) => {
+    const body = (await jsonBody(req)) as { entity?: unknown } | undefined;
+    if (typeof body?.entity !== "string") bad("entity is required");
+    await patchTransaction(ctx, identity.login, params["id"]!, { entity: body.entity });
+    ctx.db.query("UPDATE review_queue SET entity = ? WHERE wmma_id = ? AND status = 'pending'").run(body.entity, params["id"]!);
+    return Response.json({ entity: body.entity });
+  },
   "GET /api/v1/rules": (_req, _id, ctx) => Response.json({ rules: listRules(ctx) }),
   "POST /api/v1/rules": async (req, identity, ctx) => {
     const body = (await jsonBody(req)) as { match?: unknown; target?: unknown; entityOverride?: unknown } | undefined;

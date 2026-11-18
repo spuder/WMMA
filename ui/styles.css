@@ -317,26 +317,32 @@ textarea.input { height: auto; padding: 10px 14px; }
 
 /* ---------- swipe game ---------- */
 .swipe-wrap { display: flex; flex-direction: column; align-items: center; gap: 18px; padding-top: 6px; }
-.deck { position: relative; width: 100%; max-width: 420px; height: min(62vh, 480px); touch-action: pan-y; }
+.deck { position: relative; width: 100%; max-width: 560px; height: min(68vh, 600px); touch-action: pan-y; }
 .swipe-card {
   position: absolute; inset: 0; display: flex; flex-direction: column;
-  padding: 22px; border-radius: 26px; background: var(--surface); border: 1px solid var(--line);
+  padding: 30px; border-radius: 28px; background: var(--surface); border: 1px solid var(--line);
   box-shadow: var(--shadow-lg); user-select: none; -webkit-user-select: none; cursor: grab;
   will-change: transform; transition: transform 0.32s cubic-bezier(0.2, 0.9, 0.3, 1), opacity 0.32s;
 }
 .swipe-card.dragging { transition: none; cursor: grabbing; }
 .swipe-card.behind { transform: translateY(14px) scale(0.955); opacity: 0.75; pointer-events: none; }
 .swipe-card.behind2 { transform: translateY(26px) scale(0.91); opacity: 0.4; pointer-events: none; }
-.swipe-card .amt { font-family: var(--font-display); font-size: 44px; font-weight: 760; letter-spacing: -0.035em; line-height: 1; margin: 8px 0 6px; }
-.swipe-card .payee { font-size: 20px; font-weight: 700; letter-spacing: -0.015em; }
-.swipe-card .facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin-top: 14px; font-size: 13.5px; }
+.swipe-card .amt { font-family: var(--font-display); font-size: 58px; font-weight: 760; letter-spacing: -0.035em; line-height: 1; margin: 10px 0 10px; }
+.swipe-card .payee { font-size: 28px; font-weight: 700; letter-spacing: -0.015em; }
+.swipe-card .facts { display: grid; grid-template-columns: auto 1fr; gap: 12px 18px; margin-top: 22px; font-size: 17px; }
 .swipe-card .facts dt { color: var(--muted); }
 .swipe-card .facts dd { margin: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.suggestion { margin-top: auto; padding: 14px; border-radius: 18px; background: var(--accent-soft); }
-.suggestion .cat { font-size: 18px; font-weight: 750; letter-spacing: -0.015em; color: var(--ink); }
+.suggestion { margin-top: auto; padding: 20px; border: 1px solid transparent; border-radius: 20px; background: var(--accent-soft); }
+.suggestion .cat { font-size: 25px; font-weight: 750; letter-spacing: -0.015em; color: var(--ink); }
 .suggestion.none { background: var(--surface-2); }
 .conf { height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--accent) 22%, transparent); overflow: hidden; margin-top: 10px; }
 .conf > div { height: 100%; background: var(--accent); border-radius: 3px; }
+.review-entity { display: inline-flex; align-items: center; gap: 7px; padding: 4px 7px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-2); color: var(--ink); font: inherit; font-weight: 650; cursor: pointer; }
+.review-entity > svg { width: 15px; height: 15px; }
+.review-entity-select { width: 100%; padding: 7px 9px; border: 1px solid var(--accent); border-radius: 9px; background: var(--surface-2); color: var(--ink); font: inherit; font-weight: 650; }
+.jev-options { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.jev-options button { padding: 7px 10px; border: 1px solid; border-radius: 10px; background: var(--surface); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.jev-options button span { margin-left: 5px; color: var(--muted); font-weight: 600; }
 .stamp {
   position: absolute; top: 26px; padding: 6px 14px; border-radius: 10px; border: 3px solid; font-weight: 900; font-size: 20px; letter-spacing: 0.1em;
   opacity: 0; transform: rotate(-12deg); pointer-events: none;

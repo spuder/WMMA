@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { api, catLabel, dayLabel, leaf, money } from "../api";
 import { CategoryPicker, ErrorBox, Icon, Loading, Sheet, toast } from "../components/ui";
-import { EntitySwitcher, go, useApp } from "../app";
+import { businessStyle, EntitySwitcher, go, useApp } from "../app";
 
 interface Item {
   wmma_id: string;
@@ -28,6 +28,7 @@ export function Review() {
   const [done, setDone] = useState(0);
   const [learned, setLearned] = useState(0);
   const [picker, setPicker] = useState(false);
+  const [editingEntity, setEditingEntity] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState<{ dx: number; dy: number; active: boolean }>({ dx: 0, dy: 0, active: false });
   const [fly, setFly] = useState<"left" | "right" | null>(null);
@@ -46,6 +47,20 @@ export function Review() {
   const card = queue[0];
   const top = card?.jev_choices[0];
   const entityName = (slug: string | null) => entities.find((e) => e.slug === slug)?.name ?? slug ?? "—";
+
+  const changeEntity = async (item: Item, nextEntity: string) => {
+    setBusy(true);
+    try {
+      await api(`/review/${item.wmma_id}`, { method: "PATCH", body: { entity: nextEntity } });
+      setItems((xs) => (xs ?? []).map((x) => x.wmma_id === item.wmma_id ? { ...x, entity: nextEntity } : x));
+      setEditingEntity(null);
+      toast(`Assigned to ${entityName(nextEntity)}`);
+    } catch (e) {
+      toast((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   async function resolve(item: Item, account: string, direction: "left" | "right") {
     setBusy(true);
@@ -159,7 +174,7 @@ export function Review() {
           <div class="deck">
             {queue.slice(1, 3).reverse().map((it, i, arr) => (
               <div class={`swipe-card ${i === arr.length - 1 ? "behind" : "behind2"}`} key={it.wmma_id} aria-hidden>
-                <CardBody item={it} entityName={entityName} />
+                <CardBody item={it} entityName={entityName} entities={entities} />
               </div>
             ))}
             <div
@@ -179,7 +194,15 @@ export function Review() {
               <div class="stamp no" style={{ opacity: no }}>
                 OTHER
               </div>
-              <CardBody item={card} entityName={entityName} />
+              <CardBody
+                item={card}
+                entityName={entityName}
+                entities={entities}
+                editingEntity={editingEntity === card.wmma_id}
+                onEditEntity={() => setEditingEntity((current) => current === card.wmma_id ? null : card.wmma_id)}
+                onChangeEntity={(nextEntity) => changeEntity(card, nextEntity)}
+                onPickSuggestion={(account) => resolve(card, account, account === top?.account ? "right" : "left")}
+              />
             </div>
           </div>
 
@@ -214,7 +237,26 @@ export function Review() {
   );
 }
 
-function CardBody({ item, entityName }: { item: Item; entityName: (s: string | null) => string }) {
+const JEV_COLORS = ["#2bbf88", "#4d96ff", "#a76df2"];
+const jevColor = (account: string, offset = 0) => JEV_COLORS[(account.length + offset) % JEV_COLORS.length]!;
+
+function CardBody({
+  item,
+  entityName,
+  entities = [],
+  editingEntity = false,
+  onEditEntity,
+  onChangeEntity,
+  onPickSuggestion,
+}: {
+  item: Item;
+  entityName: (s: string | null) => string;
+  entities?: Array<{ slug: string; name: string; type: string; color?: string | null }>;
+  editingEntity?: boolean;
+  onEditEntity?: () => void;
+  onChangeEntity?: (entity: string) => void;
+  onPickSuggestion?: (account: string) => void;
+}) {
   const top = item.jev_choices[0];
   const inflow = item.amount_cents > 0;
   return (
@@ -229,21 +271,41 @@ function CardBody({ item, entityName }: { item: Item; entityName: (s: string | n
         <dt>Account</dt>
         <dd>{leaf(item.account)}</dd>
         <dt>Business / personal</dt>
-        <dd>{entityName(item.entity)}</dd>
+        <dd>
+          {editingEntity ? (
+            <select class="review-entity-select" value={item.entity ?? ""} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => onChangeEntity?.((e.target as HTMLSelectElement).value)}>
+              {entities.map((entity) => <option value={entity.slug}>{entity.name}</option>)}
+            </select>
+          ) : (
+            <button class="review-entity" onPointerDown={(e) => e.stopPropagation()} onClick={onEditEntity}>
+              {(() => {
+                const entity = entities.find((x) => x.slug === item.entity);
+                return <><span class="business-icon compact" style={item.entity ? businessStyle(item.entity, entity?.color) : {}}>{entity?.type === "personal" ? "👤" : <Icon.folder />}</span>{entityName(item.entity)}<Icon.chevron /></>;
+              })()}
+            </button>
+          )}
+        </dd>
       </dl>
       {top ? (
-        <div class="suggestion">
-          <div class="upper" style={{ color: "var(--accent)" }}>
+        <div class="suggestion" style={{ background: `${jevColor(top.account)}20`, borderColor: `${jevColor(top.account)}55` }}>
+          <div class="upper" style={{ color: jevColor(top.account) }}>
             Jev suggests
           </div>
           <div class="cat">{catLabel(top.account)}</div>
-          <div class="conf" aria-label={`${Math.round(top.probability * 100)}% confident`}>
-            <div style={{ width: `${Math.round(top.probability * 100)}%` }} />
+          <div class="conf" style={{ background: `${jevColor(top.account)}35` }} aria-label={`${Math.round(top.probability * 100)}% confident`}>
+            <div style={{ width: `${Math.round(top.probability * 100)}%`, background: jevColor(top.account) }} />
           </div>
           <div class="spread tiny muted" style={{ marginTop: 6 }}>
             <span>{Math.round(top.probability * 100)}% confident</span>
             {item.jev_choices[1] && <span>then {leaf(item.jev_choices[1].account)}</span>}
           </div>
+          {onPickSuggestion && <div class="jev-options">
+            {item.jev_choices.slice(0, 3).map((choice, index) => (
+              <button style={{ color: jevColor(choice.account, index), borderColor: `${jevColor(choice.account, index)}66` }} onPointerDown={(e) => e.stopPropagation()} onClick={() => onPickSuggestion(choice.account)}>
+                {catLabel(choice.account)} <span>{Math.round(choice.probability * 100)}%</span>
+              </button>
+            ))}
+          </div>}
         </div>
       ) : (
         <div class="suggestion none">
