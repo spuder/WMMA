@@ -256,7 +256,7 @@ Object.assign(routes, {
   "POST /api/v1/entities": async (req, identity, ctx) => {
     const b = ((await jsonBody(req)) ?? {}) as Record<string, unknown>;
     if (!ENTITY_TYPES.includes(b.type as EntityType)) bad(`type must be one of ${ENTITY_TYPES.join(", ")}`);
-    const entity = await addEntity(ctx, identity.login, { name: str(b.name, "name"), type: b.type as EntityType, ...(typeof b.slug === "string" ? { slug: b.slug } : {}) });
+    const entity = await addEntity(ctx, identity.login, { name: str(b.name, "name"), type: b.type as EntityType, ...(typeof b.slug === "string" ? { slug: b.slug } : {}), ...(typeof b.color === "string" ? { color: b.color } : {}) });
     return Response.json(entity, { status: 201 });
   },
   "PATCH /api/v1/entities/:slug": async (req, identity, ctx, params) => {
@@ -266,6 +266,10 @@ Object.assign(routes, {
     if (b.type !== undefined) {
       if (!ENTITY_TYPES.includes(b.type as EntityType)) bad(`type must be one of ${ENTITY_TYPES.join(", ")}`);
       patch.type = b.type as EntityType;
+    }
+    if (b.color !== undefined) {
+      if (b.color !== null && typeof b.color !== "string") bad("color must be a hex string or null");
+      patch.color = b.color as string | null;
     }
     if (b.archive !== undefined) patch.archive = { date: str((b.archive as Record<string, unknown> | null)?.date, "archive.date") };
     return Response.json(await updateEntity(ctx, identity.login, params["slug"]!, patch));

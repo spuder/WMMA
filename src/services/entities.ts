@@ -22,7 +22,7 @@ export async function applyTemplate(ctx: ServiceContext, type: EntityType): Prom
   return lines.map((l) => l.account);
 }
 
-export async function addEntity(ctx: ServiceContext, actor: string, input: { name: string; type: EntityType; slug?: string }): Promise<EntityRow> {
+export async function addEntity(ctx: ServiceContext, actor: string, input: { name: string; type: EntityType; slug?: string; color?: string }): Promise<EntityRow> {
   const name = input.name?.trim();
   if (!name) throw new ServiceError("name is required");
   if (!ENTITY_TYPES.includes(input.type)) throw new ServiceError(`type must be one of ${ENTITY_TYPES.join(", ")}`);
@@ -35,7 +35,8 @@ export async function addEntity(ctx: ServiceContext, actor: string, input: { nam
   } else {
     slug = uniqueSlug(slugify(name, "entity"), taken);
   }
-  ctx.db.query("INSERT INTO entities (slug, name, type, created_at) VALUES (?, ?, ?, ?)").run(slug, name, input.type, nowIso());
+  const color = checkedColor(input.color);
+  ctx.db.query("INSERT INTO entities (slug, name, type, created_at, color) VALUES (?, ?, ?, ?, ?)").run(slug, name, input.type, nowIso(), color);
   const accounts = await applyTemplate(ctx, input.type);
   const entity = getEntity(ctx, slug)!;
   await ctx.audit.append({ actor, operation: "entity.add", inputs: input, before: null, after: { entity, templateAccounts: accounts.length } });
@@ -52,7 +53,7 @@ export async function updateEntity(
   ctx: ServiceContext,
   actor: string,
   slug: string,
-  patch: { name?: string; type?: EntityType; archive?: { date: string } },
+  patch: { name?: string; type?: EntityType; color?: string | null; archive?: { date: string } },
 ): Promise<{ entity: EntityRow; closedAccounts: string[] }> {
   const before = getEntity(ctx, slug);
   if (!before) throw new ServiceError(`unknown entity ${JSON.stringify(slug)}`, 404);
@@ -64,6 +65,9 @@ export async function updateEntity(
     if (!ENTITY_TYPES.includes(patch.type)) throw new ServiceError(`type must be one of ${ENTITY_TYPES.join(", ")}`);
     ctx.db.query("UPDATE entities SET type = ? WHERE slug = ?").run(patch.type, slug);
     await applyTemplate(ctx, patch.type);
+  }
+  if (patch.color !== undefined) {
+    ctx.db.query("UPDATE entities SET color = ? WHERE slug = ?").run(checkedColor(patch.color), slug);
   }
   const closedAccounts: string[] = [];
   if (patch.archive) {
@@ -83,6 +87,12 @@ export async function updateEntity(
   const entity = getEntity(ctx, slug)!;
   await ctx.audit.append({ actor, operation: "entity.update", inputs: { slug, ...patch }, before, after: { entity, closedAccounts } });
   return { entity, closedAccounts };
+}
+
+function checkedColor(raw: string | null | undefined): string | null {
+  if (raw === undefined || raw === null || raw === "") return null;
+  if (!/^#[0-9a-fA-F]{6}$/.test(raw)) throw new ServiceError("color must be a six-digit hex color");
+  return raw.toLowerCase();
 }
 
 export async function addAccount(

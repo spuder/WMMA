@@ -1,7 +1,7 @@
 import { useState } from "preact/hooks";
 import { api, money, today, useApi } from "../api";
-import { ErrorBox, Loading, Sheet, toast } from "../components/ui";
-import { businessStyle, useApp } from "../app";
+import { ErrorBox, Icon, Loading, Sheet, toast } from "../components/ui";
+import { BUSINESS_PALETTE, businessStyle, useApp } from "../app";
 
 const KIND_LABEL: Record<string, string> = {
   bank: "💵 Cash · checking & savings",
@@ -25,7 +25,7 @@ export function Accounts() {
   const { entities, entity, reloadEntities } = useApp();
   const accts = useApi<{ accounts: any[] }>("/accounts");
   const all = useApi<{ entities: any[] }>("/entities?status=all");
-  const [sheet, setSheet] = useState<null | "entity" | "account" | { valuation: any } | { contribution: any } | { website: any } | { archive: any }>(null);
+  const [sheet, setSheet] = useState<null | "entity" | "account" | { valuation: any } | { contribution: any } | { website: any } | { archive: any } | { color: any }>(null);
   const reload = () => {
     accts.reload();
     all.reload();
@@ -54,7 +54,7 @@ export function Accounts() {
           <div class="list">
             {(all.data?.entities ?? []).map((e: any) => (
               <div class="item">
-                <span class="business-icon" style={businessStyle(e.slug)}>{e.type === "personal" ? "👤" : "💼"}</span>
+                <span class="business-icon" style={businessStyle(e.slug, e.color)}>{e.type === "personal" ? "👤" : <Icon.folder />}</span>
                 <div class="body">
                   <div class="title">
                     {e.name} {e.status === "archived" && <span class="pill zero">archived</span>}
@@ -62,9 +62,10 @@ export function Accounts() {
                   <div class="meta">{TYPE_LABEL[e.type] ?? e.type}</div>
                 </div>
                 {e.status === "active" && (
-                  <button class="btn ghost small danger" onClick={() => setSheet({ archive: e })}>
-                    Archive
-                  </button>
+                  <div class="row" style={{ gap: 4 }}>
+                    <button class="btn ghost small" onClick={() => setSheet({ color: e })}>Color</button>
+                    <button class="btn ghost small danger" onClick={() => setSheet({ archive: e })}>Archive</button>
+                  </div>
                 )}
               </div>
             ))}
@@ -211,6 +212,21 @@ export function Accounts() {
           />
         </Sheet>
       )}
+      {sheet && typeof sheet === "object" && "color" in sheet && (
+        <Sheet open onClose={() => setSheet(null)} title={`Folder color · ${sheet.color.name}`}>
+          <ColorPicker
+            value={sheet.color.color ?? businessStyle(sheet.color.slug).color}
+            onChoose={async (color) => {
+              try {
+                await api(`/entities/${sheet.color.slug}`, { method: "PATCH", body: { color } });
+                toast(`Updated ${sheet.color.name} folder color`);
+                setSheet(null);
+                reload();
+              } catch (e) { toast((e as Error).message); }
+            }}
+          />
+        </Sheet>
+      )}
     </div>
   );
 }
@@ -218,9 +234,10 @@ export function Accounts() {
 function NewEntity({ onDone }: { onDone: () => void }) {
   const [name, setName] = useState("");
   const [type, setType] = useState("schedule_c");
+  const [color, setColor] = useState(BUSINESS_PALETTE[0]!);
   const save = async () => {
     try {
-      await api("/entities", { body: { name, type } });
+      await api("/entities", { body: { name, type, color } });
       toast(`${name} added as ${TYPE_LABEL[type]}`);
       onDone();
     } catch (e) {
@@ -242,9 +259,26 @@ function NewEntity({ onDone }: { onDone: () => void }) {
         </select>
         <div class="muted small">Business types also set up matching tax categories. Transactions and accounts can be assigned to this profile.</div>
       </div>
+      <div class="field">
+        <label>Folder color</label>
+        <ColorPicker value={color} onChoose={setColor} />
+      </div>
       <button class="btn primary block" disabled={!name.trim()} onClick={save}>
         Add {type === "personal" ? "personal profile" : "business"}
       </button>
+    </div>
+  );
+}
+
+function ColorPicker({ value, onChoose }: { value: string; onChoose: (color: string) => void }) {
+  const labels = ["Blue", "Pink", "Purple", "Orange", "Green", "Red", "Gold"];
+  return (
+    <div class="color-options" role="group" aria-label="Folder color">
+      {BUSINESS_PALETTE.map((color, i) => (
+        <button class={`color-swatch${value.toLowerCase() === color ? " selected" : ""}`} style={{ background: color }} aria-label={labels[i]} title={labels[i]} onClick={() => onChoose(color)}>
+          {value.toLowerCase() === color && <Icon.check />}
+        </button>
+      ))}
     </div>
   );
 }

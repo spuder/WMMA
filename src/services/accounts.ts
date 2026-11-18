@@ -23,6 +23,7 @@ export interface EntityRow {
   type: EntityType;
   status: "active" | "archived";
   created_at: string;
+  color: string | null;
 }
 
 const ENTITY_SLUG_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;

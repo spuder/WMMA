@@ -36,7 +36,7 @@ export function summarize(t: Txn): { amount: number; category: string; uncategor
   return { amount, category, uncategorized };
 }
 
-export function TxnRow({ t, entities, onClick }: { t: Txn; entities: Array<{ slug: string; name: string; type: string }>; onClick?: () => void }) {
+export function TxnRow({ t, entities, onClick }: { t: Txn; entities: Array<{ slug: string; name: string; type: string; color?: string | null }>; onClick?: () => void }) {
   const s = summarize(t);
   const entity = transactionEntity(t);
   const owner = entities.find((e) => e.slug === entity);
@@ -49,7 +49,9 @@ export function TxnRow({ t, entities, onClick }: { t: Txn; entities: Array<{ slu
           {s.uncategorized ? <span style={{ color: "var(--warn)", fontWeight: 650 }}>Needs category</span> : s.category}
           {t.note ? ` · ${t.note}` : ""}
         </div>
-        <div><span class="business-tag" style={entity ? businessStyle(entity) : { color: "var(--muted)", background: "var(--surface-2)", borderColor: "var(--line)" }}>{entity ? `${owner?.type === "personal" ? "👤" : "💼"} ${owner?.name ?? entity}` : "＋ Assign business"}</span></div>
+        <div><span class="business-tag" style={entity ? businessStyle(entity, owner?.color) : { color: "var(--muted)", background: "var(--surface-2)", borderColor: "var(--line)" }}>
+          {entity ? owner?.type === "personal" ? "👤" : <Icon.folder /> : "＋"} {entity ? owner?.name ?? entity : "Assign business"}
+        </span></div>
       </div>
       <div class={`amount num ${s.amount > 0 ? "in" : ""}`} style={{ fontWeight: 650 }}>
         {s.amount > 0 ? "+" : ""}
