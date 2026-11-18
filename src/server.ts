@@ -273,13 +273,15 @@ Object.assign(routes, {
   "POST /api/v1/accounts": async (req, identity, ctx) => {
     const b = ((await jsonBody(req)) ?? {}) as Record<string, unknown>;
     if (!KINDS.includes(b.kind as AccountKind)) bad(`kind must be one of ${KINDS.join(", ")}`);
-    return Response.json(await addAccount(ctx, identity.login, { name: str(b.name, "name"), kind: b.kind as AccountKind, entity: str(b.entity, "entity") }), { status: 201 });
+    if (b.websiteUrl !== undefined && b.websiteUrl !== null && typeof b.websiteUrl !== "string") bad("websiteUrl must be a string or null");
+    return Response.json(await addAccount(ctx, identity.login, { name: str(b.name, "name"), kind: b.kind as AccountKind, entity: str(b.entity, "entity"), ...(b.websiteUrl !== undefined ? { websiteUrl: b.websiteUrl as string | null } : {}) }), { status: 201 });
   },
   "PATCH /api/v1/accounts/:slug": async (req, identity, ctx, params) => {
     const b = ((await jsonBody(req)) ?? {}) as Record<string, unknown>;
     return Response.json(
       await updateAccount(ctx, identity.login, params["slug"]!, {
         ...(b.defaultEntity !== undefined ? { defaultEntity: str(b.defaultEntity, "defaultEntity") } : {}),
+        ...(b.websiteUrl !== undefined ? { websiteUrl: b.websiteUrl === null ? null : str(b.websiteUrl, "websiteUrl") } : {}),
         ...(b.close !== undefined ? { close: { date: str((b.close as Record<string, unknown> | null)?.date, "close.date") } } : {}),
       }),
     );

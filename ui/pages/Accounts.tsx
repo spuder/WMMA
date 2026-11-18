@@ -6,7 +6,7 @@ import { useApp } from "../app";
 const KIND_LABEL: Record<string, string> = {
   bank: "💵 Cash · checking & savings",
   credit: "💳 Credit cards",
-  investment: "📈 Investments",
+  investment: "📈 Investments · crypto & private assets",
   vehicle: "🚗 Vehicles",
   real_estate: "🏠 Real estate",
   other_asset: "📦 Other assets",
@@ -25,7 +25,7 @@ export function Accounts() {
   const { entities, entity, reloadEntities } = useApp();
   const accts = useApi<{ accounts: any[] }>("/accounts");
   const all = useApi<{ entities: any[] }>("/entities?status=all");
-  const [sheet, setSheet] = useState<null | "entity" | "account" | { valuation: any } | { archive: any }>(null);
+  const [sheet, setSheet] = useState<null | "entity" | "account" | { valuation: any } | { contribution: any } | { website: any } | { archive: any }>(null);
   const reload = () => {
     accts.reload();
     all.reload();
@@ -110,11 +110,30 @@ export function Accounts() {
                       <div class="meta">
                         {entities.find((e) => e.slug === a.default_entity)?.name ?? a.default_entity} · {a.hledger_account}
                       </div>
+                      {a.kind === "investment" && (
+                        <div class="small muted" style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                          <span>Transferred in {money(a.contributed_cents ?? 0)}</span>
+                          {a.website_url ? (
+                            <>
+                              <a href={a.website_url} target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>Investment website ↗</a>
+                              <button class="btn ghost small" style={{ height: 24, padding: "0 4px" }} onClick={() => setSheet({ website: a })}>Edit link</button>
+                            </>
+                          ) : (
+                            <button class="btn ghost small" style={{ height: 24, padding: "0 4px", color: "var(--accent)" }} onClick={() => setSheet({ website: a })}>Add website</button>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div class="stack" style={{ gap: 2, alignItems: "flex-end" }}>
+                      {a.kind === "investment" && <span class="muted tiny">Current value</span>}
                       <span class={`num ${a.balance_cents < 0 ? "out" : ""}`} style={{ fontWeight: 650 }}>
                         {a.balance}
                       </span>
+                      {a.kind === "investment" && (
+                        <button class="btn ghost small" style={{ height: 24, padding: "0 4px", color: "var(--accent)" }} onClick={() => setSheet({ contribution: a })}>
+                          Record contribution
+                        </button>
+                      )}
                       {["investment", "vehicle", "real_estate", "other_asset"].includes(a.kind) && (
                         <button class="btn ghost small" style={{ height: 24, padding: "0 4px", color: "var(--accent)" }} onClick={() => setSheet({ valuation: a })}>
                           Update value
@@ -150,6 +169,29 @@ export function Accounts() {
         <Sheet open onClose={() => setSheet(null)} title={`Value of ${sheet.valuation.name}`}>
           <Valuation
             account={sheet.valuation}
+            onDone={() => {
+              setSheet(null);
+              reload();
+            }}
+          />
+        </Sheet>
+      )}
+      {sheet && typeof sheet === "object" && "contribution" in sheet && (
+        <Sheet open onClose={() => setSheet(null)} title={`Contribute to ${sheet.contribution.name}`}>
+          <InvestmentContribution
+            account={sheet.contribution}
+            accounts={accts.data?.accounts ?? []}
+            onDone={() => {
+              setSheet(null);
+              reload();
+            }}
+          />
+        </Sheet>
+      )}
+      {sheet && typeof sheet === "object" && "website" in sheet && (
+        <Sheet open onClose={() => setSheet(null)} title={`Investment website · ${sheet.website.name}`}>
+          <InvestmentWebsite
+            account={sheet.website}
             onDone={() => {
               setSheet(null);
               reload();
@@ -210,6 +252,7 @@ function NewAccount({ onDone }: { onDone: () => void }) {
   const initialEntity = entities.find((e) => e.slug === entity) ?? entities.find((e) => e.type === "personal") ?? entities[0];
   const [name, setName] = useState("");
   const [kind, setKind] = useState("bank");
+  const [websiteUrl, setWebsiteUrl] = useState("");
   const [ownerType, setOwnerType] = useState(initialEntity?.type === "personal" || !initialEntity ? "personal" : "business");
   const [ent, setEnt] = useState(initialEntity?.slug ?? "");
   const matchingEntities = entities.filter((e) => ownerType === "personal" ? e.type === "personal" : e.type !== "personal");
@@ -220,7 +263,7 @@ function NewAccount({ onDone }: { onDone: () => void }) {
   };
   const save = async () => {
     try {
-      await api("/accounts", { body: { name, kind, entity: ent } });
+      await api("/accounts", { body: { name, kind, entity: ent, ...(kind === "investment" && websiteUrl.trim() ? { websiteUrl: websiteUrl.trim() } : {}) } });
       toast(`${name} added`);
       onDone();
     } catch (e) {
@@ -241,7 +284,15 @@ function NewAccount({ onDone }: { onDone: () => void }) {
           ))}
         </select>
         {kind === "bank" && <div class="muted small">Use for a checking or savings account, personal or business.</div>}
+        {kind === "investment" && <div class="muted small">Use for brokerage, crypto, private equity, unvested stock, or other investments.</div>}
       </div>
+      {kind === "investment" && (
+        <div class="field">
+          <label>Investment website (optional)</label>
+          <input class="input" type="url" value={websiteUrl} onInput={(e) => setWebsiteUrl((e.target as HTMLInputElement).value)} placeholder="https://example.com/account" />
+          <div class="muted small">A shortcut to the site where you check this investment.</div>
+        </div>
+      )}
       <div class="field">
         <label>Personal or business</label>
         <select class="input" value={ownerType} onChange={(e) => changeOwnerType((e.target as HTMLSelectElement).value)}>
@@ -294,6 +345,73 @@ function Valuation({ account, onDone }: { account: any; onDone: () => void }) {
       <button class="btn primary block" onClick={save}>
         Save value
       </button>
+    </div>
+  );
+}
+
+function InvestmentContribution({ account, accounts, onDone }: { account: any; accounts: any[]; onDone: () => void }) {
+  const sources = accounts.filter((a) => a.kind === "bank" && a.status === "open" && a.slug !== account.slug);
+  const [from, setFrom] = useState(sources.find((a) => a.default_entity === account.default_entity)?.slug ?? sources[0]?.slug ?? "");
+  const [amount, setAmount] = useState("");
+  const [date, setDate] = useState(today());
+  const [memo, setMemo] = useState("");
+  const save = async () => {
+    try {
+      await api("/transfers", { body: { from, to: account.slug, amount, date, ...(memo.trim() ? { memo: memo.trim() } : {}) } });
+      toast(`Contribution to ${account.name} recorded`);
+      onDone();
+    } catch (e) {
+      toast((e as Error).message);
+    }
+  };
+  if (sources.length === 0) {
+    return <div class="stack"><p class="muted">Add a Cash account first. Contributions are recorded as transfers from cash to this investment.</p></div>;
+  }
+  return (
+    <div class="stack">
+      <div class="muted small">Record money you put into this investment. This transfers money from a Cash account and updates both balances.</div>
+      <div class="field">
+        <label>From cash account</label>
+        <select class="input" value={from} onChange={(e) => setFrom((e.target as HTMLSelectElement).value)}>
+          {sources.map((a) => <option value={a.slug}>{a.name} · {a.balance}</option>)}
+        </select>
+      </div>
+      <div class="field">
+        <label>Amount invested</label>
+        <input class="input num" inputMode="decimal" value={amount} onInput={(e) => setAmount((e.target as HTMLInputElement).value)} placeholder="100.00" />
+      </div>
+      <div class="field">
+        <label>Date</label>
+        <input class="input" type="date" value={date} onInput={(e) => setDate((e.target as HTMLInputElement).value)} />
+      </div>
+      <div class="field">
+        <label>Note (optional)</label>
+        <input class="input" value={memo} onInput={(e) => setMemo((e.target as HTMLInputElement).value)} placeholder="Monthly contribution" />
+      </div>
+      <button class="btn primary block" disabled={!from || !amount.trim()} onClick={save}>Record contribution</button>
+    </div>
+  );
+}
+
+function InvestmentWebsite({ account, onDone }: { account: any; onDone: () => void }) {
+  const [websiteUrl, setWebsiteUrl] = useState(account.website_url ?? "");
+  const save = async () => {
+    try {
+      await api(`/accounts/${account.slug}`, { method: "PATCH", body: { websiteUrl: websiteUrl.trim() || null } });
+      toast(websiteUrl.trim() ? "Investment website saved" : "Investment website removed");
+      onDone();
+    } catch (e) {
+      toast((e as Error).message);
+    }
+  };
+  return (
+    <div class="stack">
+      <div class="field">
+        <label>Website URL</label>
+        <input class="input" type="url" value={websiteUrl} onInput={(e) => setWebsiteUrl((e.target as HTMLInputElement).value)} placeholder="https://example.com/account" />
+      </div>
+      <div class="muted small">Save the website where you check this investment. Use a full HTTPS URL.</div>
+      <button class="btn primary block" onClick={save}>Save website</button>
     </div>
   );
 }

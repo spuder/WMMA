@@ -12,6 +12,7 @@ export interface AccountRow {
   kind: AccountKind;
   default_entity: string;
   simplefin_id: string | null;
+  website_url: string | null;
   status: "open" | "closed";
   created_at: string;
 }
@@ -64,7 +65,7 @@ export function linkAccountSource(ctx: ServiceContext, source: string, sourceAcc
 
 export function createAccount(
   ctx: ServiceContext,
-  input: { name: string; kind: AccountKind; entity: string; status?: "open" | "closed"; prefix?: string },
+  input: { name: string; kind: AccountKind; entity: string; websiteUrl?: string | null; status?: "open" | "closed"; prefix?: string },
 ): AccountRow {
   if (!ACCOUNT_KINDS.includes(input.kind)) throw new ServiceError(`invalid account kind ${JSON.stringify(input.kind)}`);
   if (!getEntity(ctx, input.entity)) throw new ServiceError(`unknown entity ${JSON.stringify(input.entity)}`, 404);
@@ -75,8 +76,8 @@ export function createAccount(
   let hledgerAccount = base;
   for (let i = 2; hTaken(hledgerAccount); i++) hledgerAccount = `${base}${i}`;
   ctx.db
-    .query("INSERT INTO accounts (slug, name, hledger_account, kind, default_entity, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-    .run(slug, input.name, hledgerAccount, input.kind, input.entity, input.status ?? "open", nowIso());
+    .query("INSERT INTO accounts (slug, name, hledger_account, kind, default_entity, status, created_at, website_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+    .run(slug, input.name, hledgerAccount, input.kind, input.entity, input.status ?? "open", nowIso(), input.websiteUrl ?? null);
   return getAccount(ctx, slug)!;
 }
 
@@ -95,9 +96,21 @@ export function balancesFrom(txns: HledgerTransaction[]): Map<string, Money> {
 }
 
 export async function listAccountsWithBalances(ctx: ServiceContext) {
-  const balances = balancesFrom(await ctx.hledger.transactions());
+  const txns = await ctx.hledger.transactions();
+  const balances = balancesFrom(txns);
+  const contributions = new Map<string, Money>();
+  for (const txn of txns) {
+    if (new Map(txn.ttags).get("kind") !== "transfer") continue;
+    for (const posting of txn.tpostings) {
+      for (const amount of posting.pamount) {
+        if (amount.acommodity !== "$" || amount.aquantity.decimalMantissa <= 0) continue;
+        contributions.set(posting.paccount, M.add(contributions.get(posting.paccount) ?? M.ZERO, M.fromHledgerQuantity(amount.aquantity)));
+      }
+    }
+  }
   return listAccounts(ctx).map((a) => {
     const b = balances.get(a.hledger_account) ?? M.ZERO;
-    return { ...a, balance_cents: M.toCents(b), balance: M.format(b) };
+    const contributed = contributions.get(a.hledger_account) ?? M.ZERO;
+    return { ...a, balance_cents: M.toCents(b), balance: M.format(b), contributed_cents: M.toCents(contributed) };
   });
 }

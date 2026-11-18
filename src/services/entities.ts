@@ -88,14 +88,15 @@ export async function updateEntity(
 export async function addAccount(
   ctx: ServiceContext,
   actor: string,
-  input: { name: string; kind: AccountKind; entity: string },
+  input: { name: string; kind: AccountKind; entity: string; websiteUrl?: string | null },
 ): Promise<AccountRow> {
   if (!input.name?.trim()) throw new ServiceError("name is required");
   if (!ACCOUNT_KINDS.includes(input.kind)) throw new ServiceError(`kind must be one of ${ACCOUNT_KINDS.join(", ")}`);
   const entity = getEntity(ctx, input.entity);
   if (!entity) throw new ServiceError(`unknown entity ${JSON.stringify(input.entity)}`, 404);
   if (entity.status === "archived") throw new ServiceError("entity is archived", 409);
-  const account = createAccount(ctx, { name: input.name.trim(), kind: input.kind, entity: input.entity });
+  const websiteUrl = checkedWebsiteUrl(input.websiteUrl);
+  const account = createAccount(ctx, { name: input.name.trim(), kind: input.kind, entity: input.entity, websiteUrl });
   await ctx.store.declareAccounts([{ name: account.hledger_account, type: accountType(account.hledger_account) }]);
   await ctx.audit.append({ actor, operation: "account.add", inputs: input, before: null, after: account });
   return account;
@@ -105,13 +106,17 @@ export async function updateAccount(
   ctx: ServiceContext,
   actor: string,
   slug: string,
-  patch: { defaultEntity?: string; close?: { date: string } },
+  patch: { defaultEntity?: string; websiteUrl?: string | null; close?: { date: string } },
 ): Promise<AccountRow> {
   const before = getAccount(ctx, slug);
   if (!before) throw new ServiceError(`unknown account ${JSON.stringify(slug)}`, 404);
+  const websiteUrl = patch.websiteUrl === undefined ? undefined : checkedWebsiteUrl(patch.websiteUrl);
   if (patch.defaultEntity !== undefined) {
     if (!getEntity(ctx, patch.defaultEntity)) throw new ServiceError(`unknown entity ${JSON.stringify(patch.defaultEntity)}`, 404);
     ctx.db.query("UPDATE accounts SET default_entity = ? WHERE slug = ?").run(patch.defaultEntity, slug);
+  }
+  if (websiteUrl !== undefined) {
+    ctx.db.query("UPDATE accounts SET website_url = ? WHERE slug = ?").run(websiteUrl, slug);
   }
   if (patch.close) {
     try {
@@ -124,4 +129,15 @@ export async function updateAccount(
   const after = getAccount(ctx, slug)!;
   await ctx.audit.append({ actor, operation: "account.update", inputs: { slug, ...patch }, before, after });
   return after;
+}
+
+function checkedWebsiteUrl(raw: string | null | undefined): string | null {
+  if (raw === undefined || raw === null || !raw.trim()) return null;
+  try {
+    const url = new URL(raw.trim());
+    if (url.protocol !== "https:" || !url.hostname || url.username || url.password) throw new Error("invalid URL");
+    return url.toString();
+  } catch {
+    throw new ServiceError("websiteUrl must be a valid HTTPS URL");
+  }
 }

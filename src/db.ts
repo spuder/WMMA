@@ -124,6 +124,7 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX review_queue_status ON review_queue(status, date);
   `,
+  `ALTER TABLE accounts ADD COLUMN website_url TEXT;`,
 ];
 
 export function openDb(path: string): Database {
