@@ -345,7 +345,8 @@ textarea.input { height: auto; padding: 10px 14px; }
 .review-note:focus { outline: none; border-color: var(--accent); }
 .jev-options { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
 .jev-options button { min-height: 44px; padding: 9px 14px; border: 1.5px solid; border-radius: 12px; font: inherit; font-size: 16px; font-weight: 700; cursor: pointer; }
-.jev-options button span { margin-left: 6px; color: var(--muted); font-weight: 600; }
+.jev-options button { display: inline-flex; align-items: center; }
+.jev-options button .pct { margin-left: 6px; color: var(--muted); font-weight: 600; }
 .stamp {
   position: absolute; top: 26px; padding: 6px 14px; border-radius: 10px; border: 3px solid; font-weight: 900; font-size: 20px; letter-spacing: 0.1em;
   opacity: 0; transform: rotate(-12deg); pointer-events: none;
@@ -370,6 +371,9 @@ textarea.input { height: auto; padding: 10px 14px; }
 .catgroup { padding: 12px 4px 4px; }
 .catbtn { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 12px 6px; border: 0; border-bottom: 1px solid var(--line); background: transparent; text-align: left; cursor: pointer; font-weight: 550; }
 .catbtn:active { background: var(--surface-2); }
+.catname { display: inline-flex; align-items: center; gap: 9px; min-width: 0; max-width: 100%; vertical-align: middle; }
+.cat-emoji { flex: none; width: 1.35em; text-align: center; font-size: 1.1em; line-height: 1; font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; }
+.catname-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .catbtn .p { color: var(--accent); font-weight: 700; font-size: 13px; }
 
 /* ---------- tables ---------- */

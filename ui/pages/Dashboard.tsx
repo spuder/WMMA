@@ -1,7 +1,7 @@
 import { useCallback } from "preact/hooks";
-import { compact, leaf, money, monthEnd, monthName, monthShift, monthStart, thisMonth, useApi } from "../api";
+import { catEmoji, compact, leaf, money, monthEnd, monthName, monthShift, monthStart, thisMonth, useApi } from "../api";
 import { Chart, type Theme } from "../components/chart";
-import { ErrorBox, Icon, Loading } from "../components/ui";
+import { CatName, ErrorBox, Icon, Loading } from "../components/ui";
 import { EntitySwitcher, go, useApp } from "../app";
 import { TxnRow } from "./Transactions";
 
@@ -59,7 +59,7 @@ export function Dashboard() {
           padAngle: 2,
           itemStyle: { borderRadius: 6, borderColor: t.surface, borderWidth: 2 },
           label: { show: false },
-          data: cats.slice(0, 8).map((c) => ({ name: leaf(c.account), value: c.amount_cents })),
+          data: cats.slice(0, 8).map((c) => ({ name: `${catEmoji(c.account)} ${leaf(c.account)}`, value: c.amount_cents })),
         },
       ],
     }),
@@ -175,7 +175,7 @@ export function Dashboard() {
                   <div class="spread small" style={{ padding: "5px 0" }}>
                     <span class="row" style={{ gap: 8, minWidth: 0 }}>
                       <span style={{ width: 9, height: 9, borderRadius: 3, flex: "none", background: `var(--c${i})` }} />
-                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{leaf(c.account)}</span>
+                      <CatName account={c.account} label={leaf(c.account)} />
                     </span>
                     <span class="num muted">{c.share}%</span>
                   </div>

@@ -5,7 +5,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { api, catLabel, dayLabel, leaf, money } from "../api";
-import { CategoryPicker, ErrorBox, Icon, Loading, Sheet, toast } from "../components/ui";
+import { CategoryPicker, CatName, ErrorBox, Icon, Loading, Sheet, toast } from "../components/ui";
 import { businessStyle, EntitySwitcher, go, useApp } from "../app";
 
 interface Item {
@@ -341,7 +341,7 @@ function CardBody({
           <div class="upper" style={{ color: jevColor(0) }}>
             Jev suggests
           </div>
-          <div class="cat">{catLabel(top.account)}</div>
+          <div class="cat"><CatName account={top.account} /></div>
           <div class="conf" style={{ background: `${jevColor(0)}35` }} aria-label={`${Math.round(top.probability * 100)}% confident`}>
             <div style={{ width: `${Math.round(top.probability * 100)}%`, background: jevColor(0) }} />
           </div>
@@ -352,7 +352,7 @@ function CardBody({
           {onPickSuggestion && <div class="jev-options">
             {item.jev_choices.slice(0, 6).map((choice, index) => (
               <button key={choice.account} disabled={busy} style={{ color: jevColor(index), borderColor: `${jevColor(index)}88`, background: `${jevColor(index)}14` }} onPointerDown={(e) => e.stopPropagation()} onClick={() => onPickSuggestion(choice.account)}>
-                {catLabel(choice.account)} <span>{Math.round(choice.probability * 100)}%</span>
+                <CatName account={choice.account} /> <span class="pct">{Math.round(choice.probability * 100)}%</span>
               </button>
             ))}
           </div>}

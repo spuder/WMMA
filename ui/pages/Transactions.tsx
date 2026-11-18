@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { api, catLabel, dayLabel, leaf, money } from "../api";
-import { Avatar, CategoryPicker, ErrorBox, Icon, Loading, Sheet, toast } from "../components/ui";
+import { Avatar, CategoryPicker, CatName, ErrorBox, Icon, Loading, Sheet, toast } from "../components/ui";
 import { businessStyle, EntitySwitcher, go, transactionEntity, useApp } from "../app";
 
 export interface Txn {
@@ -16,7 +16,7 @@ const isCat = (a: string) => /^(Income|Expenses):/.test(a);
 const isMoney = (a: string) => /^(Assets|Liabilities):/.test(a);
 
 /** The amount as seen from the user's bank/card side, and the category shown. */
-export function summarize(t: Txn): { amount: number; category: string; uncategorized: boolean } {
+export function summarize(t: Txn): { amount: number; category: string; categoryAccount: string | null; uncategorized: boolean } {
   const bank = t.postings.find((p) => isMoney(p.account) && !p.account.includes(":Due"));
   const cats = t.postings.filter((p) => isCat(p.account));
   const amount = bank ? bank.amount_cents : -cats.reduce((a, p) => a + p.amount_cents, 0);
@@ -33,7 +33,8 @@ export function summarize(t: Txn): { amount: number; category: string; uncategor
             : t.postings.filter((p) => isMoney(p.account)).length > 1
               ? "Transfer"
               : leaf(t.postings.find((p) => p !== bank)?.account ?? "");
-  return { amount, category, uncategorized };
+  const categoryAccount = t.tags["kind"] === "transfer" || t.tags["kind"] === "valuation" || cats.length !== 1 ? null : cats[0]!.account;
+  return { amount, category, categoryAccount, uncategorized };
 }
 
 export function TxnRow({ t, entities, onClick }: { t: Txn; entities: Array<{ slug: string; name: string; type: string; color?: string | null }>; onClick?: () => void }) {
@@ -46,7 +47,7 @@ export function TxnRow({ t, entities, onClick }: { t: Txn; entities: Array<{ slu
       <div class="body">
         <div class="title">{t.payee}</div>
         <div class="meta">
-          {s.uncategorized ? <span style={{ color: "var(--warn)", fontWeight: 650 }}>Needs category</span> : s.category}
+          {s.uncategorized ? <span style={{ color: "var(--warn)", fontWeight: 650 }}>Needs category</span> : s.categoryAccount ? <CatName account={s.categoryAccount} label={s.category} /> : s.category}
           {t.note ? ` · ${t.note}` : ""}
         </div>
         <div><span class="business-tag" style={entity ? businessStyle(entity, owner?.color) : { color: "var(--muted)", background: "var(--surface-2)", borderColor: "var(--line)" }}>
@@ -220,7 +221,7 @@ function TxnSheet({ id, onClose, onChanged }: { id: string; onClose: () => void;
               <span>
                 <span class="upper">Category</span>
                 <br />
-                <strong style={{ color: s.uncategorized ? "var(--warn)" : undefined }}>{s.uncategorized ? "Choose a category" : catLabel(catPostings[0]!.account)}</strong>
+                <strong style={{ color: s.uncategorized ? "var(--warn)" : undefined }}>{s.uncategorized ? "Choose a category" : <CatName account={catPostings[0]!.account} />}</strong>
               </span>
               <Icon.chevron />
             </button>
@@ -331,7 +332,7 @@ function SplitForm({ t, from, onDone }: { t: Txn; from: Txn["postings"][number];
       {parts.map((p, i) => (
         <div class="row">
           <button class="input" style={{ textAlign: "left", flex: 1, cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} onClick={() => setPicking(i)}>
-            {p.account ? catLabel(p.account) : <span class="muted">Category…</span>}
+            {p.account ? <CatName account={p.account} /> : <span class="muted">Category…</span>}
           </button>
           <input class="input num" style={{ width: 110, textAlign: "right" }} inputMode="decimal" value={p.amount} onInput={(e) => setParts((ps) => ps.map((x, j) => (j === i ? { ...x, amount: (e.target as HTMLInputElement).value } : x)))} />
           {parts.length > 2 && (

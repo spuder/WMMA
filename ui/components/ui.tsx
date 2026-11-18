@@ -1,6 +1,6 @@
 import type { ComponentChildren } from "preact";
 import { useEffect, useMemo, useState } from "preact/hooks";
-import { catLabel, hue, initials } from "../api";
+import { CATEGORY_GROUPS, catLabel, categoryMeta, hue, initials } from "../api";
 
 const P = { fill: "none", stroke: "currentColor", "stroke-width": 1.9, "stroke-linecap": "round", "stroke-linejoin": "round" } as const;
 export const Icon = {
@@ -97,6 +97,18 @@ export function ErrorBox({ error }: { error: string }) {
 }
 
 /** Searchable category picker; `suggested` floats Jev's picks to the top with probabilities. */
+/** A category with its emoji, e.g. "🍏 Food / Groceries". */
+export function CatName({ account, label }: { account: string; label?: string }) {
+  return (
+    <span class="catname">
+      <span class="cat-emoji" aria-hidden="true">
+        {categoryMeta(account).emoji}
+      </span>
+      <span class="catname-text">{label ?? catLabel(account)}</span>
+    </span>
+  );
+}
+
 export function CategoryPicker({
   categories,
   suggested = [],
@@ -113,14 +125,16 @@ export function CategoryPicker({
     const ql = q.toLowerCase();
     const list = categories
       .filter((c) => !direction || (direction === "out" ? c.startsWith("Expenses:") : true))
-      .filter((c) => !ql || c.toLowerCase().includes(ql) || catLabel(c).toLowerCase().includes(ql));
+      .filter((c) => !ql || c.toLowerCase().includes(ql) || catLabel(c).toLowerCase().includes(ql) || categoryMeta(c).group.toLowerCase().includes(ql));
     const g = new Map<string, string[]>();
     for (const c of list) {
-      const [top, second] = c.split(":");
-      const key = `${top === "Income" ? "Income" : "Expenses"}${second && c.split(":").length > 2 ? ` · ${second.replace(/([a-z])([A-Z])/g, "$1 $2")}` : ""}`;
+      const key = categoryMeta(c).group;
       g.set(key, [...(g.get(key) ?? []), c]);
     }
-    return [...g].sort((a, b) => a[0].localeCompare(b[0]));
+    const order = (k: string) => CATEGORY_GROUPS.indexOf(k as (typeof CATEGORY_GROUPS)[number]);
+    return [...g]
+      .map(([k, cs]) => [k, cs.sort((a, b) => catLabel(a).localeCompare(catLabel(b)))] as [string, string[]])
+      .sort((a, b) => order(a[0]) - order(b[0]));
   }, [categories, q, direction]);
   return (
     <div class="stack" style={{ gap: 10 }}>
@@ -133,7 +147,7 @@ export function CategoryPicker({
           <div class="upper catgroup">Suggested</div>
           {suggested.map((s) => (
             <button class="catbtn" onClick={() => onPick(s.account)}>
-              <span>{catLabel(s.account)}</span>
+              <CatName account={s.account} />
               <span class="p">{Math.round(s.probability * 100)}%</span>
             </button>
           ))}
@@ -145,7 +159,7 @@ export function CategoryPicker({
             <div class="upper catgroup">{g}</div>
             {list.map((c) => (
               <button class="catbtn" onClick={() => onPick(c)}>
-                <span>{catLabel(c)}</span>
+                <CatName account={c} />
                 <span class="muted" style={{ display: "inline-flex" }}>
                   <Icon.chevron />
                 </span>

@@ -1,7 +1,7 @@
 import { useCallback, useState } from "preact/hooks";
-import { api, catLabel, compact, leaf, money, monthEnd, monthName, monthShift, monthStart, thisMonth, today, useApi } from "../api";
+import { api, catEmoji, catLabel, compact, leaf, money, monthEnd, monthName, monthShift, monthStart, thisMonth, today, useApi } from "../api";
 import { Chart, type Theme } from "../components/chart";
-import { ErrorBox, Loading, Sheet, toast } from "../components/ui";
+import { CatName, ErrorBox, Loading, Sheet, toast } from "../components/ui";
 import { EntitySwitcher, go, useApp } from "../app";
 
 type Tab = "pnl" | "cashflow" | "budget" | "networth" | "spending" | "trend";
@@ -116,7 +116,7 @@ function Lines({ lines, max, total, out, r }: { lines: any[]; max: number; total
         {lines.map((l) => (
           <tr title={`${l.account} · ${r.from} to ${r.to}`}>
             <td>
-              {catLabel(l.account)}
+              <CatName account={l.account} />
               <div class={`inline-bar${out ? " out" : ""}`} style={{ width: `${Math.max(2, (l.amount_cents / max) * 100)}%` }} />
             </td>
             <td class="r num">{l.amount}</td>
@@ -242,7 +242,7 @@ function Budget() {
               return (
                 <div class="item tap" style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }} onClick={() => setEdit({ account: l.account, amount: l.budgeted.replace(/[$,]/g, "") })}>
                   <div class="spread">
-                    <strong>{catLabel(l.account)}</strong>
+                    <strong><CatName account={l.account} /></strong>
                     <span class={`pill ${state}`}>{l.available}</span>
                   </div>
                   <div class={`bar ${state === "over" ? "over" : state === "warn" ? "warn" : ""}`}>
@@ -305,7 +305,7 @@ function NewBudget({ onSave }: { onSave: (account: string, amount: string) => vo
         <select class="input" value={account} onChange={(e) => setAccount((e.target as HTMLSelectElement).value)}>
           <option value="">Choose…</option>
           {expenses.map((c) => (
-            <option value={c}>{catLabel(c)}</option>
+            <option value={c}>{catEmoji(c)} {catLabel(c)}</option>
           ))}
         </select>
       </div>
@@ -401,7 +401,7 @@ function Spending({ range }: { range: Range }) {
           padAngle: 1.5,
           itemStyle: { borderRadius: 7, borderColor: t.surface, borderWidth: 2 },
           label: { show: false },
-          data: cats.map((c) => ({ name: catLabel(c.account), value: c.amount_cents })),
+          data: cats.map((c) => ({ name: `${catEmoji(c.account)} ${catLabel(c.account)}`, value: c.amount_cents })),
         },
       ],
     }),
@@ -450,7 +450,7 @@ function Spending({ range }: { range: Range }) {
             {cats.map((c) => (
               <tr>
                 <td>
-                  {catLabel(c.account)}
+                  <CatName account={c.account} />
                   <div class="inline-bar" style={{ width: `${Math.max(2, c.share)}%` }} />
                 </td>
                 <td class="r num muted">{c.share}%</td>
