@@ -239,3 +239,12 @@ Raised during spec review. Resolve before the milestone noted.
 4. **Jev key storage (before M6).** `settings` is non-secret only, yet the Jev key may be set in the UI. Decide where it lives (e.g. a separate `secrets` table encrypted with a key from env, or a `0600` file under `/data`).
 5. **hledger-web write capability (M1) — resolved.** hledger-web has its own add-transaction form. WMMA runs it with `--allow=view` (the flag in hledger 1.52; older docs call it `--capabilities`) to enforce "journals are written only by WMMA".
 6. **Jev API reference (before M4).** Link Jev's API docs and confirm the request/response shape and whether 0.90 is a sensible confidence threshold for its scores.
+
+### Implementation notes (decisions taken while building; revisit if wrong)
+
+- **M2 — YNAB "Starting Balance"** transactions post to `Equity:OpeningBalances` instead of `Income:Uncategorized`, so opening balances never show up as income on a P&L.
+- **M2 — uncategorised lines in tracking asset accounts** (e.g. a house's "Market Value Adjustment") post to `Equity:Unrealized`, per §6.
+- **M2 — split-to-split transfers** (a split line in one account transferring to a split line in another) post both sides through `Equity:Transfers`, which nets to zero; this is the only way to emit each split once without double-counting.
+- **M2 — past budget amounts** from YNAB are deferred to M5, where budgets (and rollover, §13.3) are built. The importers will gain an `includeBudgets` option then.
+- **M2 — YNAB API** now lives under `/plans/{id}` (formerly budgets), and `GET .../transactions` returns only the last year unless `since_date` is passed; WMMA passes `since_date=1900-01-01`.
+- **M2 — CLI.** `wmma import ...` inside the container calls the local REST API, so the server stays the only journal writer.

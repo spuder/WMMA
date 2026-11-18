@@ -1,0 +1,437 @@
+{
+ "fetchedAt": "2026-11-18T00:00:00.000Z",
+ "planId": "last-used",
+ "accounts": [
+  {
+   "id": "acc-checking",
+   "name": "Checking",
+   "type": "checking",
+   "closed": false,
+   "balance": 2573410,
+   "deleted": false
+  },
+  {
+   "id": "acc-savings",
+   "name": "Savings",
+   "type": "savings",
+   "closed": false,
+   "balance": 250000,
+   "deleted": false
+  },
+  {
+   "id": "acc-visa",
+   "name": "Visa Rewards",
+   "type": "creditCard",
+   "closed": false,
+   "balance": 0,
+   "deleted": false
+  },
+  {
+   "id": "acc-house",
+   "name": "House",
+   "type": "otherAsset",
+   "closed": false,
+   "balance": 310000000,
+   "deleted": false
+  },
+  {
+   "id": "acc-biz",
+   "name": "Acme Checking",
+   "type": "checking",
+   "closed": false,
+   "balance": 4000000,
+   "deleted": false
+  },
+  {
+   "id": "acc-deleted",
+   "name": "Old Account",
+   "type": "checking",
+   "closed": true,
+   "balance": 0,
+   "deleted": true
+  }
+ ],
+ "categoryGroups": [
+  {
+   "id": "g-int",
+   "name": "Internal Master Category",
+   "categories": [
+    {
+     "id": "cat-rta",
+     "name": "Inflow: Ready to Assign"
+    },
+    {
+     "id": "cat-unc",
+     "name": "Uncategorized"
+    }
+   ]
+  },
+  {
+   "id": "g-io",
+   "name": "Immediate Obligations",
+   "categories": [
+    {
+     "id": "cat-rent",
+     "name": "Rent/Mortgage"
+    },
+    {
+     "id": "cat-groc",
+     "name": "Groceries"
+    }
+   ]
+  },
+  {
+   "id": "g-fun",
+   "name": "Fun",
+   "categories": [
+    {
+     "id": "cat-games",
+     "name": "🎮 Games"
+    }
+   ]
+  }
+ ],
+ "transactions": [
+  {
+   "id": "t01",
+   "date": "2026-01-01",
+   "amount": 1000000,
+   "memo": null,
+   "cleared": "cleared",
+   "approved": true,
+   "account_id": "acc-checking",
+   "payee_name": "Starting Balance",
+   "category_id": "cat-rta",
+   "category_name": null,
+   "transfer_account_id": null,
+   "transfer_transaction_id": null,
+   "deleted": false,
+   "subtransactions": []
+  },
+  {
+   "id": "t02",
+   "date": "2026-01-02",
+   "amount": 2500000,
+   "memo": "January pay",
+   "cleared": "cleared",
+   "approved": true,
+   "account_id": "acc-checking",
+   "payee_name": "Employer",
+   "category_id": "cat-rta",
+   "category_name": null,
+   "transfer_account_id": null,
+   "transfer_transaction_id": null,
+   "deleted": false,
+   "subtransactions": []
+  },
+  {
+   "id": "t03",
+   "date": "2026-01-03",
+   "amount": -1500000,
+   "memo": null,
+   "cleared": "cleared",
+   "approved": true,
+   "account_id": "acc-checking",
+   "payee_name": "Landlord",
+   "category_id": "cat-rent",
+   "category_name": null,
+   "transfer_account_id": null,
+   "transfer_transaction_id": null,
+   "deleted": false,
+   "subtransactions": []
+  },
+  {
+   "id": "t04a",
+   "date": "2026-01-04",
+   "amount": -200000,
+   "memo": null,
+   "cleared": "cleared",
+   "approved": true,
+   "account_id": "acc-checking",
+   "payee_name": "Transfer : Savings",
+   "category_id": null,
+   "category_name": null,
+   "transfer_account_id": "acc-savings",
+   "transfer_transaction_id": "t04b",
+   "deleted": false,
+   "subtransactions": []
+  },
+  {
+   "id": "t04b",
+   "date": "2026-01-04",
+   "amount": 200000,
+   "memo": null,
+   "cleared": "cleared",
+   "approved": true,
+   "account_id": "acc-savings",
+   "payee_name": "Transfer : Checking",
+   "category_id": null,
+   "category_name": null,
+   "transfer_account_id": "acc-checking",
+   "transfer_transaction_id": "t04a",
+   "deleted": false,
+   "subtransactions": []
+  },
+  {
+   "id": "t05",
+   "date": "2026-01-05",
+   "amount": -85250,
+   "memo": null,
+   "cleared": "uncleared",
+   "approved": true,
+   "account_id": "acc-visa",
+   "payee_name": "Grocer; Inc",
+   "category_id": "cat-groc",
+   "category_name": null,
+   "transfer_account_id": null,
+   "transfer_transaction_id": null,
+   "deleted": false,
+   "subtransactions": []
+  },
+  {
+   "id": "t06b",
+   "date": "2026-01-06",
+   "amount": 85250,
+   "memo": null,
+   "cleared": "cleared",
+   "approved": true,
+   "account_id": "acc-visa",
+   "payee_name": "Transfer : Checking",
+   "category_id": null,
+   "category_name": null,
+   "transfer_account_id": "acc-checking",
+   "transfer_transaction_id": "t06a",
+   "deleted": false,
+   "subtransactions": []
+  },
+  {
+   "id": "t06a",
+   "date": "2026-01-06",
+   "amount": -85250,
+   "memo": null,
+   "cleared": "cleared",
+   "approved": true,
+   "account_id": "acc-checking",
+   "payee_name": "Transfer : Visa Rewards",
+   "category_id": null,
+   "category_name": null,
+   "transfer_account_id": "acc-visa",
+   "transfer_transaction_id": "t06b",
+   "deleted": false,
+   "subtransactions": []
+  },
+  {
+   "id": "t07",
+   "date": "2026-01-07",
+   "amount": -120000,
+   "memo": null,
+   "cleared": "cleared",
+   "approved": true,
+   "account_id": "acc-checking",
+   "payee_name": "Costco",
+   "category_id": null,
+   "category_name": null,
+   "transfer_account_id": null,
+   "transfer_transaction_id": null,
+   "deleted": false,
+   "subtransactions": [
+    {
+     "id": "s07a",
+     "transaction_id": "t07",
+     "amount": -70000,
+     "memo": "food",
+     "payee_name": null,
+     "category_id": "cat-groc",
+     "category_name": null,
+     "transfer_account_id": null,
+     "transfer_transaction_id": null,
+     "deleted": false
+    },
+    {
+     "id": "s07b",
+     "transaction_id": "t07",
+     "amount": -50000,
+     "memo": "cash back",
+     "payee_name": "Transfer : Savings",
+     "category_id": null,
+     "category_name": null,
+     "transfer_account_id": "acc-savings",
+     "transfer_transaction_id": "t07c",
+     "deleted": false
+    },
+    {
+     "id": "s07x",
+     "transaction_id": "t07",
+     "amount": -999000,
+     "memo": null,
+     "payee_name": null,
+     "category_id": "cat-groc",
+     "category_name": null,
+     "transfer_account_id": null,
+     "transfer_transaction_id": null,
+     "deleted": true
+    }
+   ]
+  },
+  {
+   "id": "t07c",
+   "date": "2026-01-07",
+   "amount": 50000,
+   "memo": null,
+   "cleared": "cleared",
+   "approved": true,
+   "account_id": "acc-savings",
+   "payee_name": "Transfer : Checking",
+   "category_id": null,
+   "category_name": null,
+   "transfer_account_id": "acc-checking",
+   "transfer_transaction_id": "s07b",
+   "deleted": false,
+   "subtransactions": []
+  },
+  {
+   "id": "t08",
+   "date": "2026-01-08",
+   "amount": -999000,
+   "memo": null,
+   "cleared": "cleared",
+   "approved": true,
+   "account_id": "acc-checking",
+   "payee_name": "Mistake",
+   "category_id": "cat-groc",
+   "category_name": null,
+   "transfer_account_id": null,
+   "transfer_transaction_id": null,
+   "deleted": true,
+   "subtransactions": []
+  },
+  {
+   "id": "t09",
+   "date": "2026-01-01",
+   "amount": 300000000,
+   "memo": null,
+   "cleared": "cleared",
+   "approved": true,
+   "account_id": "acc-house",
+   "payee_name": "Starting Balance",
+   "category_id": null,
+   "category_name": null,
+   "transfer_account_id": null,
+   "transfer_transaction_id": null,
+   "deleted": false,
+   "subtransactions": []
+  },
+  {
+   "id": "t10",
+   "date": "2026-06-30",
+   "amount": 10000000,
+   "memo": null,
+   "cleared": "cleared",
+   "approved": true,
+   "account_id": "acc-house",
+   "payee_name": "Market Value Adjustment",
+   "category_id": null,
+   "category_name": null,
+   "transfer_account_id": null,
+   "transfer_transaction_id": null,
+   "deleted": false,
+   "subtransactions": []
+  },
+  {
+   "id": "t11",
+   "date": "2026-01-02",
+   "amount": 5000000,
+   "memo": null,
+   "cleared": "cleared",
+   "approved": true,
+   "account_id": "acc-biz",
+   "payee_name": "Client A",
+   "category_id": "cat-rta",
+   "category_name": null,
+   "transfer_account_id": null,
+   "transfer_transaction_id": null,
+   "deleted": false,
+   "subtransactions": []
+  },
+  {
+   "id": "t12b",
+   "date": "2026-01-15",
+   "amount": 1000000,
+   "memo": null,
+   "cleared": "cleared",
+   "approved": true,
+   "account_id": "acc-checking",
+   "payee_name": "Transfer : Acme Checking",
+   "category_id": null,
+   "category_name": null,
+   "transfer_account_id": "acc-biz",
+   "transfer_transaction_id": "t12a",
+   "deleted": false,
+   "subtransactions": []
+  },
+  {
+   "id": "t12a",
+   "date": "2026-01-15",
+   "amount": -1000000,
+   "memo": "owner draw",
+   "cleared": "cleared",
+   "approved": true,
+   "account_id": "acc-biz",
+   "payee_name": "Transfer : Checking",
+   "category_id": null,
+   "category_name": null,
+   "transfer_account_id": "acc-checking",
+   "transfer_transaction_id": "t12b",
+   "deleted": false,
+   "subtransactions": []
+  },
+  {
+   "id": "t13",
+   "date": "2026-01-09",
+   "amount": -12340,
+   "memo": null,
+   "cleared": "cleared",
+   "approved": true,
+   "account_id": "acc-checking",
+   "payee_name": "Shop",
+   "category_id": "cat-unc",
+   "category_name": null,
+   "transfer_account_id": null,
+   "transfer_transaction_id": null,
+   "deleted": false,
+   "subtransactions": []
+  },
+  {
+   "id": "t14",
+   "date": "2026-01-10",
+   "amount": -4500,
+   "memo": null,
+   "cleared": "cleared",
+   "approved": true,
+   "account_id": "acc-checking",
+   "payee_name": "Blue Bottle",
+   "category_id": "cat-games",
+   "category_name": null,
+   "transfer_account_id": null,
+   "transfer_transaction_id": null,
+   "deleted": false,
+   "subtransactions": []
+  },
+  {
+   "id": "t15",
+   "date": "2026-01-10",
+   "amount": -4500,
+   "memo": null,
+   "cleared": "cleared",
+   "approved": true,
+   "account_id": "acc-checking",
+   "payee_name": "Blue Bottle",
+   "category_id": "cat-games",
+   "category_name": null,
+   "transfer_account_id": null,
+   "transfer_transaction_id": null,
+   "deleted": false,
+   "subtransactions": []
+  }
+ ]
+}

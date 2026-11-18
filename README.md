@@ -8,7 +8,30 @@ See [SPEC.md](SPEC.md) for the full design and milestones.
 
 ## Status
 
-Milestone 1 (skeleton): Bun/TypeScript service, `Money` module, journal writer, Tailscale identity auth, hledger-web (read-only, localhost), Docker image and Compose file.
+- **M1 skeleton:** Bun/TypeScript service, `Money` module, journal writer, Tailscale identity auth, hledger-web (read-only, localhost), Docker image and Compose file.
+- **M2 YNAB import:** API and register-CSV importers. Re-running adds nothing; the result reports per-account balances against YNAB.
+
+## Importing from YNAB
+
+Inside the container (the CLI talks to the running server):
+
+```sh
+# API (needs YNAB_TOKEN). Pulls full history of the last-used plan.
+docker compose exec wmma wmma import ynab-api \
+  --default-entity personal \
+  --account "Acme Checking=bank:acme"
+
+# Register CSV export
+docker compose exec wmma wmma import ynab-csv /data/register.csv \
+  --account "Chase Sapphire=credit"
+
+docker compose exec wmma wmma import-runs
+docker compose exec wmma wmma accounts
+```
+
+`--account "NAME=KIND[:ENTITY]"` sets the kind and default entity for an account the first time it is seen (CSV exports don't say whether an account is a credit card, so set those). Every import is safe to re-run.
+
+REST: `POST /api/v1/imports/ynab-api` (JSON options), `POST /api/v1/imports` (multipart: `type=ynab-csv`, `file`, `options`), `GET /api/v1/import-runs`, `GET /api/v1/accounts`.
 
 ## Run with Docker Compose
 

@@ -8,6 +8,7 @@ import { HledgerWeb, HledgerWebClient } from "../src/hledger/web";
 import { JournalStore } from "../src/journal/store";
 import { cents, fromHledgerQuantity } from "../src/money";
 import { createFetchHandler } from "../src/server";
+import type { ServiceContext } from "../src/services/context";
 import { freePort, hledgerWebBin } from "./helpers";
 
 const allowed = new Set(["alice@example.com"]);
@@ -52,7 +53,7 @@ describe("fetch handler", () => {
   const handler = createFetchHandler({
     config: loadConfig({ WMMA_ALLOWED_USERS: "alice@example.com" }),
     hledger: new HledgerWebClient("http://127.0.0.1:1"), // unreachable on purpose
-  });
+  } as ServiceContext);
   test("healthz needs no auth", async () => {
     const r = await handler(req({}, "/healthz"));
     expect(r.status).toBe(200);

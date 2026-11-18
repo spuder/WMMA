@@ -80,6 +80,13 @@ export function fromHledgerQuantity(q: { decimalMantissa: number; decimalPlaces:
   return check(Number(big / div));
 }
 
+/** YNAB milliunits (1000 = $1). Throws on sub-cent values. */
+export function fromMilliunits(milli: number): Money {
+  if (!Number.isSafeInteger(milli)) throw new MoneyError(`invalid milliunits: ${milli}`);
+  if (milli % 10 !== 0) throw new MoneyError(`milliunits have sub-cent precision: ${milli}`);
+  return check(milli / 10);
+}
+
 export function add(a: Money, b: Money): Money {
   return check(a + b);
 }

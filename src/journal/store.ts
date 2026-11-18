@@ -149,14 +149,31 @@ export class JournalStore {
 
   /** Declare an account in accounts.journal. Returns false if it was already declared. */
   async declareAccount(name: string, opts: { type?: AccountType; tags?: Tags } = {}): Promise<boolean> {
-    const line = formatAccountDirective(name, opts);
+    return (await this.declareAccounts([{ name, ...opts }])) === 1;
+  }
+
+  /** Declare several accounts in one write. Returns how many were newly declared. */
+  async declareAccounts(list: ReadonlyArray<{ name: string; type?: AccountType; tags?: Tags }>): Promise<number> {
+    const lines = list.map((a) => ({ name: a.name, line: formatAccountDirective(a.name, a) }));
     return this.#serial(async () => {
       const existing = await readOrEmpty(this.paths.accounts);
-      const declared = existing.split("\n").some((l) => l === `account ${name}` || l.startsWith(`account ${name}  ;`));
-      if (declared) return false;
+      const declared = new Set<string>();
+      for (const l of existing.split("\n")) {
+        const m = /^account (.+?)(?: {2}.*)?$/.exec(l);
+        if (m) declared.add(m[1]!);
+      }
+      let out = "";
+      let n = 0;
+      for (const { name, line } of lines) {
+        if (declared.has(name)) continue;
+        declared.add(name);
+        out += line;
+        n++;
+      }
+      if (n === 0) return 0;
       const base = existing === "" ? HEADER : existing.endsWith("\n") ? existing : existing + "\n";
-      await atomicWrite(this.paths.accounts, base + line);
-      return true;
+      await atomicWrite(this.paths.accounts, base + out);
+      return n;
     });
   }
 }

@@ -1,4 +1,7 @@
+import { AuditLog } from "./audit";
+import { runCli } from "./cli";
 import { ConfigError, loadConfig } from "./config";
+import { openDb } from "./db";
 import { HledgerWeb } from "./hledger/web";
 import { JournalStore } from "./journal/store";
 import { createFetchHandler } from "./server";
@@ -27,6 +30,8 @@ async function serve(): Promise<void> {
 
   const store = new JournalStore(config.dataDir);
   await store.init();
+  const db = openDb(store.paths.db);
+  const audit = new AuditLog(store.paths.audit);
 
   const hledger = new HledgerWeb({ bin: config.hledgerWebBin, port: config.hledgerWebPort, journal: store.paths.main });
   const version = await hledger.start();
@@ -35,7 +40,9 @@ async function serve(): Promise<void> {
   const server = Bun.serve({
     hostname: config.host,
     port: config.port,
-    fetch: createFetchHandler({ config, hledger: hledger.client }),
+    maxRequestBodySize: 64 * 1024 * 1024,
+    idleTimeout: 255, // long YNAB imports
+    fetch: createFetchHandler({ config, db, store, audit, hledger: hledger.client }),
   });
   console.log(`WMMA listening on http://${server.hostname}:${server.port} (data: ${config.dataDir})`);
 
@@ -43,16 +50,14 @@ async function serve(): Promise<void> {
     console.log(`${sig} received, shutting down`);
     await server.stop();
     await hledger.stop();
+    db.close();
     process.exit(0);
   };
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
   process.on("SIGINT", () => void shutdown("SIGINT"));
 }
 
-const cmd = process.argv[2] ?? "serve";
+const [cmd = "serve", ...rest] = process.argv.slice(2);
 if (cmd === "healthcheck") await healthcheck();
 else if (cmd === "serve") await serve();
-else {
-  console.error(`usage: wmma [serve|healthcheck]`);
-  process.exit(2);
-}
+else process.exit(await runCli(cmd, rest));
