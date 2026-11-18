@@ -270,7 +270,7 @@ textarea.input { height: auto; padding: 10px 14px; }
 .business-icon { display: inline-flex; width: 28px; height: 28px; flex: none; align-items: center; justify-content: center; border: 1px solid; border-radius: 8px; font-size: 15px; }
 .business-icon svg { width: 17px; height: 17px; }
 .business-tag svg { width: 13px; height: 13px; vertical-align: -2px; }
-.color-options { display: flex; flex-wrap: wrap; gap: 10px; }
+.color-options { display: flex; flex-wrap: wrap; gap: 10px; padding: 4px; }
 .color-swatch { display: inline-flex; width: 34px; height: 34px; align-items: center; justify-content: center; border: 2px solid transparent; border-radius: 10px; color: white; cursor: pointer; }
 .color-swatch svg { width: 18px; height: 18px; }
 .color-swatch.selected { outline: 2px solid var(--ink); outline-offset: 2px; }
