@@ -122,3 +122,42 @@ describe.skipIf(!hledgerWebBin)("hledger-web integration", () => {
     expect(res.ok).toBe(false);
   });
 });
+
+describe("requests without a Host header", () => {
+  test("are handled, not 500s (Bun leaves req.url relative)", async () => {
+    const handler = createFetchHandler({
+      config: loadConfig({ WMMA_ALLOWED_USERS: "alice@example.com" }),
+      hledger: new HledgerWebClient("http://127.0.0.1:1"),
+    } as ServiceContext);
+    const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: handler });
+    try {
+      const raw = async (path: string, headers = "") =>
+        new Promise<string>((resolve, reject) => {
+          let buf = "";
+          Bun.connect({
+            hostname: "127.0.0.1",
+            port: server.port!,
+            socket: {
+              open(s) {
+                s.write(`GET ${path} HTTP/1.0\r\n${headers}\r\n`);
+              },
+              data(_s, d) {
+                buf += d.toString();
+              },
+              close() {
+                resolve(buf.split("\r\n")[0]!);
+              },
+              error(_s, e) {
+                reject(e);
+              },
+            },
+          }).catch(reject);
+        });
+      expect(await raw("/api/v1/status")).toContain(" 401 ");
+      expect(await raw("/api/v1/status", "Tailscale-User-Login: alice@example.com\r\n")).toContain(" 200 ");
+      expect(await raw("/api/v1/duplicates?status=bogus", "Tailscale-User-Login: alice@example.com\r\n")).toContain(" 400 ");
+    } finally {
+      server.stop(true);
+    }
+  });
+});
