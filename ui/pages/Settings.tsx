@@ -105,7 +105,7 @@ export function Settings() {
         <div class="card span-6 stack">
           <div>
             <h2>SimpleFIN bank sync</h2>
-            <div class="sub">Connect your bank accounts through SimpleFIN Bridge.</div>
+            <div class="sub">Add your banks to SimpleFIN Bridge, then connect them to WMMA.</div>
           </div>
           {s.loading ? (
             <Loading h={80} />
@@ -117,12 +117,12 @@ export function Settings() {
                   {s.data.simplefin.configured ? `Connected · ${s.data.simplefin.source === "env" ? "from environment" : "set here"}` : "Not configured"}
                 </span>
               </div>
+              <div class="small">1. Add the banks you want to connect in <a href="https://beta-bridge.simplefin.org/my-account" target="_blank" rel="noreferrer" style={{ color: "var(--accent)", fontWeight: 650 }}>your SimpleFIN Bridge account</a>.</div>
               {s.data.simplefin.source === "env" ? (
                 <div class="muted small">The access URL comes from SIMPLEFIN_ACCESS_URL on the server. Change it in the server environment.</div>
               ) : s.data.simplefin.canStoreInUi ? (
                 <>
-                  <div class="small">1. <a href="https://bridge.simplefin.org/simplefin/create" target="_blank" rel="noreferrer">Connect your bank and create a Setup Token in SimpleFIN Bridge</a>.</div>
-                  <div class="small">2. Paste the one-time Setup Token below. WMMA exchanges it for an Access URL and stores that URL encrypted.</div>
+                  <div class="small">2. In SimpleFIN Bridge, create and copy a Setup Token. Paste it below; WMMA exchanges it for an Access URL and stores that URL encrypted.</div>
                   <div class="field">
                     <label>SimpleFIN Setup Token</label>
                     <input class="input" type="password" autoComplete="off" placeholder="Paste the one-time token" value={simplefinToken} onInput={(e) => setSimplefinToken((e.target as HTMLInputElement).value)} />
@@ -138,7 +138,7 @@ export function Settings() {
                   <div class="muted tiny">Setup Tokens can only be claimed once. WMMA never displays or logs the saved Access URL.</div>
                 </>
               ) : (
-                <div class="muted small">Set WMMA_SECRET_KEY on the server (16+ characters) to store the Access URL encrypted here, or configure SIMPLEFIN_ACCESS_URL in the server environment.</div>
+                <div class="muted small">Set WMMA_SECRET_KEY on the server (16+ characters) to store the Access URL encrypted here. Then create a Setup Token in SimpleFIN Bridge and paste it here, or configure SIMPLEFIN_ACCESS_URL in the server environment.</div>
               )}
             </>
           )}

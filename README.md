@@ -60,10 +60,11 @@ Profile fields: `columns.{date,payee,memo,amount | debit+credit,id}`, `dateForma
 
 ### Connect SimpleFIN
 
-In WMMA, open **Settings → SimpleFIN bank sync**, follow the link to SimpleFIN
-Bridge, connect your bank, and copy the one-time Setup Token. Paste that token
-into WMMA and select **Connect SimpleFIN**. WMMA claims it once and stores the
-resulting Access URL encrypted; it does not display or log the Access URL.
+In WMMA, open **Settings → SimpleFIN bank sync**, then open your [SimpleFIN
+Bridge account](https://beta-bridge.simplefin.org/my-account) and add the banks
+you want to connect. Create and copy a one-time Setup Token, paste it into WMMA,
+and select **Connect SimpleFIN**. WMMA claims it once and stores the resulting
+Access URL encrypted; it does not display or log the Access URL.
 This requires `WMMA_SECRET_KEY` (at least 16 characters). After connecting,
 open **Imports** and select **Sync SimpleFIN now**. New bank accounts are
 created automatically on the first sync; review them under **Accounts**.
