@@ -96,6 +96,7 @@ export function Accounts() {
           + Entity
         </button>
       </div>
+      {all.error && <ErrorBox error={all.error} />}
       <div class="card" style={{ paddingTop: 4, paddingBottom: 4 }}>
         <div class="list">
           {(all.data?.entities ?? []).map((e: any) => (
@@ -113,6 +114,10 @@ export function Accounts() {
               )}
             </div>
           ))}
+          {!all.loading && !all.error && (all.data?.entities ?? []).length === 0 && (
+            <div class="empty">No entities yet. Add an entity to organize accounts for your household or business.</div>
+          )}
+          {all.loading && <Loading h={64} />}
         </div>
       </div>
 

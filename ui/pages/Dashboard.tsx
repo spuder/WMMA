@@ -12,6 +12,7 @@ const greeting = () => {
 
 export function Dashboard() {
   const { entity, reviewCount } = useApp();
+  const accounts = useApi<{ accounts: any[] }>("/accounts");
   const m = thisMonth();
   const eq = entity ? `&entity=${encodeURIComponent(entity)}` : "";
   const nw = useApi(`/reports/networth?from=${monthShift(m, -11)}&to=${m}`, []);
@@ -92,6 +93,19 @@ export function Dashboard() {
       </div>
 
       {nw.error && <ErrorBox error={nw.error} />}
+      {accounts.error && <ErrorBox error={accounts.error} />}
+
+      {!accounts.loading && !accounts.error && accounts.data?.accounts.length === 0 && (
+        <section class="card onboarding span-12">
+          <div class="upper">Get started</div>
+          <h2>Bring your finances into WMMA</h2>
+          <p class="sub">Add an account or import a statement to start seeing balances, spending, and reports here.</p>
+          <div class="row onboarding-actions">
+            <a class="btn primary" href="#/accounts">Add an account</a>
+            <a class="btn" href="#/imports">Import transactions</a>
+          </div>
+        </section>
+      )}
 
       <div class="grid">
         <div class="card hero span-7">
@@ -187,7 +201,7 @@ export function Dashboard() {
           {recent.loading ? (
             <Loading h={200} />
           ) : (recent.data?.transactions ?? []).length === 0 ? (
-            <div class="empty">No transactions yet. Import some from More → Imports.</div>
+            <div class="empty">No transactions yet. <a href="#/imports">Import a bank statement</a> to see activity here.</div>
           ) : (
             <div class="list">
               {recent.data.transactions.map((t: any) => (

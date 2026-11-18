@@ -88,7 +88,7 @@ export function Toaster() {
 }
 
 export function Loading({ h = 120 }: { h?: number }) {
-  return <div class="skeleton" style={{ height: h }} />;
+  return <div class="skeleton" style={{ height: h }} role="status" aria-label="Loading" />;
 }
 
 export function ErrorBox({ error }: { error: string }) {

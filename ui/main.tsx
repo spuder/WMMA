@@ -18,7 +18,7 @@ const NAV = [
   { path: "/review", label: "Review", icon: Icon.swipe },
   { path: "/reports", label: "Reports", icon: Icon.chart },
   { path: "/more", label: "More", icon: Icon.more, mobileOnly: true },
-  { path: "/accounts", label: "Accounts", icon: Icon.bank, desktopOnly: true },
+  { path: "/accounts", label: "Accounts", icon: Icon.bank },
   { path: "/imports", label: "Imports", icon: Icon.upload, desktopOnly: true },
   { path: "/settings", label: "Settings", icon: Icon.gear, desktopOnly: true },
 ];
