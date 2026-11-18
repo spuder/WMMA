@@ -1,9 +1,9 @@
-import { useCallback } from "preact/hooks";
+import { useCallback, useState } from "preact/hooks";
 import { catEmoji, compact, leaf, money, monthEnd, monthName, monthShift, monthStart, thisMonth, useApi } from "../api";
 import { Chart, type Theme } from "../components/chart";
 import { CatName, ErrorBox, Icon, Loading } from "../components/ui";
 import { EntitySwitcher, go, useApp } from "../app";
-import { TxnRow } from "./Transactions";
+import { TxnList, type Txn } from "./Transactions";
 
 const greeting = () => {
   const h = new Date().getHours();
@@ -11,7 +11,8 @@ const greeting = () => {
 };
 
 export function Dashboard() {
-  const { entity, entities, reviewCount } = useApp();
+  const { entity, reviewCount } = useApp();
+  const [edited, setEdited] = useState<Record<string, Txn>>({});
   const accounts = useApi<{ accounts: any[] }>("/accounts");
   const m = thisMonth();
   const eq = entity ? `&entity=${encodeURIComponent(entity)}` : "";
@@ -203,11 +204,13 @@ export function Dashboard() {
           ) : (recent.data?.transactions ?? []).length === 0 ? (
             <div class="empty">No transactions yet. <a href="#/imports">Import a bank statement</a> to see activity here.</div>
           ) : (
-            <div class="list">
-              {recent.data.transactions.map((t: any) => (
-                <TxnRow t={t} entities={entities} onClick={() => go(`/transactions?id=${t.wmma_id}`)} />
-              ))}
-            </div>
+            <TxnList
+              rows={(recent.data.transactions as Txn[]).map((t) => edited[t.wmma_id] ?? t)}
+              accounts={accounts.data?.accounts ?? []}
+              onOpen={(t) => go(`/transactions?id=${t.wmma_id}`)}
+              onChanged={(t) => setEdited((e) => ({ ...e, [t.wmma_id]: t }))}
+              onFilterAccount={(a) => go(a ? `/transactions?account=${encodeURIComponent(a)}` : "/transactions")}
+            />
           )}
         </div>
       </div>

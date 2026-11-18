@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { api, catLabel, dayLabel, leaf, money } from "../api";
 import { Avatar, CategoryPicker, CatName, CellMenu, ErrorBox, Icon, Loading, MenuOption, Sheet, toast } from "../components/ui";
 import { businessStyle, EntitySwitcher, go, transactionEntity, useApp, type Entity } from "../app";
@@ -71,15 +71,118 @@ interface AccountInfo {
   default_entity: string;
 }
 
-function useWide(query = "(min-width: 900px)") {
-  const [wide, setWide] = useState(() => matchMedia(query).matches);
+/** Columns need about this much room; below it (phones, narrow windows) rows become cards. */
+const TABLE_MIN_WIDTH = 720;
+
+/** Width of an element, tracked as it resizes (sidebar, window, rotation). */
+function useWidth(ref: { current: HTMLElement | null }): number {
+  const [width, setWidth] = useState(0);
   useEffect(() => {
-    const m = matchMedia(query);
-    const on = () => setWide(m.matches);
-    m.addEventListener("change", on);
-    return () => m.removeEventListener("change", on);
-  }, [query]);
-  return wide;
+    const el = ref.current;
+    if (!el) return;
+    setWidth(el.clientWidth);
+    const ro = new ResizeObserver(([entry]) => entry && setWidth(entry.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return width;
+}
+
+/** Accounts with balances, for naming each transaction's account. */
+export function useAccountsInfo(): AccountInfo[] {
+  const [accounts, setAccounts] = useState<AccountInfo[]>([]);
+  useEffect(() => {
+    api<{ accounts: AccountInfo[] }>("/accounts")
+      .then((r) => setAccounts(r.accounts))
+      .catch(() => {});
+  }, []);
+  return accounts;
+}
+
+/**
+ * Transactions grouped by day: a Monarch-style table (merchant, category,
+ * account, business, amount, details chevron) with in-place editing when there
+ * is room, otherwise tappable cards.
+ */
+export function TxnList({
+  rows,
+  accounts,
+  accountFilter = null,
+  onOpen,
+  onChanged,
+  onFilterAccount,
+  empty = "No transactions",
+}: {
+  rows: Txn[];
+  accounts: AccountInfo[];
+  accountFilter?: string | null;
+  onOpen: (t: Txn) => void;
+  onChanged: (t: Txn) => void;
+  onFilterAccount: (account: string | null) => void;
+  empty?: string;
+}) {
+  const { entities, categories } = useApp();
+  const ref = useRef<HTMLDivElement>(null);
+  const width = useWidth(ref);
+  const groups = useMemo(() => {
+    const g: Array<[string, Txn[]]> = [];
+    for (const t of rows) {
+      const last = g[g.length - 1];
+      if (last && last[0] === t.date) last[1].push(t);
+      else g.push([t.date, [t]]);
+    }
+    return g;
+  }, [rows]);
+  const table = width >= TABLE_MIN_WIDTH;
+  return (
+    <div ref={ref}>
+      {groups.length === 0 && <div class="empty">{empty}</div>}
+      {table && groups.length > 0 && (
+        <div class="txn-table">
+          <div class="txn-head">
+            <span>Merchant</span>
+            <span>Category</span>
+            <span>Account</span>
+            <span>Business</span>
+            <span class="r">Amount</span>
+            <span />
+          </div>
+          {groups.map(([d, list]) => (
+            <div>
+              <div class="txn-day upper">
+                <span>{dayLabel(d)}</span>
+                <span class="num">{money(list.reduce((sum, t) => sum + summarize(t).amount, 0))}</span>
+              </div>
+              {list.map((t) => (
+                <TxnLine
+                  key={t.wmma_id}
+                  t={t}
+                  entities={entities}
+                  accounts={accounts}
+                  categories={categories}
+                  accountFilter={accountFilter}
+                  onOpen={() => onOpen(t)}
+                  onChanged={onChanged}
+                  onFilterAccount={onFilterAccount}
+                />
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+      {!table &&
+        groups.map(([d, list]) => (
+          <div>
+            <div class="dategroup upper">{dayLabel(d)}</div>
+            <div class="list">
+              {list.map((t) => (
+                <TxnRow t={t} entities={entities} onClick={() => onOpen(t)} />
+              ))}
+            </div>
+          </div>
+        ))}
+    </div>
+  );
 }
 
 const bankPosting = (t: Txn) => t.postings.find((p) => isMoney(p.account) && !p.account.includes(":Due"));
@@ -238,15 +341,9 @@ function TxnLine({
 }
 
 export function Transactions({ query }: { query: URLSearchParams }) {
-  const { entity, entities, categories } = useApp();
-  const wide = useWide();
+  const { entity } = useApp();
   const accountFilter = query.get("account");
-  const [accounts, setAccounts] = useState<AccountInfo[]>([]);
-  useEffect(() => {
-    api<{ accounts: AccountInfo[] }>("/accounts")
-      .then((r) => setAccounts(r.accounts))
-      .catch(() => {});
-  }, []);
+  const accounts = useAccountsInfo();
   const [text, setText] = useState(query.get("q") ?? "");
   const [debounced, setDebounced] = useState(text);
   const [rows, setRows] = useState<Txn[] | null>(null);
@@ -296,15 +393,6 @@ export function Transactions({ query }: { query: URLSearchParams }) {
       }),
     [rows, filter],
   );
-  const groups = useMemo(() => {
-    const g: Array<[string, Txn[]]> = [];
-    for (const t of shown) {
-      const last = g[g.length - 1];
-      if (last && last[0] === t.date) last[1].push(t);
-      else g.push([t.date, [t]]);
-    }
-    return g;
-  }, [shown]);
 
   return (
     <div class="stack">
@@ -337,63 +425,16 @@ export function Transactions({ query }: { query: URLSearchParams }) {
       </div>
       {error && <ErrorBox error={error} />}
       {!rows && !error && <Loading h={360} />}
-      {rows && wide && (
+      {rows && (
         <div class="card" style={{ paddingTop: 4 }}>
-          <div class="txn-table">
-            <div class="txn-head">
-              <span>Merchant</span>
-              <span>Category</span>
-              <span>Account</span>
-              <span>Business</span>
-              <span class="r">Amount</span>
-              <span />
-            </div>
-            {groups.length === 0 && <div class="empty">No transactions</div>}
-            {groups.map(([d, list]) => {
-              const net = list.reduce((sum, t) => sum + summarize(t).amount, 0);
-              return (
-                <div>
-                  <div class="txn-day upper">
-                    <span>{dayLabel(d)}</span>
-                    <span class="num">{money(net)}</span>
-                  </div>
-                  {list.map((t) => (
-                    <TxnLine
-                      key={t.wmma_id}
-                      t={t}
-                      entities={entities}
-                      accounts={accounts}
-                      categories={categories}
-                      accountFilter={accountFilter}
-                      onOpen={() => go(route({ id: t.wmma_id }))}
-                      onChanged={replaceRow}
-                      onFilterAccount={(a) => go(route({ account: a }))}
-                    />
-                  ))}
-                </div>
-              );
-            })}
-          </div>
-          {rows.length < total && (
-            <button class="btn block" style={{ marginTop: 10 }} onClick={() => load(rows.length)}>
-              Load more ({total - rows.length})
-            </button>
-          )}
-        </div>
-      )}
-      {rows && !wide && (
-        <div class="card" style={{ paddingTop: 4 }}>
-          {groups.length === 0 && <div class="empty">No transactions</div>}
-          {groups.map(([d, list]) => (
-            <div>
-              <div class="dategroup upper">{dayLabel(d)}</div>
-              <div class="list">
-                {list.map((t) => (
-                  <TxnRow t={t} entities={entities} onClick={() => go(route({ id: t.wmma_id }))} />
-                ))}
-              </div>
-            </div>
-          ))}
+          <TxnList
+            rows={shown}
+            accounts={accounts}
+            accountFilter={accountFilter}
+            onOpen={(t) => go(route({ id: t.wmma_id }))}
+            onChanged={replaceRow}
+            onFilterAccount={(a) => go(route({ account: a }))}
+          />
           {rows.length < total && (
             <button class="btn block" style={{ marginTop: 10 }} onClick={() => load(rows.length)}>
               Load more ({total - rows.length})
