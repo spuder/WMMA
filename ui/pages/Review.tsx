@@ -382,39 +382,37 @@ function Quest({ tiers, current, streak, sessionDone, later }: { tiers: Tier[]; 
   }, [current.id]);
   return (
     <div class="quest card">
-      <div class="quest-top">
+      <div class="quest-row">
         {current.cleared ? (
           <div class="quest-title">👑 Inbox zero</div>
         ) : (
           <div class="quest-title">
-            <span key={current.left} class="quest-left num">{current.left}</span>
-            <span>
-              to go for <strong>{current.label}</strong>
-            </span>
+            <span key={current.left} class="quest-left num">{current.left}</span> to clear · <strong>{current.label}</strong>
           </div>
         )}
         <div class="quest-meta">
+          <span class="quest-bar-label num" title={`${current.label}: ${current.done} of ${current.total} sorted`}>
+            {current.done}/{current.total}
+          </span>
           <span title="Sorted this session">⚡{sessionDone}</span>
           {streak >= 3 && <span key={streak} class="streak" title="In a row">🔥{streak}</span>}
           {later > 0 && <span title="Saved for later">⏳{later}</span>}
         </div>
       </div>
-      <div class="quest-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={`${current.label}: ${current.left} to go`}>
-        <div key={current.id} style={{ width: `${pct}%` }} />
-        <span class="quest-bar-label num">
-          {current.done}/{current.total}
-        </span>
-      </div>
       <div class="milestones" ref={stripRef}>
         {trail.map((t) => (
-          <div
+          <span
             class={`ms${t.cleared ? " ms-cleared" : ""}${t.id === current.id && !t.cleared ? " ms-now" : ""}`}
-            title={`${t.days === Infinity ? "Every transaction" : t.days === 0 ? "Dated today" : `Last ${t.days + 1} days`}${t.cleared ? " · cleared" : ` · ${t.left} to go`}`}
+            title={`${t.label} · ${t.days === Infinity ? "every transaction" : t.days === 0 ? "dated today" : `last ${t.days + 1} days`}${t.cleared ? " · cleared" : ` · ${t.left} to go`}`}
           >
-            <span class="ms-dot">{t.cleared ? t.badge : t.left}</span>
-            <span class="ms-label">{t.label}</span>
-          </div>
+            <span class="ms-emoji" aria-hidden="true">{t.badge}</span>
+            {t.id === current.id && !t.cleared && <span class="ms-label">{t.label}</span>}
+            <span class="ms-count num">{t.cleared ? "✓" : t.left}</span>
+          </span>
         ))}
+      </div>
+      <div class="quest-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={`${current.label}: ${current.left} to go`}>
+        <div key={current.id} style={{ width: `${pct}%` }} />
       </div>
     </div>
   );
@@ -541,17 +539,20 @@ function CardBody({
           <div class="conf" style={{ background: `${jevColor(0)}35` }} aria-label={`${Math.round(top.probability * 100)}% confident`}>
             <div style={{ width: `${Math.round(top.probability * 100)}%`, background: jevColor(0) }} />
           </div>
-          <div class="spread tiny muted" style={{ marginTop: 6 }}>
-            <span>{Math.round(top.probability * 100)}% confident</span>
-            {item.jev_choices[1] && <span>then {leaf(item.jev_choices[1].account)}</span>}
+          <div class="tiny muted" style={{ marginTop: 6 }}>
+            {Math.round(top.probability * 100)}% confident
           </div>
-          {onPickSuggestion && <div class="jev-options">
-            {item.jev_choices.slice(0, 6).map((choice, index) => (
-              <button key={choice.account} disabled={busy} style={{ color: jevColor(index), borderColor: `${jevColor(index)}88`, background: `${jevColor(index)}14` }} onPointerDown={(e) => e.stopPropagation()} onClick={() => onPickSuggestion(choice.account)}>
-                <CatName account={choice.account} /> <span class="pct">{Math.round(choice.probability * 100)}%</span>
-              </button>
-            ))}
-          </div>}
+          {onPickSuggestion && item.jev_choices.length > 1 && (
+            <div class="jev-options" onPointerDown={(e) => e.stopPropagation()}>
+              <span class="jev-or upper">Or</span>
+              {item.jev_choices.slice(1, 6).map((choice, i) => (
+                <button key={choice.account} disabled={busy} style={{ color: jevColor(i + 1), borderColor: `${jevColor(i + 1)}88`, background: `${jevColor(i + 1)}14` }} onClick={() => onPickSuggestion(choice.account)}>
+                  <CatName account={choice.account} />
+                  <span class="pct">{Math.round(choice.probability * 100)}%</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       ) : (
         <div class="suggestion none">

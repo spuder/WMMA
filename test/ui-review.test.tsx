@@ -102,7 +102,7 @@ describe("swipe review on a phone", () => {
     // Newest first; everything here is from March, so the current milestone is "This year".
     expect(top()).toContain("GROCER #15");
     expect(text()).toContain("Jev suggests");
-    expect($(".quest-title")!.textContent).toBe("5to go for This year");
+    expect($(".quest-title")!.textContent).toBe("5 to clear · This year");
     expect($(".quest-bar-label")!.textContent).toBe("0/5");
 
     // 1. Swipe left: decide later. Nothing is sent; the card goes to the back of the deck.
