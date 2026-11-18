@@ -112,6 +112,14 @@ function checkEntity(ctx: ServiceContext, entity: string | null | undefined) {
 export interface Scope {
   entity?: string | null;
   exclude?: readonly string[] | null;
+  /** Categories (and their subcategories) to leave out, e.g. "Expenses:Taxes". */
+  excludeCategories?: readonly string[] | null;
+}
+/** Predicate over a posting's account: false for excluded categories and their subcategories. */
+export function categoryFilter(q: { excludeCategories?: readonly string[] | null }): (account: string) => boolean {
+  const ex = q.excludeCategories ?? [];
+  if (ex.length === 0) return () => true;
+  return (a) => !ex.some((c) => a === c || a.startsWith(`${c}:`));
 }
 /** Validate a scope and return a predicate over a posting's entity. */
 export function scopeFilter(ctx: ServiceContext | null, q: Scope): (entity: string | null) => boolean {
@@ -184,6 +192,7 @@ interface KindStats {
 /** Income and spending for [from, to] (all time when omitted): totals, categories, merchants and stats. */
 export async function overview(ctx: ServiceContext, q: Scope & { from?: string | null; to?: string | null; today?: string }) {
   const keep = scopeFilter(ctx, q);
+  const keepCat = categoryFilter(q);
   const all = txns(await ctx.hledger.transactions());
   const today = q.today ?? isoToday();
   const { from, to } = range(all, q, today);
@@ -197,7 +206,7 @@ export async function overview(ctx: ServiceContext, q: Scope & { from?: string |
     let last: string | null = null;
     for (const t of all) {
       if (t.date < from || t.date > to) continue;
-      const mine = t.lines.filter((l) => pick(l.account) && keep(l.entity));
+      const mine = t.lines.filter((l) => pick(l.account) && keep(l.entity) && keepCat(l.account));
       if (mine.length === 0) continue;
       const tc = mine.reduce((s, l) => s + sign * l.cents, 0);
       total += tc;
@@ -258,6 +267,7 @@ export async function series(
   q: Scope & { from?: string | null; to?: string | null; interval?: string | null; stack?: "income" | "expense" | null; top?: number; today?: string },
 ) {
   const keep = scopeFilter(ctx, q);
+  const keepCat = categoryFilter(q);
   const interval = checkInterval(q.interval);
   const all = txns(await ctx.hledger.transactions());
   const { from, to } = range(all, q, q.today ?? isoToday());
@@ -271,7 +281,7 @@ export async function series(
     const i = idx.get(periodStart(t.date, interval));
     if (i === undefined) continue;
     for (const l of t.lines) {
-      if (!keep(l.entity)) continue;
+      if (!keep(l.entity) || !keepCat(l.account)) continue;
       if (isIncome(l.account)) inc[i]! -= l.cents;
       else if (isExpense(l.account)) exp[i]! += l.cents;
       else continue;
@@ -442,11 +452,12 @@ const median = (xs: number[]) => {
 /** Detect recurring income and charges: same payee, steady cadence, similar amounts. */
 export function detectRecurring(raw: HledgerTransaction[], q: Scope & { today: string }): RecurringItem[] {
   const keep = scopeFilter(null, q);
+  const keepCat = categoryFilter(q);
   const since = addDays(q.today, -800);
   const groups = new Map<string, { payee: string; kind: "expense" | "income"; byDate: Map<string, number>; cats: Map<string, number>; ents: Map<string, number> }>();
   for (const t of txns(raw)) {
     if (t.date < since || t.date > q.today || t.tags.get("kind") === "transfer" || t.tags.get("kind") === "valuation") continue;
-    const mine = t.lines.filter((l) => (isIncome(l.account) || isExpense(l.account)) && keep(l.entity));
+    const mine = t.lines.filter((l) => (isIncome(l.account) || isExpense(l.account)) && keep(l.entity) && keepCat(l.account));
     if (mine.length === 0) continue;
     const exp = mine.filter((l) => isExpense(l.account)).reduce((s, l) => s + l.cents, 0);
     const inc = -mine.filter((l) => isIncome(l.account)).reduce((s, l) => s + l.cents, 0);
@@ -510,7 +521,7 @@ export function detectRecurring(raw: HledgerTransaction[], q: Scope & { today: s
 export async function recurring(ctx: ServiceContext, q: Scope & { today?: string }) {
   scopeFilter(ctx, q);
   const today = q.today ?? isoToday();
-  const items = detectRecurring(await ctx.hledger.transactions(), { entity: q.entity ?? null, exclude: q.exclude ?? null, today });
+  const items = detectRecurring(await ctx.hledger.transactions(), { entity: q.entity ?? null, exclude: q.exclude ?? null, excludeCategories: q.excludeCategories ?? null, today });
   const live = items.filter((i) => i.status !== "inactive");
   const sum = (k: "expense" | "income") => live.filter((i) => i.kind === k).reduce((s, i) => s + i.monthly_cents, 0);
   return { entity: q.entity ?? null, today, items, monthly_expense_cents: sum("expense"), monthly_income_cents: sum("income") };
@@ -519,8 +530,9 @@ export async function recurring(ctx: ServiceContext, q: Scope & { today?: string
 // ---- business P&L ----------------------------------------------------------
 
 /** Income, expenses and net per entity for [from, to], with a monthly net series. */
-export async function businesses(ctx: ServiceContext, q: { from?: string | null; to?: string | null; interval?: string | null; exclude?: readonly string[] | null; today?: string }) {
+export async function businesses(ctx: ServiceContext, q: { from?: string | null; to?: string | null; interval?: string | null; exclude?: readonly string[] | null; excludeCategories?: readonly string[] | null; today?: string }) {
   const keep = scopeFilter(ctx, { exclude: q.exclude ?? null });
+  const keepCat = categoryFilter(q);
   const interval = checkInterval(q.interval);
   const all = txns(await ctx.hledger.transactions());
   const { from, to } = range(all, q, q.today ?? isoToday());
@@ -533,7 +545,7 @@ export async function businesses(ctx: ServiceContext, q: { from?: string | null;
     const i = idx.get(periodStart(t.date, interval))!;
     for (const l of t.lines) {
       const a = l.entity ? acc.get(l.entity) : undefined;
-      if (!a) continue;
+      if (!a || !keepCat(l.account)) continue;
       if (isIncome(l.account)) {
         a.income -= l.cents;
         a.inc[i]! -= l.cents;
@@ -571,7 +583,8 @@ export async function businesses(ctx: ServiceContext, q: { from?: string | null;
 }
 
 /** A P&L statement: each Income/Expenses account per period, with tax-form lines for business entities. */
-export async function statement(ctx: ServiceContext, q: { entity: string; from?: string | null; to?: string | null; interval?: string | null; today?: string }) {
+export async function statement(ctx: ServiceContext, q: { entity: string; from?: string | null; to?: string | null; interval?: string | null; excludeCategories?: readonly string[] | null; today?: string }) {
+  const keepCat = categoryFilter(q);
   const ent = getEntity(ctx, q.entity);
   if (!ent) throw new ServiceError(`unknown entity ${JSON.stringify(q.entity)}`, 404);
   const interval = q.interval === "total" ? "year" : checkInterval(q.interval);
@@ -585,7 +598,7 @@ export async function statement(ctx: ServiceContext, q: { entity: string; from?:
     const i = idx(t.date);
     if (i < 0) continue;
     for (const l of t.lines) {
-      if (l.entity !== q.entity || !(isIncome(l.account) || isExpense(l.account))) continue;
+      if (l.entity !== q.entity || !(isIncome(l.account) || isExpense(l.account)) || !keepCat(l.account)) continue;
       const r = sums.get(l.account) ?? periods.map(() => 0);
       r[i]! += isIncome(l.account) ? -l.cents : l.cents;
       sums.set(l.account, r);

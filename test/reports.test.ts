@@ -81,8 +81,9 @@ describe("recurring detection", () => {
     const stopped = ["2025-11-02", "2025-12-02", "2026-01-02", "2026-02-02"].map((d) => tx(d, "OLD GYM", "Expenses:Fitness", 3000));
     expect(detectRecurring([...irregular, ...varying, ...transfers, ...stopped], { today })).toEqual([]);
   });
-  test("recurring respects excluded entities", () => {
+  test("recurring respects excluded entities and categories", () => {
     const subs = monthly("NETFLIX", "12", 1599);
+    expect(detectRecurring(subs, { today, excludeCategories: ["Expenses:Subscriptions"] })).toEqual([]);
     expect(detectRecurring(subs, { today, exclude: ["personal"] })).toEqual([]);
     expect(detectRecurring(subs, { today, exclude: ["acme"] })).toHaveLength(1);
   });
@@ -182,6 +183,23 @@ describe.skipIf(!hledgerWebBin)("report endpoints", () => {
     // Excluding everyone leaves nothing; unknown slugs are ignored.
     expect((await call("GET", "/api/v1/reports/overview?from=2026-01-01&to=2026-03-31&exclude=acme,personal")).json.net_cents).toBe(0);
     expect((await call("GET", "/api/v1/reports/overview?from=2026-01-01&to=2026-03-31&exclude=gone")).json.net_cents).toBe(715000);
+  });
+
+  test("exclude_categories hides categories and their subcategories", async () => {
+    const o = (await call("GET", "/api/v1/reports/overview?from=2026-01-01&to=2026-03-31&exclude_categories=Expenses:Food")).json;
+    expect([o.income.total_cents, o.expenses.total_cents]).toEqual([900000, 50000]);
+    expect(o.expenses.categories.map((c: any) => c.account)).toEqual(["Expenses:Advertising"]);
+    const s = (await call("GET", "/api/v1/reports/series?from=2026-01-01&to=2026-01-31&exclude_categories=Income:Salary")).json;
+    expect(s.periods[0]).toMatchObject({ income_cents: 300000, expenses_cents: 30000 });
+    const pnl = (await call("GET", "/api/v1/reports/pnl?from=2026-01-01&to=2026-03-31&exclude_categories=Expenses:Advertising,Income:GrossReceipts")).json;
+    expect([pnl.totalIncome, pnl.totalExpenses]).toEqual(["$4,000.00", "$1,350.00"]);
+    const st = (await call("GET", "/api/v1/reports/statement?entity=acme&from=2026-01-01&to=2026-03-31&interval=total&exclude_categories=Expenses:Advertising")).json;
+    expect(st.totals.net_total).toBe(500000);
+    const b = (await call("GET", "/api/v1/reports/businesses?from=2026-01-01&to=2026-03-31&exclude_categories=Expenses:Advertising")).json;
+    expect(b.entities.find((e: any) => e.slug === "acme").net_cents).toBe(500000);
+    // A prefix only matches whole account segments.
+    const partial = (await call("GET", "/api/v1/reports/overview?from=2026-01-01&to=2026-03-31&exclude_categories=Expenses:Fo")).json;
+    expect(partial.expenses.total_cents).toBe(185000);
   });
 
   test("series: income and expenses per period, with category stacks", async () => {

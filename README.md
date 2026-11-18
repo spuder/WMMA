@@ -190,7 +190,7 @@ Write tools: `categorize_transaction`, `set_entity`, `split_transaction`, `creat
 | Imports | `POST /imports` (multipart: `ynab-csv`, `qfx`, `csv`, `reihub`), `POST /imports/ynab-api`, `POST /sync/simplefin`, `GET /import-runs`, `GET/PUT /csv-profiles[/:name]`, `GET /duplicates`, `POST /duplicates/:id` |
 | Budgets | `GET/PUT /budgets` (Expenses categories, or planned income for Income categories) |
 | Reports | `GET /reports/pnl`, `/reports/cashflow`, `/reports/budget`, `/reports/networth`, `/reports/spending`, `/reports/trend` |
-| Report pages | `GET /reports/overview?entity&from&to` (totals, categories, merchants, stats; all time without dates), `/reports/series?entity&from&to&interval&stack&top` (income/expenses per day/week/month/quarter/year), `/reports/balances?entity&from&to&interval` (account balances, flows and valuations over time), `/reports/recurring?entity`, `/reports/businesses?from&to`, `/reports/statement?entity&from&to&interval` (P&L with tax-form lines). Report endpoints also take `exclude=slug,slug` to leave businesses out |
+| Report pages | `GET /reports/overview?entity&from&to` (totals, categories, merchants, stats; all time without dates), `/reports/series?entity&from&to&interval&stack&top` (income/expenses per day/week/month/quarter/year), `/reports/balances?entity&from&to&interval` (account balances, flows and valuations over time), `/reports/recurring?entity`, `/reports/businesses?from&to`, `/reports/statement?entity&from&to&interval` (P&L with tax-form lines). Report endpoints also take `exclude=slug,slug` to leave businesses out and `exclude_categories=Expenses:Taxes,...` to hide categories (with their subcategories) |
 | Settings | `GET/PUT /settings` (`settings: {"ui.*": ...}`, `jevApiKey`) |
 
 ## Categorization

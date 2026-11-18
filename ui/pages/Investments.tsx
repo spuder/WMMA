@@ -2,7 +2,7 @@ import { useCallback } from "preact/hooks";
 import { money, useApi } from "../api";
 import { businessStyle, go, useApp } from "../app";
 import { Chart, type Theme } from "../components/chart";
-import { axis, Donut, Kpis, periodLabel, qs, Seg, signed, type Slice, Spark, useStored, valueAxis, BusinessFilter, useScope } from "../components/report-kit";
+import { axis, Donut, Kpis, periodLabel, qs, Seg, signed, type Slice, Spark, useStored, valueAxis, ReportFilters, useScope } from "../components/report-kit";
 import { ErrorBox, Loading } from "../components/ui";
 import { type AccountSeries, type Span, SPANS, spanRange, trimLeading } from "./NetWorth";
 
@@ -75,7 +75,7 @@ export function Investments() {
         <h1>Investments</h1>
         <div class="toolbar">
           <Seg value={span} onChange={setSpan} label="Timeframe" options={SPANS} />
-          <BusinessFilter />
+          <ReportFilters categories={false} />
         </div>
       </div>
       {!all ? (

@@ -2,7 +2,7 @@ import { useCallback, useState } from "preact/hooks";
 import { compact, money, monthShift, thisMonth, today, useApi } from "../api";
 import { businessStyle, go, useApp } from "../app";
 import { Chart, type Theme } from "../components/chart";
-import { axis, csvMoney, downloadCsv, type Interval, periodLabel, qs, Seg, Spark, useStored, valueAxis, BusinessFilter, useScope } from "../components/report-kit";
+import { axis, csvMoney, downloadCsv, type Interval, periodLabel, qs, Seg, Spark, useStored, valueAxis, ReportFilters, useScope } from "../components/report-kit";
 import { ErrorBox, Icon, Loading } from "../components/ui";
 
 export type Span = "1m" | "3m" | "6m" | "ytd" | "1y" | "5y" | "all";
@@ -152,7 +152,7 @@ export function NetWorth() {
       <div class="topbar">
         <h1>Net Worth</h1>
         <div class="toolbar">
-          <BusinessFilter />
+          <ReportFilters categories={false} />
         </div>
       </div>
       <div class="card chart-card">

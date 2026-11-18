@@ -813,3 +813,14 @@ mark.fz { background: transparent; color: var(--accent); font-weight: 750; text-
 .cf-arrow:disabled { opacity: 0.35; cursor: default; box-shadow: none; }
 .cf-hint { text-align: center; margin-top: 4px; }
 @media (max-width: 699.98px) { .cf-chart { padding-left: 12px; padding-right: 12px; padding-top: 48px; } .cf-arrow { top: 10px; } }
+
+/* category filter */
+.count-badge { display: inline-grid; place-items: center; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: 11px; font-weight: 750; }
+.scope-box.on { background: var(--accent); border-color: var(--accent); }
+.scope-box.mixed { background: color-mix(in srgb, var(--accent) 35%, var(--surface)); border-color: var(--accent); color: var(--accent-ink); font-weight: 800; line-height: 1; }
+.cat-filter-group { padding-bottom: 4px; }
+.scope-opt.group { margin-top: 4px; }
+.scope-opt.sub { padding-left: 22px; }
+.scope-opt.sub:not(.checked) .catname-text { color: var(--muted); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--muted) 50%, transparent); }
+.scope-opt.sub .scope-name { text-decoration: none; color: inherit; }
+.filter-note { margin-bottom: 10px; padding: 8px 12px; border-radius: 10px; background: var(--warn-soft); color: var(--warn); font-size: 13px; font-weight: 600; }

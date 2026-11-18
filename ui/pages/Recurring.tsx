@@ -1,7 +1,7 @@
 import { useState } from "preact/hooks";
 import { categoryMeta, money, monthEnd, monthName, monthShift, thisMonth, today, useApi } from "../api";
 import { businessStyle, go, useApp } from "../app";
-import { Kpis, qs, Seg, shortDate, useStored, BusinessFilter, useScope } from "../components/report-kit";
+import { Kpis, qs, Seg, shortDate, useStored, ReportFilters, useScope } from "../components/report-kit";
 import { Avatar, CatName, ErrorBox, Icon, Loading } from "../components/ui";
 
 interface Item {
@@ -60,7 +60,7 @@ function occurrences(i: Item, from: string, to: string): string[] {
 export function Recurring() {
   const { entities } = useApp();
   const scope = useScope();
-  const { data, error } = useApi(`/reports/recurring${qs({ exclude: scope.param })}`, [scope.param]);
+  const { data, error } = useApi(`/reports/recurring${qs({ ...scope.q })}`, [scope.key]);
   const [kind, setKind] = useStored<"expense" | "income" | "all">("recurring.kind", "expense", ["expense", "income", "all"]);
   const [view, setView] = useStored<"list" | "calendar">("recurring.view", "list", ["list", "calendar"]);
   const [month, setMonth] = useState(thisMonth());
@@ -78,7 +78,7 @@ export function Recurring() {
         <h1>Recurring</h1>
         <div class="toolbar">
           <Seg value={view} onChange={setView} label="View" options={[["list", "List"], ["calendar", "Calendar"]]} />
-          <BusinessFilter />
+          <ReportFilters />
         </div>
       </div>
       {!data ? (
