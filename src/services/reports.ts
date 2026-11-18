@@ -155,3 +155,94 @@ export async function budgetReport(ctx: ServiceContext, q: { entity: string; mon
   });
   return { entity: q.entity, month: q.month, lines, unbudgetedSpending: M.format(unbudgeted) };
 }
+
+// ---- Cash flow, spending, net worth --------------------------------------
+
+/** Sankey-ready income -> expenses flow for an entity (or all) over [from, to]. */
+export async function cashflow(ctx: ServiceContext, q: { entity?: string | null; from: string; to: string; depth?: number }) {
+  const p = await pnl(ctx, q);
+  const depth = q.depth ?? 2;
+  const group = (a: string) => a.split(":").slice(0, depth).join(":");
+  const sumBy = (lines: PnlLine[]) => {
+    const m = new Map<string, number>();
+    for (const l of lines) if (l.amount_cents > 0) m.set(group(l.account), (m.get(group(l.account)) ?? 0) + l.amount_cents);
+    return m;
+  };
+  const income = sumBy(p.income);
+  const expenses = sumBy(p.expenses);
+  const nodes: Array<{ id: string; label: string; kind: "income" | "hub" | "expense" | "savings" | "deficit" }> = [{ id: "Income", label: "Income", kind: "hub" }];
+  const links: Array<{ source: string; target: string; value_cents: number; value: string }> = [];
+  const link = (source: string, target: string, c: number) => links.push({ source, target, value_cents: c, value: M.format(M.cents(c)) });
+  for (const [a, c] of income) {
+    nodes.push({ id: a, label: a.split(":").slice(1).join(" / ") || a, kind: "income" });
+    link(a, "Income", c);
+  }
+  for (const [a, c] of expenses) {
+    nodes.push({ id: a, label: a.split(":").slice(1).join(" / ") || a, kind: "expense" });
+    link("Income", a, c);
+  }
+  const net = [...income.values()].reduce((x, y) => x + y, 0) - [...expenses.values()].reduce((x, y) => x + y, 0);
+  if (net > 0) {
+    nodes.push({ id: "Savings", label: "Saved", kind: "savings" });
+    link("Income", "Savings", net);
+  } else if (net < 0) {
+    nodes.push({ id: "Deficit", label: "From savings", kind: "deficit" });
+    link("Deficit", "Income", -net);
+  }
+  return { entity: p.entity, from: p.from, to: p.to, nodes, links, net: M.format(M.cents(net)) };
+}
+
+/** Spending by category (Expenses), grouped to `depth` account levels. */
+export async function spending(ctx: ServiceContext, q: { entity?: string | null; from: string; to: string; depth?: number }) {
+  const p = await pnl(ctx, q);
+  const depth = q.depth ?? 2;
+  const m = new Map<string, number>();
+  for (const l of p.expenses) {
+    const k = l.account.split(":").slice(0, depth).join(":");
+    m.set(k, (m.get(k) ?? 0) + l.amount_cents);
+  }
+  const total = [...m.values()].reduce((a, b) => a + b, 0);
+  return {
+    entity: p.entity,
+    from: p.from,
+    to: p.to,
+    total: M.format(M.cents(total)),
+    categories: [...m]
+      .sort((a, b) => b[1] - a[1])
+      .map(([account, c]) => ({ account, amount: M.format(M.cents(c)), amount_cents: c, share: total ? Math.round((c / total) * 1000) / 10 : 0 })),
+  };
+}
+
+/** Assets minus liabilities at each month end, per entity and combined. */
+export async function netWorth(ctx: ServiceContext, q: { from: string; to: string }) {
+  try {
+    validateMonth(q.from);
+    validateMonth(q.to);
+  } catch {
+    throw new ServiceError("from and to must be YYYY-MM");
+  }
+  if (q.from > q.to) throw new ServiceError("from must not be after to");
+  const months = monthsBetween(q.from, q.to);
+  if (months.length > 240) throw new ServiceError("at most 240 months");
+  const postings = flatPostings(await ctx.hledger.transactions())
+    .filter((p) => p.account.startsWith("Assets:") || p.account.startsWith("Liabilities:"))
+    .sort((a, b) => (a.date < b.date ? -1 : 1));
+  const entities = [...new Set(postings.map((p) => p.entity ?? "(none)"))].sort();
+  const running = new Map<string, Money>();
+  const assets = new Map<string, Money>();
+  let i = 0;
+  const series = months.map((m) => {
+    const end = nextMonth(m);
+    for (; i < postings.length && postings[i]!.date.slice(0, 7) < end; i++) {
+      const p = postings[i]!;
+      const e = p.entity ?? "(none)";
+      running.set(e, M.add(running.get(e) ?? M.ZERO, p.amount));
+      if (p.account.startsWith("Assets:")) assets.set(e, M.add(assets.get(e) ?? M.ZERO, p.amount));
+    }
+    const byEntity = Object.fromEntries(entities.map((e) => [e, M.toCents(running.get(e) ?? M.ZERO)]));
+    const total = M.sum(entities.map((e) => running.get(e) ?? M.ZERO));
+    const totalAssets = M.sum(entities.map((e) => assets.get(e) ?? M.ZERO));
+    return { month: m, net_worth_cents: M.toCents(total), net_worth: M.format(total), assets_cents: M.toCents(totalAssets), liabilities_cents: M.toCents(M.sub(totalAssets, total)), by_entity_cents: byEntity };
+  });
+  return { from: q.from, to: q.to, entities, series };
+}

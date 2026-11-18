@@ -11,6 +11,7 @@ export interface Config {
   simplefinAccessUrl: string | null;
   simplefinSyncCron: string;
   jev: { apiKey: string | null; baseUrl: string; model: string };
+  secretKey: string | null;
 }
 
 export class ConfigError extends Error {
@@ -44,6 +45,7 @@ export function parseAllowedUsers(raw: string | undefined): Set<string> {
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
   const allowedUsers = parseAllowedUsers(env.WMMA_ALLOWED_USERS);
+  if (env.WMMA_SECRET_KEY && env.WMMA_SECRET_KEY.length < 16) throw new ConfigError("WMMA_SECRET_KEY must be at least 16 characters");
   if (allowedUsers.size === 0) {
     throw new ConfigError("WMMA_ALLOWED_USERS is empty: set it to a comma-separated list of Tailscale login names");
   }
@@ -63,5 +65,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       baseUrl: env.JEV_BASE_URL || "https://api.typesafe.ai",
       model: env.JEV_MODEL || "jev-latest",
     },
+    secretKey: env.WMMA_SECRET_KEY || null,
   };
 }

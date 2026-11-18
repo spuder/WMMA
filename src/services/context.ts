@@ -4,6 +4,7 @@ import type { Config } from "../config";
 import type { HledgerWebClient } from "../hledger/web";
 import type { JournalStore } from "../journal/store";
 import type { JevClient } from "../jev";
+import type { SecretStore } from "../secrets";
 
 /** Everything the service layer needs. REST and MCP both call services with this. */
 export interface ServiceContext {
@@ -14,6 +15,7 @@ export interface ServiceContext {
   audit: AuditLog;
   /** null/undefined when no Jev key is configured. */
   jev?: JevClient | null;
+  secrets?: SecretStore;
 }
 
 export class ServiceError extends Error {

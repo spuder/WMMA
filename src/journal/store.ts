@@ -5,6 +5,8 @@
  */
 import { mkdir, open, readdir, readFile, rename, rm, stat } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
+import * as M from "../money";
+import type { Money } from "../money";
 import { parseBudgets, renderBudgets, validateChange, type BudgetChange } from "./budgets";
 import { formatAccountDirective, formatTags, formatTransaction, parseTagComment, validateAccount, validateDate, validateTags, type AccountType, type Tags, type Transaction } from "./format";
 
@@ -163,7 +165,15 @@ export class JournalStore {
   async updateTransaction(
     file: string,
     wmmaId: string,
-    update: { date?: string; setTags?: Tags; replaceAccount?: { from: string; to: string } },
+    update: {
+      date?: string;
+      setTags?: Tags;
+      replaceAccount?: { from: string; to: string };
+      /** Replace the note (memo) part of the description; null removes it. */
+      note?: string | null;
+      /** Replace the posting to `from` with several postings (a split). */
+      replacePosting?: { from: string; to: Array<{ account: string; amount: Money; tags?: Tags }> };
+    },
   ): Promise<void> {
     const path = resolve(file);
     if (!path.startsWith(resolve(this.paths.journals) + sep)) throw new Error(`refusing to edit a file outside the journals folder: ${file}`);
@@ -177,7 +187,34 @@ export class JournalStore {
       const head = semi < 0 ? line : line.slice(0, semi);
       const tags = { ...parseTagComment(semi < 0 ? "" : line.slice(semi + 4)), ...(update.setTags ?? {}) };
       validateTags(tags);
-      lines[idx] = `${update.date ?? head.slice(0, 10)}${head.slice(10)}  ; ${formatTags(tags)}`;
+      let rest = head.slice(10);
+      if (update.note !== undefined) {
+        const m = /^ ([*!] )?(.*)$/.exec(rest)!;
+        const payee = m[2]!.split(" | ")[0]!;
+        if (update.note !== null && (update.note !== update.note.trim() || /[\r\n\t;|]/.test(update.note))) throw new Error("invalid note");
+        rest = ` ${m[1] ?? ""}${payee}${update.note ? ` | ${update.note}` : ""}`;
+      }
+      lines[idx] = `${update.date ?? head.slice(0, 10)}${rest}  ; ${formatTags(tags)}`;
+      if (update.replacePosting) {
+        const { from, to } = update.replacePosting;
+        let at = -1;
+        for (let i = idx + 1; i < lines.length && lines[i]!.startsWith("    "); i++) {
+          const m = /^ {4}(\S(?:.*?\S)?)( {2,}.*)$/.exec(lines[i]!);
+          if (m && m[1] === from) {
+            at = i;
+            break;
+          }
+        }
+        if (at < 0) throw new Error(`transaction ${wmmaId} has no posting to ${from}`);
+        const w = Math.max(...to.map((p) => p.account.length));
+        const out = to.map((p) => {
+          validateAccount(p.account);
+          if (p.tags) validateTags(p.tags);
+          const t = p.tags && Object.keys(p.tags).length ? `  ; ${formatTags(p.tags)}` : "";
+          return `    ${p.account.padEnd(w)}  ${M.toJournal(p.amount)}${t}`;
+        });
+        lines.splice(at, 1, ...out);
+      }
       if (update.replaceAccount) {
         const { from, to } = update.replaceAccount;
         validateAccount(to);

@@ -10,6 +10,7 @@ See [SPEC.md](SPEC.md) for the full design and milestones.
 
 - **M1 skeleton:** Bun/TypeScript service, `Money` module, journal writer, Tailscale identity auth, hledger-web (read-only, localhost), Docker image and Compose file.
 - **M2 YNAB import:** API and register-CSV importers. Re-running adds nothing; the result reports per-account balances against YNAB.
+- **M6 REST API + MCP:** transaction search/edit/split, mappings with regeneration, cash-flow / spending / net-worth reports, settings (Jev key stored encrypted), and an MCP server with 9 read and 9 write tools.
 - **M5 entities, budgets, transfers, assets, REI Hub:** tax-form category templates per entity, archive with history kept, budgets with rollover, inter-entity transfers via due-to/due-from, asset valuations, REI Hub CSV, YNAB past budgets; P&L and budget reports.
 - **M4 categorization:** rules → Jev (applied at ≥ 0.90 confidence) → review queue; 3 accepts of a payee create a rule. Runs after every import.
 - **M3 bank imports:** QFX/OFX, generic CSV (per-bank column profiles), SimpleFIN (daily + on demand). Overlapping imports from different sources merge instead of duplicating.
@@ -72,6 +73,29 @@ wmma import ynab-api --include-budgets           # or: import ynab-csv register.
 
 REST: `GET|POST /entities`, `PATCH /entities/:slug`, `POST /accounts`, `PATCH /accounts/:slug`, `GET|PUT /budgets`, `POST /transfers`, `POST /valuations`, `GET /reports/pnl`, `GET /reports/budget`; REI Hub via `POST /imports` with `type=reihub` (options: `account`, `accountMap`, `properties`, `defaultEntity`, `columns`, `invertAmount`).
 
+## AI access (MCP)
+
+WMMA serves MCP (Streamable HTTP) at `/mcp`, behind the same Tailscale auth. From a machine on your tailnet:
+
+```sh
+claude mcp add --transport http wmma https://wmma.<your-tailnet>.ts.net/mcp
+```
+
+Read tools: `list_entities`, `list_accounts`, `search_transactions`, `get_pnl`, `get_cashflow`, `get_budget_vs_actual`, `get_net_worth`, `get_spending_by_category`, `get_review_queue`.
+Write tools: `categorize_transaction`, `set_entity`, `split_transaction`, `create_rule`, `update_mapping`, `set_budget`, `record_valuation`, `record_transfer`, `run_simplefin_sync`. Every call is recorded in `audit.log`.
+
+## REST API (`/api/v1`)
+
+| | |
+| --- | --- |
+| Entities & accounts | `GET/POST /entities`, `PATCH /entities/:slug`, `GET/POST /accounts`, `PATCH /accounts/:slug` |
+| Transactions | `GET /transactions?from&to&account&entity&category&text&limit&offset`, `PATCH /transactions/:id` (`category`, `entity`, `memo`), `POST /transactions/:id/split`, `POST /transfers`, `POST /valuations` |
+| Categorization | `GET /review`, `POST /review/:id`, `GET/POST /rules`, `GET/PUT /mappings` (`apply: true` regenerates), `POST /categorize` |
+| Imports | `POST /imports` (multipart: `ynab-csv`, `qfx`, `csv`, `reihub`), `POST /imports/ynab-api`, `POST /sync/simplefin`, `GET /import-runs`, `GET/PUT /csv-profiles[/:name]`, `GET /duplicates`, `POST /duplicates/:id` |
+| Budgets | `GET/PUT /budgets` |
+| Reports | `GET /reports/pnl`, `/reports/cashflow`, `/reports/budget`, `/reports/networth`, `/reports/spending` |
+| Settings | `GET/PUT /settings` (`settings: {"ui.*": ...}`, `jevApiKey` — needs `WMMA_SECRET_KEY`) |
+
 ## Categorization
 
 Every import runs new uncategorised transactions through: rules → Jev (`JEV_API_KEY`; applied when confidence ≥ 0.90) → review queue. Without a Jev key, unknown transactions go straight to the queue.
@@ -109,6 +133,7 @@ Then open `https://wmma.<your-tailnet>.ts.net`. Only Tailscale users in `WMMA_AL
 | `YNAB_TOKEN` | YNAB personal access token (for `import ynab-api`) |
 | `SIMPLEFIN_ACCESS_URL`, `SIMPLEFIN_SYNC_CRON` | SimpleFIN access URL; sync schedule (default `0 6 * * *`) |
 | `JEV_API_KEY` | Jev (TypeSafe) API key; optional `JEV_BASE_URL`, `JEV_MODEL` |
+| `WMMA_SECRET_KEY` | ≥16 chars; encrypts secrets set in the UI (`/data/secrets.enc`). Needed only to set the Jev key from the UI |
 
 ## Development
 

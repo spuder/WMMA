@@ -21,6 +21,10 @@ import { addAccount, addEntity, listEntities, updateAccount, updateEntity } from
 import { listBudgets, recordTransfer, recordValuation, setBudgets } from "./services/ledger";
 import { budgetReport, pnl } from "./services/reports";
 import { importReiHub } from "./services/bank-imports";
+import { handleMcp } from "./mcp";
+import { cashflow, netWorth, spending } from "./services/reports";
+import { getSettings, putSettings } from "./services/settings";
+import { listMappings, patchTransaction, searchTransactions, splitTransaction, updateMapping } from "./services/transactions";
 import { ACCOUNT_KINDS as KINDS, ENTITY_TYPES, type EntityType } from "./db";
 
 type Handler = (req: Request, identity: Identity, ctx: ServiceContext, params: Record<string, string>) => Response | Promise<Response>;
@@ -310,6 +314,81 @@ Object.assign(routes, {
   },
 } satisfies Record<string, Handler>);
 
+const intParam = (q: URLSearchParams, k: string): number | undefined => {
+  const v = q.get(k);
+  if (v === null) return undefined;
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 0) bad(`${k} must be a non-negative integer`);
+  return n;
+};
+
+Object.assign(routes, {
+  "GET /api/v1/transactions": async (req, _id, ctx) => {
+    const q = new URL(req.url, "http://localhost").searchParams;
+    const opt = (k: string) => q.get(k) ?? undefined;
+    return Response.json(
+      await searchTransactions(ctx, {
+        ...Object.fromEntries((["from", "to", "account", "entity", "category", "text"] as const).filter((k) => opt(k)).map((k) => [k, opt(k)])),
+        ...(intParam(q, "limit") !== undefined ? { limit: intParam(q, "limit")! } : {}),
+        ...(intParam(q, "offset") !== undefined ? { offset: intParam(q, "offset")! } : {}),
+      }),
+    );
+  },
+  "PATCH /api/v1/transactions/:id": async (req, identity, ctx, params) => {
+    const b = ((await jsonBody(req)) ?? {}) as Record<string, unknown>;
+    const patch: Parameters<typeof patchTransaction>[3] = {};
+    if (b.category !== undefined) {
+      const c = b.category as Record<string, unknown> | string;
+      patch.category = typeof c === "string" ? { to: c } : { to: str(c?.to, "category.to"), ...(typeof c?.from === "string" ? { from: c.from } : {}) };
+    }
+    if (b.entity !== undefined) patch.entity = str(b.entity, "entity");
+    if (b.memo !== undefined) {
+      if (b.memo !== null && typeof b.memo !== "string") bad("memo must be a string or null");
+      patch.memo = b.memo as string | null;
+    }
+    return Response.json(await patchTransaction(ctx, identity.login, params["id"]!, patch));
+  },
+  "POST /api/v1/transactions/:id/split": async (req, identity, ctx, params) => {
+    const b = ((await jsonBody(req)) ?? {}) as Record<string, unknown>;
+    return Response.json(
+      await splitTransaction(ctx, identity.login, params["id"]!, { ...(typeof b.from === "string" ? { from: b.from } : {}), postings: b.postings as Array<{ account: string; amount: unknown }> }),
+    );
+  },
+  "GET /api/v1/mappings": (req, _id, ctx) => Response.json({ mappings: listMappings(ctx, new URL(req.url, "http://localhost").searchParams.get("source") ?? undefined) }),
+  "PUT /api/v1/mappings": async (req, identity, ctx) => {
+    const b = ((await jsonBody(req)) ?? {}) as Record<string, unknown>;
+    if (b.apply !== undefined && typeof b.apply !== "boolean") bad("apply must be true or false");
+    return Response.json(
+      await updateMapping(ctx, identity.login, { source: str(b.source, "source"), sourceCategory: str(b.sourceCategory, "sourceCategory"), target: str(b.target, "target"), apply: (b.apply as boolean) ?? false }),
+    );
+  },
+  "GET /api/v1/reports/cashflow": async (req, _id, ctx) => {
+    const q = new URL(req.url, "http://localhost").searchParams;
+    const depth = intParam(q, "depth");
+    return Response.json(await cashflow(ctx, { entity: q.get("entity"), from: str(q.get("from"), "from"), to: str(q.get("to"), "to"), ...(depth ? { depth } : {}) }));
+  },
+  "GET /api/v1/reports/spending": async (req, _id, ctx) => {
+    const q = new URL(req.url, "http://localhost").searchParams;
+    const depth = intParam(q, "depth");
+    return Response.json(await spending(ctx, { entity: q.get("entity"), from: str(q.get("from"), "from"), to: str(q.get("to"), "to"), ...(depth ? { depth } : {}) }));
+  },
+  "GET /api/v1/reports/networth": async (req, _id, ctx) => {
+    const q = new URL(req.url, "http://localhost").searchParams;
+    return Response.json(await netWorth(ctx, { from: str(q.get("from"), "from"), to: str(q.get("to"), "to") }));
+  },
+  "GET /api/v1/settings": async (_req, _id, ctx) => Response.json(await getSettings(ctx)),
+  "PUT /api/v1/settings": async (req, identity, ctx) => {
+    const b = ((await jsonBody(req)) ?? {}) as Record<string, unknown>;
+    if (b.jevApiKey !== undefined && b.jevApiKey !== null && typeof b.jevApiKey !== "string") bad("jevApiKey must be a string or null");
+    return Response.json(
+      await putSettings(ctx, identity.login, {
+        ...(b.settings !== undefined ? { settings: b.settings as Record<string, unknown> } : {}),
+        ...(b.jevApiKey !== undefined ? { jevApiKey: b.jevApiKey as string | null } : {}),
+      }),
+    );
+  },
+} satisfies Record<string, Handler>);
+
 const compiled = Object.entries(routes).map(([key, handler]) => {
   const [method, path] = key.split(" ") as [string, string];
   const names: string[] = [];
@@ -344,6 +423,15 @@ export function createFetchHandler(ctx: ServiceContext): (req: Request) => Promi
 
     const auth = authenticate(req, ctx.config.allowedUsers);
     if (!auth.ok) return auth.response;
+
+    if (url.pathname === "/mcp") {
+      try {
+        return await handleMcp(ctx, auth.identity.login, req);
+      } catch (e) {
+        console.error(e);
+        return Response.json({ error: "internal error" }, { status: 500 });
+      }
+    }
 
     const r = route(req.method, url.pathname);
     if (!r) return Response.json({ error: "not found" }, { status: 404 });
