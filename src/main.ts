@@ -71,9 +71,14 @@ async function serve(): Promise<void> {
   let stopCron = () => {};
   stopCron = schedule(config.simplefinSyncCron, config.tz, async () => {
     const simplefinUrl = await secrets.get("simplefin_access_url");
-    if (simplefinUrl) {
-      const r = await syncSimplefin(ctx, "system:scheduler");
-      console.log(`SimpleFIN sync: +${r.added} new, ${r.merged} merged, ${r.skippedDuplicates} duplicates, ${r.needsReview} to review`);
+    const accountsConfigured = db.query("SELECT 1 FROM settings WHERE key = ?").get("simplefin.account_mappings");
+    if (simplefinUrl && accountsConfigured) {
+      try {
+        const r = await syncSimplefin(ctx, "system:scheduler");
+        console.log(`SimpleFIN sync: +${r.added} new, ${r.merged} merged, ${r.skippedDuplicates} duplicates, ${r.needsReview} to review`);
+      } catch (e) {
+        console.error("SimpleFIN sync failed:", e);
+      }
     }
   });
   console.log(`SimpleFIN sync schedule ready: "${config.simplefinSyncCron}" (${config.tz})`);

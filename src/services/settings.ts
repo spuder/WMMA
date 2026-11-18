@@ -10,7 +10,7 @@ const WRITABLE = /^ui\.[a-z0-9_.-]{1,64}$/;
 export interface SettingsView {
   settings: Record<string, string>;
   jev: { configured: boolean; source: "env" | "ui" | null; canStoreInUi: boolean };
-  simplefin: { configured: boolean; source: "ui" | null; canStoreInUi: boolean };
+  simplefin: { configured: boolean; source: "ui" | null; canStoreInUi: boolean; accountsConfigured: boolean };
 }
 
 export async function getSettings(ctx: ServiceContext): Promise<SettingsView> {
@@ -34,6 +34,7 @@ export async function getSettings(ctx: ServiceContext): Promise<SettingsView> {
       configured: Boolean(simplefinUrl),
       source: simplefinUrl ? "ui" : null,
       canStoreInUi: Boolean(ctx.secrets?.enabled),
+      accountsConfigured: rows.some((r) => r.key === "simplefin.account_mappings"),
     },
   };
 }

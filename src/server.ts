@@ -12,6 +12,8 @@ import {
   listDuplicates,
   putCsvProfile,
   resolveDuplicate,
+  previewSimplefinAccounts,
+  saveSimplefinAccountMappings,
   syncSimplefin,
   type BankAccountAssignment,
 } from "./services/bank-imports";
@@ -93,15 +95,18 @@ export function parseImportOptions(v: unknown): ParsedOptions {
     for (const [name, a] of Object.entries(o.accounts as Record<string, unknown>)) {
       if (typeof a !== "object" || a === null) bad(`accounts[${JSON.stringify(name)}] must be an object`);
       const { entity, kind, slug, name: newName } = a as Record<string, unknown>;
+      const skip = (a as Record<string, unknown>).skip;
       for (const [k, val] of Object.entries({ entity, slug, name: newName })) {
         if (val !== undefined && typeof val !== "string") bad(`accounts[${JSON.stringify(name)}].${k} must be a string`);
       }
       if (kind !== undefined && !ACCOUNT_KINDS.includes(kind as AccountKind)) bad(`accounts[${JSON.stringify(name)}].kind must be one of ${ACCOUNT_KINDS.join(", ")}`);
+      if (skip !== undefined && typeof skip !== "boolean") bad(`accounts[${JSON.stringify(name)}].skip must be true or false`);
       accounts[name] = {
         ...(entity ? { entity: entity as string } : {}),
         ...(kind ? { kind: kind as AccountKind } : {}),
         ...(slug ? { slug: slug as string } : {}),
         ...(newName ? { name: newName as string } : {}),
+        ...(skip !== undefined ? { skip: skip as boolean } : {}),
       };
     }
     out.accounts = accounts;
@@ -193,6 +198,17 @@ const routes: Record<string, Handler> = {
   "POST /api/v1/sync/simplefin": async (req, identity, ctx) => {
     const opts = parseImportOptions(await jsonBody(req));
     return Response.json(await syncSimplefin(ctx, identity.login, opts));
+  },
+
+  "GET /api/v1/simplefin/accounts": async (_req, _identity, ctx) => {
+    const saved = ctx.db.query("SELECT value FROM settings WHERE key = ?").get("simplefin.account_mappings") as { value: string } | null;
+    return Response.json({ accounts: await previewSimplefinAccounts(ctx), mappings: saved ? JSON.parse(saved.value) : {} });
+  },
+  "POST /api/v1/simplefin/accounts": async (req, identity, ctx) => {
+    const opts = parseImportOptions(await jsonBody(req));
+    if (!opts.accounts) bad("accounts are required");
+    await saveSimplefinAccountMappings(ctx, identity.login, opts.accounts);
+    return Response.json({ configured: true });
   },
 
   "GET /api/v1/csv-profiles": (_req, _id, ctx) => Response.json({ profiles: listCsvProfiles(ctx) }),

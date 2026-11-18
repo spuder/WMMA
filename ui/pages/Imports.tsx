@@ -141,12 +141,15 @@ export function Imports() {
         <div class="span-5 stack">
           <div class="card stack">
             <h2>Connected sources</h2>
-            {settings.data?.simplefin.configured ? (
-              <div class="muted small">SimpleFIN is connected. New accounts are created and linked automatically on the first sync.</div>
+            {settings.data?.simplefin.configured && settings.data.simplefin.accountsConfigured ? (
+              <div class="muted small">SimpleFIN is connected. Selected accounts sync to their assigned businesses or personal profile.</div>
+            ) : settings.data?.simplefin.configured ? (
+              <div class="muted small">Choose which accounts to add and assign them to businesses or personal finances in Settings.</div>
             ) : (
               <div class="small">Connect SimpleFIN in <a href="#/settings" style={{ color: "var(--accent)", fontWeight: 650 }}>Settings</a> before syncing.</div>
             )}
-            <button class="btn block" disabled={busy !== null || settings.loading || !settings.data?.simplefin.configured} onClick={() => action("sf", "/sync/simplefin", {}, "SimpleFIN")}>
+            {!settings.loading && settings.data?.simplefin.configured && !settings.data.simplefin.accountsConfigured && <a class="btn block" href="#/settings">Set up SimpleFIN accounts in Settings</a>}
+            <button class="btn block" disabled={busy !== null || settings.loading || !settings.data?.simplefin.configured || !settings.data.simplefin.accountsConfigured} onClick={() => action("sf", "/sync/simplefin", {}, "SimpleFIN")}>
               {busy === "sf" ? "Syncing…" : "Sync SimpleFIN now"}
             </button>
             <button class="btn block" disabled={busy !== null} onClick={() => action("ynab", "/imports/ynab-api", { includeBudgets: true }, "YNAB")}>
