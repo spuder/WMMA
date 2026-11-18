@@ -31,9 +31,13 @@ export function useRoute(): [string, URLSearchParams] {
   };
   const [r, setR] = useState(parse);
   useEffect(() => {
+    let path = parse()[0];
     const on = () => {
-      setR(parse());
-      window.scrollTo({ top: 0 });
+      const next = parse();
+      setR(next);
+      // Only a new page scrolls to the top; query changes (opening a row, filters) keep the scroll position.
+      if (next[0] !== path) window.scrollTo({ top: 0 });
+      path = next[0];
     };
     window.addEventListener("hashchange", on);
     return () => window.removeEventListener("hashchange", on);

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { api, catLabel, dayLabel, leaf, money } from "../api";
-import { Avatar, CategoryPicker, CatName, ErrorBox, Icon, Loading, Sheet, toast } from "../components/ui";
-import { businessStyle, EntitySwitcher, go, transactionEntity, useApp } from "../app";
+import { Avatar, CategoryPicker, CatName, CellMenu, ErrorBox, Icon, Loading, MenuOption, Sheet, toast } from "../components/ui";
+import { businessStyle, EntitySwitcher, go, transactionEntity, useApp, type Entity } from "../app";
 
 export interface Txn {
   wmma_id: string;
@@ -62,8 +62,191 @@ export function TxnRow({ t, entities, onClick }: { t: Txn; entities: Array<{ slu
   );
 }
 
+interface AccountInfo {
+  slug: string;
+  name: string;
+  hledger_account: string;
+  kind: string;
+  balance: string;
+  default_entity: string;
+}
+
+function useWide(query = "(min-width: 900px)") {
+  const [wide, setWide] = useState(() => matchMedia(query).matches);
+  useEffect(() => {
+    const m = matchMedia(query);
+    const on = () => setWide(m.matches);
+    m.addEventListener("change", on);
+    return () => m.removeEventListener("change", on);
+  }, [query]);
+  return wide;
+}
+
+const bankPosting = (t: Txn) => t.postings.find((p) => isMoney(p.account) && !p.account.includes(":Due"));
+const KIND_LABEL: Record<string, string> = { bank: "Bank account", credit: "Credit card", investment: "Investment", loan: "Loan", property: "Property", cash: "Cash" };
+
+/** One table row on wide screens: category, account and business change in place. */
+function TxnLine({
+  t,
+  entities,
+  accounts,
+  categories,
+  accountFilter,
+  onOpen,
+  onChanged,
+  onFilterAccount,
+}: {
+  t: Txn;
+  entities: Entity[];
+  accounts: AccountInfo[];
+  categories: string[];
+  accountFilter: string | null;
+  onOpen: () => void;
+  onChanged: (t: Txn) => void;
+  onFilterAccount: (account: string | null) => void;
+}) {
+  const { refreshReview } = useApp();
+  const [flash, setFlash] = useState<"category" | "business" | null>(null);
+  const s = summarize(t);
+  const cats = t.postings.filter((p) => isCat(p.account));
+  const bank = bankPosting(t);
+  const account = accounts.find((a) => a.hledger_account === bank?.account);
+  const entity = transactionEntity(t);
+  const owner = entities.find((e) => e.slug === entity);
+
+  const patch = async (body: Record<string, unknown>, field: "category" | "business", msg: string) => {
+    try {
+      const next = await api<Txn>(`/transactions/${t.wmma_id}`, { method: "PATCH", body });
+      onChanged(next);
+      if (field === "category") refreshReview();
+      setFlash(field);
+      setTimeout(() => setFlash(null), 900);
+      toast(msg);
+    } catch (e) {
+      toast((e as Error).message);
+    }
+  };
+
+  const businessValue = (
+    <>
+      <span class="business-icon compact" style={entity ? businessStyle(entity, owner?.color) : {}}>
+        {owner?.type === "personal" ? "👤" : <Icon.folder />}
+      </span>
+      <span class={entity ? "" : "muted-text"}>{owner?.name ?? entity ?? "Assign"}</span>
+    </>
+  );
+
+  return (
+    <div class="txn-line" onClick={onOpen}>
+      <div class="txn-payee" title={t.note ?? t.payee}>
+        <Avatar name={t.payee} />
+        <span>{t.payee}</span>
+      </div>
+
+      {cats.length === 1 && s.categoryAccount !== null ? (
+        <CellMenu
+          label={`Category for ${t.payee}`}
+          flash={flash === "category"}
+          value={s.uncategorized ? <span style={{ color: "var(--warn)", fontWeight: 650 }}>❓ Needs category</span> : <CatName account={cats[0]!.account} />}
+        >
+          {(close) => (
+            <CategoryPicker
+              categories={categories}
+              direction={s.amount < 0 ? "out" : "in"}
+              onPick={(a) => {
+                close();
+                if (a !== cats[0]!.account) patch({ category: { to: a, from: cats[0]!.account } }, "category", `Moved to ${leaf(a)}`);
+              }}
+            />
+          )}
+        </CellMenu>
+      ) : (
+        <span class="txn-static">{s.category}</span>
+      )}
+
+      {bank ? (
+        <CellMenu label={`Account for ${t.payee}`} width={290} value={<><span class="cat-emoji" aria-hidden="true">🏦</span><span>{account?.name ?? leaf(bank.account)}</span></>}>
+          {(close) => (
+            <>
+              <div class="menu-head">
+                <strong>{account?.name ?? leaf(bank.account)}</strong>
+                <span class="muted small">
+                  {account ? `${KIND_LABEL[account.kind] ?? account.kind} · ${account.balance}` : bank.account}
+                </span>
+              </div>
+              {accountFilter === bank.account ? (
+                <MenuOption onClick={() => (close(), onFilterAccount(null))}>
+                  <Icon.x /> Show all accounts
+                </MenuOption>
+              ) : (
+                <MenuOption onClick={() => (close(), onFilterAccount(bank.account))}>
+                  <Icon.list /> Only show this account
+                </MenuOption>
+              )}
+              <MenuOption index={1} onClick={() => (close(), go("/accounts"))}>
+                <Icon.bank /> Open accounts
+              </MenuOption>
+              <div class="menu-note">Imported transactions stay with the bank account they came from.</div>
+            </>
+          )}
+        </CellMenu>
+      ) : (
+        <span class="txn-static">—</span>
+      )}
+
+      <CellMenu label={`Business for ${t.payee}`} width={280} flash={flash === "business"} value={businessValue}>
+        {(close) => (
+          <>
+            <div class="menu-head muted small">Business or personal</div>
+            {entities
+              .filter((e) => e.status === "active" || e.slug === entity)
+              .map((e, i) => (
+                <MenuOption
+                  index={i}
+                  selected={e.slug === entity}
+                  onClick={() => {
+                    close();
+                    if (e.slug !== entity) patch({ entity: e.slug }, "business", `Assigned to ${e.name}`);
+                  }}
+                >
+                  <span class="business-icon compact" style={businessStyle(e.slug, e.color)}>
+                    {e.type === "personal" ? "👤" : <Icon.folder />}
+                  </span>
+                  {e.name}
+                </MenuOption>
+              ))}
+          </>
+        )}
+      </CellMenu>
+
+      <div class={`txn-amt num ${s.amount > 0 ? "in" : ""}`}>
+        {s.amount > 0 ? "+" : ""}
+        {money(s.amount)}
+      </div>
+      <button
+        class="txn-open"
+        aria-label={`Open details for ${t.payee}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpen();
+        }}
+      >
+        <Icon.chevron />
+      </button>
+    </div>
+  );
+}
+
 export function Transactions({ query }: { query: URLSearchParams }) {
-  const { entity, entities } = useApp();
+  const { entity, entities, categories } = useApp();
+  const wide = useWide();
+  const accountFilter = query.get("account");
+  const [accounts, setAccounts] = useState<AccountInfo[]>([]);
+  useEffect(() => {
+    api<{ accounts: AccountInfo[] }>("/accounts")
+      .then((r) => setAccounts(r.accounts))
+      .catch(() => {});
+  }, []);
   const [text, setText] = useState(query.get("q") ?? "");
   const [debounced, setDebounced] = useState(text);
   const [rows, setRows] = useState<Txn[] | null>(null);
@@ -81,6 +264,7 @@ export function Transactions({ query }: { query: URLSearchParams }) {
     const q = new URLSearchParams({ limit: "100", offset: String(offset) });
     if (debounced) q.set("text", debounced);
     if (entity) q.set("entity", entity);
+    if (accountFilter) q.set("account", accountFilter);
     api<{ total: number; transactions: Txn[] }>(`/transactions?${q}`)
       .then((r) => {
         setTotal(r.total);
@@ -89,7 +273,19 @@ export function Transactions({ query }: { query: URLSearchParams }) {
       })
       .catch((e: Error) => setError(e.message));
   };
-  useEffect(() => load(0), [debounced, entity]);
+  useEffect(() => load(0), [debounced, entity, accountFilter]);
+
+  /** Build a route that keeps the search and account filter. */
+  const route = (extra: Record<string, string | null> = {}) => {
+    const q = new URLSearchParams();
+    if (text) q.set("q", text);
+    if (accountFilter) q.set("account", accountFilter);
+    for (const [k, v] of Object.entries(extra)) v === null ? q.delete(k) : q.set(k, v);
+    const qs = q.toString();
+    return `/transactions${qs ? `?${qs}` : ""}`;
+  };
+  const replaceRow = (t: Txn) => setRows((rs) => (rs ?? []).map((r) => (r.wmma_id === t.wmma_id ? t : r)));
+  const filteredAccount = accountFilter ? accounts.find((a) => a.hledger_account === accountFilter) : null;
 
   const shown = useMemo(
     () =>
@@ -133,10 +329,59 @@ export function Transactions({ query }: { query: URLSearchParams }) {
             {l}
           </button>
         ))}
+        {accountFilter && (
+          <button class="chip active txn-filter" onClick={() => go(route({ account: null }))} aria-label="Clear account filter">
+            🏦 {filteredAccount?.name ?? leaf(accountFilter)} <Icon.x />
+          </button>
+        )}
       </div>
       {error && <ErrorBox error={error} />}
       {!rows && !error && <Loading h={360} />}
-      {rows && (
+      {rows && wide && (
+        <div class="card" style={{ paddingTop: 4 }}>
+          <div class="txn-table">
+            <div class="txn-head">
+              <span>Merchant</span>
+              <span>Category</span>
+              <span>Account</span>
+              <span>Business</span>
+              <span class="r">Amount</span>
+              <span />
+            </div>
+            {groups.length === 0 && <div class="empty">No transactions</div>}
+            {groups.map(([d, list]) => {
+              const net = list.reduce((sum, t) => sum + summarize(t).amount, 0);
+              return (
+                <div>
+                  <div class="txn-day upper">
+                    <span>{dayLabel(d)}</span>
+                    <span class="num">{money(net)}</span>
+                  </div>
+                  {list.map((t) => (
+                    <TxnLine
+                      key={t.wmma_id}
+                      t={t}
+                      entities={entities}
+                      accounts={accounts}
+                      categories={categories}
+                      accountFilter={accountFilter}
+                      onOpen={() => go(route({ id: t.wmma_id }))}
+                      onChanged={replaceRow}
+                      onFilterAccount={(a) => go(route({ account: a }))}
+                    />
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+          {rows.length < total && (
+            <button class="btn block" style={{ marginTop: 10 }} onClick={() => load(rows.length)}>
+              Load more ({total - rows.length})
+            </button>
+          )}
+        </div>
+      )}
+      {rows && !wide && (
         <div class="card" style={{ paddingTop: 4 }}>
           {groups.length === 0 && <div class="empty">No transactions</div>}
           {groups.map(([d, list]) => (
@@ -144,7 +389,7 @@ export function Transactions({ query }: { query: URLSearchParams }) {
               <div class="dategroup upper">{dayLabel(d)}</div>
               <div class="list">
                 {list.map((t) => (
-                  <TxnRow t={t} entities={entities} onClick={() => go(`/transactions?id=${t.wmma_id}${text ? `&q=${encodeURIComponent(text)}` : ""}`)} />
+                  <TxnRow t={t} entities={entities} onClick={() => go(route({ id: t.wmma_id }))} />
                 ))}
               </div>
             </div>
@@ -159,15 +404,16 @@ export function Transactions({ query }: { query: URLSearchParams }) {
       {openId && (
         <TxnSheet
           id={openId}
-          onClose={() => go(`/transactions${text ? `?q=${encodeURIComponent(text)}` : ""}`)}
-          onChanged={(t) => setRows((rs) => (rs ?? []).map((r) => (r.wmma_id === t.wmma_id ? t : r)))}
+          account={accounts.find((a) => a.hledger_account === bankPosting(rows?.find((r) => r.wmma_id === openId) ?? ({ postings: [] } as unknown as Txn))?.account) ?? null}
+          onClose={() => go(route({ id: null }))}
+          onChanged={replaceRow}
         />
       )}
     </div>
   );
 }
 
-function TxnSheet({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: (t: Txn) => void }) {
+function TxnSheet({ id, account, onClose, onChanged }: { id: string; account: AccountInfo | null; onClose: () => void; onChanged: (t: Txn) => void }) {
   const { entities, categories, refreshReview } = useApp();
   const [t, setT] = useState<Txn | null>(null);
   const [mode, setMode] = useState<"view" | "split">("view");
@@ -200,7 +446,7 @@ function TxnSheet({ id, onClose, onChanged }: { id: string; onClose: () => void;
   const s = t ? summarize(t) : null;
   const catPostings = t?.postings.filter((p) => isCat(p.account)) ?? [];
   return (
-    <Sheet open onClose={onClose} title={mode === "split" ? "Split" : "Transaction"}>
+    <Sheet open side onClose={onClose} title={mode === "split" ? "Split" : "Transaction"}>
       {error && <ErrorBox error={error} />}
       {!t && !error && <Loading h={200} />}
       {t && s && mode === "view" && (
@@ -209,7 +455,10 @@ function TxnSheet({ id, onClose, onChanged }: { id: string; onClose: () => void;
             <Avatar name={t.payee} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 700, fontSize: 17 }}>{t.payee}</div>
-              <div class="muted small">{dayLabel(t.date)}</div>
+              <div class="muted small">
+                {dayLabel(t.date)}
+                {account && ` · 🏦 ${account.name}`}
+              </div>
             </div>
             <div class={`num ${s.amount > 0 ? "in" : ""}`} style={{ fontSize: 22, fontWeight: 750, letterSpacing: "-0.02em" }}>
               {s.amount > 0 ? "+" : ""}

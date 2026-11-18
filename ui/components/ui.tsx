@@ -1,5 +1,5 @@
 import type { ComponentChildren } from "preact";
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { CATEGORY_GROUPS, catLabel, categoryMeta, hue, initials } from "../api";
 
 const P = { fill: "none", stroke: "currentColor", "stroke-width": 1.9, "stroke-linecap": "round", "stroke-linejoin": "round" } as const;
@@ -35,7 +35,7 @@ export function Avatar({ name }: { name: string }) {
   );
 }
 
-export function Sheet({ open, onClose, title, children }: { open: boolean; onClose: () => void; title?: string; children: ComponentChildren }) {
+export function Sheet({ open, onClose, title, children, side = false }: { open: boolean; onClose: () => void; title?: string; children: ComponentChildren; side?: boolean }) {
   useEffect(() => {
     if (!open) return;
     const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -46,7 +46,7 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
   return (
     <>
       <div class="scrim" onClick={onClose} />
-      <div class="sheet" role="dialog" aria-modal="true" aria-label={title}>
+      <div class={`sheet${side ? " side" : ""}`} role="dialog" aria-modal="true" aria-label={title}>
         <div class="grab" />
         {title && (
           <div class="spread" style={{ marginBottom: 8 }}>
@@ -97,6 +97,74 @@ export function ErrorBox({ error }: { error: string }) {
 }
 
 /** Searchable category picker; `suggested` floats Jev's picks to the top with probabilities. */
+/**
+ * An inline cell that opens an animated dropdown in place (table rows on wide
+ * screens). It flips upward or right-aligns when it would run off the viewport.
+ */
+export function CellMenu({
+  label,
+  value,
+  children,
+  width = 320,
+  flash = false,
+}: {
+  label: string;
+  value: ComponentChildren;
+  children: (close: () => void) => ComponentChildren;
+  width?: number;
+  flash?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [place, setPlace] = useState({ up: false, right: false });
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  const toggle = () => {
+    if (!open && ref.current) {
+      const r = ref.current.getBoundingClientRect();
+      const below = window.innerHeight - r.bottom;
+      setPlace({ up: below < 400 && r.top > below, right: r.left + width > window.innerWidth - 16 });
+    }
+    setOpen((o) => !o);
+  };
+  return (
+    <div class={`cellmenu${open ? " open" : ""}`} ref={ref} onClick={(e) => e.stopPropagation()}>
+      <button class={`cellmenu-btn${flash ? " flash" : ""}`} aria-haspopup="dialog" aria-expanded={open} aria-label={label} onClick={toggle}>
+        <span class="cellmenu-value">{value}</span>
+        <Icon.down />
+      </button>
+      {open && (
+        <div class={`cellmenu-pop${place.up ? " up" : ""}${place.right ? " right" : ""}`} style={{ width }} role="dialog" aria-label={label}>
+          {children(() => setOpen(false))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** One choice inside a CellMenu; options cascade in. */
+export function MenuOption({ selected = false, index = 0, onClick, children }: { selected?: boolean; index?: number; onClick: () => void; children: ComponentChildren }) {
+  return (
+    <button class={`menu-opt${selected ? " on" : ""}`} style={{ animationDelay: `${Math.min(index, 12) * 18}ms` }} onClick={onClick}>
+      {children}
+      {selected && (
+        <span class="menu-check">
+          <Icon.check />
+        </span>
+      )}
+    </button>
+  );
+}
+
 /** A category with its emoji, e.g. "🍏 Food / Groceries". */
 export function CatName({ account, label }: { account: string; label?: string }) {
   return (
