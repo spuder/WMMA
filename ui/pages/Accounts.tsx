@@ -4,7 +4,7 @@ import { ErrorBox, Loading, Sheet, toast } from "../components/ui";
 import { useApp } from "../app";
 
 const KIND_LABEL: Record<string, string> = {
-  bank: "💵 Cash",
+  bank: "💵 Cash · checking & savings",
   credit: "💳 Credit cards",
   investment: "📈 Investments",
   vehicle: "🚗 Vehicles",
@@ -240,6 +240,7 @@ function NewAccount({ onDone }: { onDone: () => void }) {
             <option value={k}>{KIND_LABEL[k]}</option>
           ))}
         </select>
+        {kind === "bank" && <div class="muted small">Use for a checking or savings account, personal or business.</div>}
       </div>
       <div class="field">
         <label>Personal or business</label>
