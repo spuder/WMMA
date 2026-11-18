@@ -4,13 +4,13 @@ import { ErrorBox, Loading, Sheet, toast } from "../components/ui";
 import { useApp } from "../app";
 
 const KIND_LABEL: Record<string, string> = {
-  bank: "Cash",
-  credit: "Credit cards",
-  investment: "Investments",
-  vehicle: "Vehicles",
-  real_estate: "Real estate",
-  other_asset: "Other assets",
-  loan: "Loans",
+  bank: "💵 Cash",
+  credit: "💳 Credit cards",
+  investment: "📈 Investments",
+  vehicle: "🚗 Vehicles",
+  real_estate: "🏠 Real estate",
+  other_asset: "📦 Other assets",
+  loan: "🏦 Loans",
 };
 const KIND_ORDER = ["bank", "credit", "investment", "real_estate", "vehicle", "other_asset", "loan"];
 const TYPE_LABEL: Record<string, string> = {
@@ -198,9 +198,17 @@ function NewEntity({ onDone }: { onDone: () => void }) {
 
 function NewAccount({ onDone }: { onDone: () => void }) {
   const { entities, entity } = useApp();
+  const initialEntity = entities.find((e) => e.slug === entity) ?? entities.find((e) => e.type === "personal") ?? entities[0];
   const [name, setName] = useState("");
   const [kind, setKind] = useState("bank");
-  const [ent, setEnt] = useState(entity ?? entities[0]?.slug ?? "");
+  const [ownerType, setOwnerType] = useState(initialEntity?.type === "personal" || !initialEntity ? "personal" : "business");
+  const [ent, setEnt] = useState(initialEntity?.slug ?? "");
+  const matchingEntities = entities.filter((e) => ownerType === "personal" ? e.type === "personal" : e.type !== "personal");
+  const changeOwnerType = (value: string) => {
+    setOwnerType(value);
+    const first = entities.find((e) => value === "personal" ? e.type === "personal" : e.type !== "personal");
+    setEnt(first?.slug ?? "");
+  };
   const save = async () => {
     try {
       await api("/accounts", { body: { name, kind, entity: ent } });
@@ -225,14 +233,25 @@ function NewAccount({ onDone }: { onDone: () => void }) {
         </select>
       </div>
       <div class="field">
-        <label>Belongs to</label>
+        <label>Personal or business</label>
+        <select class="input" value={ownerType} onChange={(e) => changeOwnerType((e.target as HTMLSelectElement).value)}>
+          <option value="personal">Personal account</option>
+          <option value="business">Business account</option>
+        </select>
+        <div class="muted small">Choose whether this account is for personal or business finances.</div>
+      </div>
+      <div class="field">
+        <label>{ownerType === "personal" ? "Personal entity" : "Business entity"}</label>
         <select class="input" value={ent} onChange={(e) => setEnt((e.target as HTMLSelectElement).value)}>
-          {entities.map((e) => (
+          {matchingEntities.map((e) => (
             <option value={e.slug}>{e.name}</option>
           ))}
         </select>
+        {matchingEntities.length === 0 && (
+          <div class="muted small">No {ownerType} entity yet. Add one with “+ Entity” before creating this account.</div>
+        )}
       </div>
-      <button class="btn primary block" disabled={!name.trim() || !ent} onClick={save}>
+      <button class="btn primary block" disabled={!name.trim() || !ent || matchingEntities.length === 0} onClick={save}>
         Add account
       </button>
     </div>
