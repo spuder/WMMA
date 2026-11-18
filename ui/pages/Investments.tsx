@@ -29,7 +29,7 @@ export function Investments() {
   const scope = useScope();
   const [span, setSpan] = useStored<Span>("investments.span", "1y", SPANS.map(([k]) => k));
   const r = spanRange(span);
-  const { data: raw, error } = useApi(`/reports/balances${qs({ from: r.from, interval: r.interval, exclude: scope.param })}`, [scope.param, span]);
+  const { data: raw, error } = useApi(`/reports/balances${qs({ from: r.from, interval: r.interval, entities: scope.param })}`, [scope.param, span]);
   const all = raw ? (span === "all" ? trimLeading(raw) : raw) : null;
   const accounts: AccountSeries[] = (all?.accounts ?? []).filter((a: AccountSeries) => a.kind === "investment");
   const periods: any[] = all?.periods ?? [];
@@ -68,7 +68,7 @@ export function Investments() {
   const base = opening + Math.max(0, contributed) / 2;
   const ret = base > 0 ? (gain / base) * 100 : null;
   const ent = (slug: string | null) => entities.find((e) => e.slug === slug);
-  const slicesOf: Slice[] = accounts.filter((a) => (a.balance_cents.at(-1) ?? 0) > 0).sort((a, b) => b.balance_cents.at(-1)! - a.balance_cents.at(-1)!).map((a) => ({ key: a.account, text: a.name, cents: a.balance_cents.at(-1)!, label: a.name }));
+  const slicesOf: Slice[] = accounts.filter((a) => (a.balance_cents.at(-1) ?? 0) > 0).sort((a, b) => b.balance_cents.at(-1)! - a.balance_cents.at(-1)!).map((a) => ({ key: a.account, text: a.name, emoji: "📈", cents: a.balance_cents.at(-1)!, label: a.name }));
   return (
     <div class="stack">
       <div class="topbar">

@@ -3,7 +3,7 @@ import type { ComponentChildren } from "preact";
 import { useCallback, useEffect, useState } from "preact/hooks";
 import { CATEGORY_GROUPS, catLabel, categoryMeta, compact, dayLabel, money, monthEnd, monthShift, monthStart, store, thisMonth, today, useApi } from "../api";
 import { businessStyle, go, useApp } from "../app";
-import { Chart, type Theme } from "./chart";
+import { Chart, type Theme, useTheme } from "./chart";
 import { Avatar, CatName, CellMenu, Icon, Loading, MenuOption } from "./ui";
 
 // ---- query strings & ranges -------------------------------------------------
@@ -109,7 +109,7 @@ export function Seg<T extends string>({ value, options, onChange, label }: { val
 
 // ---- report filters (business scope + hidden categories) ----------------------
 
-const EXCLUDE_KEY = "reports.exclude";
+const ENTITIES_KEY = "reports.entities";
 const CATS_KEY = "reports.excludeCategories";
 const scopeListeners = new Set<() => void>();
 function readList(key: string): string[] {
@@ -124,40 +124,43 @@ function writeList(key: string, xs: string[]) {
   store.set(key, xs.length ? JSON.stringify([...new Set(xs)].sort()) : null);
   scopeListeners.forEach((l) => l());
 }
+// The earlier "untick to exclude" filter; forgotten so nobody is stuck with a hidden filter.
+store.set("reports.exclude", null);
 
 /**
- * What the report pages include: which businesses (stored as the excluded
- * slugs, so new businesses show up by default) and which categories are hidden.
- * Shared by every report page and remembered in this browser.
+ * What the report pages include: the selected businesses (none selected = all,
+ * as in Monarch) and the hidden categories. Shared by every report page and
+ * remembered in this browser.
  */
 export function useScope() {
-  const [state, setState] = useState(() => ({ exclude: readList(EXCLUDE_KEY), cats: readList(CATS_KEY) }));
+  const [state, setState] = useState(() => ({ entities: readList(ENTITIES_KEY), cats: readList(CATS_KEY) }));
   useEffect(() => {
-    const on = () => setState({ exclude: readList(EXCLUDE_KEY), cats: readList(CATS_KEY) });
+    const on = () => setState({ entities: readList(ENTITIES_KEY), cats: readList(CATS_KEY) });
     scopeListeners.add(on);
     return () => {
       scopeListeners.delete(on);
     };
   }, []);
-  const { exclude, cats } = state;
-  const param = exclude.length ? exclude.join(",") : null;
+  const { entities, cats } = state;
+  const param = entities.length ? entities.join(",") : null;
   const catParam = cats.length ? cats.join(",") : null;
   return {
-    exclude,
+    /** Selected businesses; empty means all. */
+    entities,
     excludeCategories: cats,
-    /** The `exclude` query parameter (businesses only), or null. */
+    /** The `entities` query parameter (businesses only), or null for all. */
     param,
     /** Query parameters for both filters, to spread into qs(). */
-    q: { exclude: param, exclude_categories: catParam },
+    q: { entities: param, exclude_categories: catParam },
     /** Changes whenever either filter changes (for fetch dependencies). */
     key: `${param ?? ""}|${catParam ?? ""}`,
-    set: (xs: string[]) => writeList(EXCLUDE_KEY, xs),
+    set: (xs: string[]) => writeList(ENTITIES_KEY, xs),
     setCategories: (xs: string[]) => writeList(CATS_KEY, xs),
     clear: () => {
-      store.set(EXCLUDE_KEY, null);
+      store.set(ENTITIES_KEY, null);
       writeList(CATS_KEY, []);
     },
-    keep: (e: string | null) => e === null || !exclude.includes(e),
+    keep: (e: string | null) => entities.length === 0 || (e !== null && entities.includes(e)),
     keepCategory: (a: string) => !cats.some((c) => a === c || a.startsWith(`${c}:`)),
   };
 }
@@ -165,7 +168,7 @@ export function useScope() {
 /** Clear + Filters (categories) + Business, as in Monarch's report toolbar. */
 export function ReportFilters({ categories = true }: { categories?: boolean }) {
   const scope = useScope();
-  const active = scope.exclude.length > 0 || (categories && scope.excludeCategories.length > 0);
+  const active = scope.entities.length > 0 || (categories && scope.excludeCategories.length > 0);
   return (
     <div class="scope">
       {active && (
@@ -179,57 +182,55 @@ export function ReportFilters({ categories = true }: { categories?: boolean }) {
   );
 }
 
-/** Monarch-style "Business" filter: tick the profiles a report includes. */
+/**
+ * Monarch-style "Business" filter: select one or more businesses to show only
+ * them ("Mixed" when several); nothing selected shows everything.
+ */
 export function BusinessFilter() {
   const { entities } = useApp();
   const scope = useScope();
-  const off = new Set(scope.exclude.filter((s) => entities.some((e) => e.slug === s)));
-  const on = entities.filter((e) => !off.has(e.slug));
-  const label = off.size === 0 ? "All businesses" : on.length === 1 ? on[0]!.name : on.length === 0 ? "None selected" : off.size === 1 ? `Excluding ${entities.find((e) => off.has(e.slug))!.name}` : `${on.length} of ${entities.length}`;
-  const toggle = (slug: string) => scope.set(off.has(slug) ? [...off].filter((s) => s !== slug) : [...off, slug]);
+  const sel = new Set(scope.entities.filter((s) => entities.some((e) => e.slug === s)));
+  const chosen = entities.filter((e) => sel.has(e.slug));
+  const label = chosen.length === 0 ? "Business" : chosen.length === 1 ? chosen[0]!.name : "Mixed";
+  const toggle = (slug: string) => scope.set(sel.has(slug) ? [...sel].filter((s) => s !== slug) : [...sel, slug]);
   if (entities.length < 2) return null;
   return (
-    <CellMenu
-      tool
-      label="Businesses in this report"
-      width={300}
-      value={
-        <>
-          <span class="tool-ico"><Icon.folder /></span>
-          {label}
-          {off.size > 0 && <span class="scope-dot" aria-label="filtered" />}
-        </>
-      }
-    >
-      {() => (
-        <>
-          <div class="menu-head spread">
-            <strong>Include in reports</strong>
-            <span class="row" style={{ gap: 4 }}>
-              <button class="chip" onClick={() => scope.set([])}>All</button>
-              <button class="chip" onClick={() => scope.set(entities.filter((e) => e.type !== "personal").map((e) => e.slug))}>Personal</button>
-            </span>
-          </div>
-          {entities.map((e, i) => {
-            const checked = !off.has(e.slug);
-            const color = businessStyle(e.slug, e.color).color!;
-            return (
-              <button class={`menu-opt scope-opt${checked ? " checked" : ""}`} style={{ animationDelay: `${i * 18}ms` }} role="menuitemcheckbox" aria-checked={checked} onClick={() => toggle(e.slug)}>
-                <span class="scope-box" style={checked ? { background: color, borderColor: color } : {}}>
-                  {checked && <Icon.check />}
-                </span>
-                <span class="business-icon compact" style={businessStyle(e.slug, e.color)}>
-                  {e.type === "personal" ? "👤" : <Icon.folder />}
-                </span>
-                <span class="scope-name">{e.name}</span>
-                <span class="muted tiny">{e.type === "personal" ? "Personal" : "Business"}</span>
-              </button>
-            );
-          })}
-          <div class="menu-note">Unticked profiles are left out of totals, charts and transactions, so one business can't skew the numbers.</div>
-        </>
-      )}
-    </CellMenu>
+    <div class={`biz-filter${chosen.length ? " active" : ""}`}>
+      <CellMenu
+        tool
+        label="Businesses in this report"
+        width={280}
+        value={
+          <>
+            <span class="tool-ico"><Icon.folder /></span>
+            {label}
+          </>
+        }
+      >
+        {() => (
+          <>
+            {entities.map((e, i) => {
+              const on = sel.has(e.slug);
+              return (
+                <button class={`menu-opt biz-opt${on ? " on" : ""}`} style={{ animationDelay: `${i * 18}ms` }} role="menuitemcheckbox" aria-checked={on} onClick={() => toggle(e.slug)}>
+                  <span class="business-icon compact" style={businessStyle(e.slug, e.color)}>
+                    {e.type === "personal" ? "🏠" : <Icon.folder />}
+                  </span>
+                  <span class="scope-name">{e.name}</span>
+                  {on && (
+                    <span class="menu-check">
+                      <Icon.check />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+            <div class="menu-note">{chosen.length === 0 ? "Showing every business. Select one or more to show only those." : `Showing ${chosen.length === 1 ? chosen[0]!.name : `${chosen.length} businesses`} only.`}</div>
+          </>
+        )}
+      </CellMenu>
+      {chosen.length > 0 && <span class="biz-dot" aria-label="filtered" />}
+    </div>
   );
 }
 
@@ -416,6 +417,10 @@ export interface Slice {
   key: string;
   label: ComponentChildren;
   text: string;
+  /** Category (or group / merchant's category) emoji, for charts and tooltips. */
+  emoji: string;
+  /** Group slices: the categories inside them (for the treemap). */
+  children?: Slice[];
   cents: number;
   count?: number;
   account?: string;
@@ -428,6 +433,7 @@ export function slices(kind: { categories: Array<{ account: string; cents: numbe
     return kind.merchants.map((m) => ({
       key: m.name,
       text: m.name,
+      emoji: m.category ? categoryMeta(m.category).emoji : "🏷️",
       merchant: true,
       cents: m.cents,
       count: m.count,
@@ -438,18 +444,22 @@ export function slices(kind: { categories: Array<{ account: string; cents: numbe
         </span>
       ),
     }));
+  const cats = kind.categories.map((c): Slice => ({ key: c.account, account: c.account, text: catLabel(c.account), emoji: categoryMeta(c.account).emoji, cents: c.cents, count: c.count, label: <CatName account={c.account} /> }));
   if (by === "group") {
-    const g = new Map<string, number>();
-    for (const c of kind.categories) {
-      const k = categoryMeta(c.account).group;
-      g.set(k, (g.get(k) ?? 0) + c.cents);
+    const g = new Map<string, Slice[]>();
+    for (const c of cats) {
+      const k = categoryMeta(c.account!).group;
+      g.set(k, [...(g.get(k) ?? []), c]);
     }
     return [...g]
-      .sort((a, b) => b[1] - a[1])
-      .map(([k, cents]) => ({
+      .map(([k, children]) => ({ k, children, cents: children.reduce((s, c) => s + c.cents, 0) }))
+      .sort((a, b) => b.cents - a.cents)
+      .map(({ k, children, cents }) => ({
         key: k,
         text: k,
+        emoji: GROUP_EMOJI[k] ?? "🏷️",
         cents,
+        children,
         label: (
           <span class="catname">
             <span class="cat-emoji" aria-hidden>{GROUP_EMOJI[k] ?? "🏷️"}</span>
@@ -458,7 +468,7 @@ export function slices(kind: { categories: Array<{ account: string; cents: numbe
         ),
       }));
   }
-  return kind.categories.map((c) => ({ key: c.account, account: c.account, text: catLabel(c.account), cents: c.cents, count: c.count, label: <CatName account={c.account} /> }));
+  return cats;
 }
 
 /** Monarch-style filled bars: each row's tint width is its share of the largest row. */
@@ -602,14 +612,20 @@ export function FlowSankey({ from, to }: { from: string | null; to: string | nul
   return <Chart option={option} class="chart xtall" />;
 }
 
+const share = (cents: number, total: number) => (total ? ((cents / total) * 100).toFixed(1) : "0.0");
+const tipRow = (color: string, name: string, cents: number, total: number) =>
+  `<div style="display:flex;gap:8px;align-items:flex-start"><span style="width:9px;height:9px;border-radius:5px;background:${color};margin-top:5px"></span><div><div style="font-weight:650">${name}</div><div>${money(cents)} (${share(cents, total)}%)</div></div></div>`;
+
 /** Donut with a Monarch-style legend grid beside it. */
 export function Donut({ items, total, label }: { items: Slice[]; total: number; label: string }) {
+  const theme = useTheme();
   const top = items.slice(0, 11);
   const rest = items.slice(11).reduce((s, i) => s + i.cents, 0);
-  const data = rest > 0 ? [...top, { key: "Other", text: "Other", cents: rest, label: "Other" } as Slice] : top;
+  const data: Slice[] = rest > 0 ? [...top, { key: "Other", text: "Other", emoji: "…", cents: rest, label: "Other" }] : top;
+  const color = (t: Theme | null, i: number) => (data[i]?.key === "Other" ? "var(--muted)" : t ? t.palette[i % t.palette.length]! : "var(--muted)");
   const option = useCallback(
     (t: Theme) => ({
-      tooltip: { trigger: "item", valueFormatter: (v: number) => money(v) },
+      tooltip: { trigger: "item", formatter: (p: any) => tipRow(p.color, p.name, p.value, total) },
       series: [
         {
           type: "pie",
@@ -617,13 +633,12 @@ export function Donut({ items, total, label }: { items: Slice[]; total: number; 
           padAngle: 1,
           itemStyle: { borderRadius: 4, borderColor: t.surface, borderWidth: 1 },
           label: { show: false },
-          data: data.map((s) => ({ name: s.text, value: Math.max(0, s.cents) })),
+          data: data.map((s, i) => ({ name: `${s.emoji} ${s.text}`, value: Math.max(0, s.cents), itemStyle: { color: s.key === "Other" ? t.muted : t.palette[i % t.palette.length] } })),
         },
       ],
     }),
-    [items],
+    [items, total],
   );
-  const theme = ["--c0", "--c1", "--c2", "--c3", "--c4", "--c5", "--c6", "--c7"];
   if (items.length === 0) return <div class="empty">Nothing in this period</div>;
   return (
     <div class="donut-wrap">
@@ -637,17 +652,179 @@ export function Donut({ items, total, label }: { items: Slice[]; total: number; 
       <div class="legend-grid">
         {data.map((s, i) => (
           <div class="legend-item">
-            <span class="legend-dot" style={{ background: i < 9 ? `var(${theme[i % theme.length]}, #888)` : "var(--muted)" }} />
+            <span class="legend-dot" style={{ background: color(theme, i) }} />
             <div>
               <div class="legend-name">{s.label}</div>
               <div class="num legend-amt">
-                {money(s.cents)} <span class="muted">({total ? ((s.cents / total) * 100).toFixed(1) : 0}%)</span>
+                {money(s.cents)} <span class="muted">({share(s.cents, total)}%)</span>
               </div>
             </div>
           </div>
         ))}
       </div>
     </div>
+  );
+}
+
+/** Proportional rectangles; by group, each group holds its categories. */
+export function Treemap({ items, total }: { items: Slice[]; total: number }) {
+  const option = useCallback(
+    (t: Theme) => {
+      const node = (s: Slice, i: number, depth = 0): any => ({
+        name: `${s.emoji} ${s.text}`,
+        value: Math.max(0, s.cents),
+        ...(depth === 0 ? { itemStyle: { color: s.key === "Other" ? t.muted : t.palette[i % t.palette.length] } } : {}),
+        ...(s.children ? { children: s.children.map((c, k) => node(c, k, depth + 1)) } : {}),
+      });
+      return {
+        tooltip: { formatter: (p: any) => tipRow(p.color, p.name, p.value, total) },
+        series: [
+          {
+            type: "treemap",
+            roam: false,
+            nodeClick: false,
+            breadcrumb: { show: false },
+            left: 0,
+            right: 0,
+            top: 0,
+            bottom: 0,
+            itemStyle: { borderColor: t.surface, borderWidth: 2, gapWidth: 2, borderRadius: 6 },
+            upperLabel: { show: items.some((s) => s.children), height: 24, color: "#fff", fontWeight: 650, formatter: (p: any) => `${p.name}  ${compact(p.value)}` },
+            levels: [{ itemStyle: { gapWidth: 3 } }, { colorSaturation: [0.35, 0.6], itemStyle: { gapWidth: 1, borderColorSaturation: 0.6 } }],
+            label: { color: "#fff", fontSize: 12.5, fontWeight: 600, overflow: "truncate", formatter: (p: any) => `${p.name}\n${money(p.value)} (${share(p.value, total)}%)`, lineHeight: 17 },
+            data: items.filter((s) => s.cents > 0).map((s, i) => node(s, i)),
+          },
+        ],
+      };
+    },
+    [items, total],
+  );
+  if (items.length === 0) return <div class="empty">Nothing in this period</div>;
+  return <Chart option={option} class="chart xtall" />;
+}
+
+// ---- chart type & grouping menus -----------------------------------------------
+
+export type ChartKind = "pie" | "breakdown" | "treemap" | "trend" | "sankey";
+const THUMB = {
+  pie: (
+    <svg viewBox="0 0 40 40">
+      <circle cx="20" cy="20" r="14" fill="none" stroke="#b9e6ef" stroke-width="7" />
+      <path d="M20 6a14 14 0 0 1 13.4 10" fill="none" stroke="#f9c9c9" stroke-width="7" />
+      <path d="M33.4 16A14 14 0 0 1 26 32.6" fill="none" stroke="#cdd8fb" stroke-width="7" />
+      <path d="M8 26A14 14 0 0 1 9 12" fill="none" stroke="#cdeedd" stroke-width="7" />
+    </svg>
+  ),
+  breakdown: (
+    <svg viewBox="0 0 60 40">
+      <rect x="2" y="4" width="54" height="6" rx="2" fill="#cdeedd" />
+      <rect x="2" y="13" width="34" height="6" rx="2" fill="#cdeedd" />
+      <rect x="2" y="22" width="40" height="6" rx="2" fill="#f9c9c9" />
+      <rect x="2" y="31" width="26" height="6" rx="2" fill="#f9c9c9" />
+    </svg>
+  ),
+  treemap: (
+    <svg viewBox="0 0 60 40">
+      <rect x="2" y="2" width="30" height="36" rx="2" fill="#b9e6ef" />
+      <rect x="34" y="2" width="24" height="16" rx="2" fill="#fbe39a" />
+      <rect x="34" y="20" width="11" height="18" rx="2" fill="#f9c9c9" />
+      <rect x="47" y="20" width="11" height="18" rx="2" fill="#cdeedd" />
+    </svg>
+  ),
+  trend: (
+    <svg viewBox="0 0 60 40">
+      <rect x="6" y="14" width="9" height="24" rx="1.5" fill="#cdeedd" />
+      <rect x="18" y="20" width="9" height="18" rx="1.5" fill="#f9c9c9" />
+      <rect x="32" y="6" width="9" height="32" rx="1.5" fill="#cdeedd" />
+      <rect x="44" y="18" width="9" height="20" rx="1.5" fill="#f9c9c9" />
+      <path d="M8 30 30 22 52 14" fill="none" stroke="#9aa0a6" stroke-width="1.5" />
+    </svg>
+  ),
+  sankey: (
+    <svg viewBox="0 0 60 40">
+      <rect x="2" y="6" width="5" height="28" rx="1.5" fill="#9fd9b9" />
+      <rect x="53" y="2" width="5" height="12" rx="1.5" fill="#f4a9a9" />
+      <rect x="53" y="17" width="5" height="9" rx="1.5" fill="#f4a9a9" />
+      <rect x="53" y="29" width="5" height="9" rx="1.5" fill="#b9e6ef" />
+      <path d="M7 8C30 8 30 4 53 4v8C30 12 30 18 7 18z" fill="#f9c9c980" />
+      <path d="M7 18C30 18 30 19 53 19v5C30 24 30 25 7 25z" fill="#f9c9c980" />
+      <path d="M7 25C30 25 30 31 53 31v5C30 36 30 33 7 33z" fill="#b9e6ef80" />
+    </svg>
+  ),
+};
+function chartInfo(k: ChartKind, noun: string): [string, string] {
+  switch (k) {
+    case "pie":
+      return ["Pie", `Your ${noun} breakdown at a glance`];
+    case "breakdown":
+      return ["Breakdown", `${noun[0]!.toUpperCase()}${noun.slice(1)}, biggest to smallest`];
+    case "treemap":
+      return ["Treemap", "Proportional category breakdown"];
+    case "trend":
+      return ["Trend bars", noun === "cash flow" ? "Income and expenses over time" : `Your ${noun === "income" ? "income" : "spending"} behavior over time`];
+    case "sankey":
+      return ["Sankey", "Where money comes from and where it goes"];
+  }
+}
+
+/** Monarch's chart picker: a thumbnail, a name and what each chart is for. */
+export function ChartMenu({ value, options, onChange, noun = "expense" }: { value: ChartKind; options: ChartKind[]; onChange: (k: ChartKind) => void; noun?: string }) {
+  return (
+    <CellMenu
+      tool
+      label="Chart type"
+      width={330}
+      value={
+        <>
+          <span class="chart-thumb small">{THUMB[value]}</span>
+          {chartInfo(value, noun)[0]}
+        </>
+      }
+    >
+      {(close) =>
+        options.map((k, i) => {
+          const [name, desc] = chartInfo(k, noun);
+          return (
+            <button
+              class={`chart-opt${k === value ? " on" : ""}`}
+              style={{ animationDelay: `${i * 22}ms` }}
+              aria-pressed={k === value}
+              onClick={() => {
+                onChange(k);
+                close();
+              }}
+            >
+              <span class="chart-thumb">{THUMB[k]}</span>
+              <span>
+                <strong>{name}</strong>
+                <span class="muted small">{desc}</span>
+              </span>
+            </button>
+          );
+        })
+      }
+    </CellMenu>
+  );
+}
+
+export function ByMenu({ value, onChange }: { value: By; onChange: (b: By) => void }) {
+  return (
+    <CellMenu tool label="Group by" width={200} value={<>By {value}</>}>
+      {(close) =>
+        BY_OPTIONS.map(([k, l], i) => (
+          <MenuOption
+            index={i}
+            selected={k === value}
+            onClick={() => {
+              onChange(k);
+              close();
+            }}
+          >
+            By {l.toLowerCase()}
+          </MenuOption>
+        ))
+      }
+    </CellMenu>
   );
 }
 

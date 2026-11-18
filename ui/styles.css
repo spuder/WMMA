@@ -844,3 +844,23 @@ mark.fz { background: transparent; color: var(--accent); font-weight: 750; text-
 .rec-row:hover .rec-biz .cellmenu-btn > svg { opacity: 1; }
 .rec-biz .business-tag { margin: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .business-tag.mixed { border-color: var(--warn); background: var(--warn-soft); color: var(--warn); }
+
+/* business filter (Monarch-style select) */
+.biz-filter { position: relative; display: inline-flex; }
+.biz-dot { position: absolute; top: -3px; right: -3px; width: 10px; height: 10px; border-radius: 50%; background: var(--out); border: 2px solid var(--bg); pointer-events: none; }
+.biz-opt { gap: 12px; padding: 10px 12px; font-size: 15px; }
+.biz-opt.on { background: var(--accent-soft); color: var(--accent); font-weight: 650; }
+.biz-opt.on .menu-check { color: var(--accent); }
+.biz-opt + .biz-opt { margin-top: 3px; }
+
+/* chart type menu (Monarch-style) */
+.chart-thumb { display: inline-grid; place-items: center; flex: none; width: 64px; height: 42px; }
+.chart-thumb svg { width: 100%; height: 100%; }
+.chart-thumb.small { width: 28px; height: 20px; }
+.chart-opt { display: flex; align-items: center; gap: 16px; width: 100%; padding: 12px 14px; border: 1.5px solid transparent; border-radius: 12px; background: transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer; transition: background 0.12s, border-color 0.12s; animation: opt-in 0.2s both; }
+.chart-opt + .chart-opt { margin-top: 4px; }
+.chart-opt:hover { background: var(--surface-2); }
+.chart-opt.on { border-color: var(--accent); background: var(--surface); }
+.chart-opt > span:last-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.chart-opt strong { font-size: 15.5px; }
+.cellmenu.tool .chart-thumb.small + * { margin-left: 2px; }

@@ -193,6 +193,17 @@ describe.skipIf(!hledgerWebBin)("report endpoints", () => {
     expect((await call("GET", "/api/v1/reports/overview?from=2026-01-01&to=2026-03-31&exclude=gone")).json.net_cents).toBe(715000);
   });
 
+  test("entities shows only the selected businesses", async () => {
+    const one = (await call("GET", "/api/v1/reports/overview?from=2026-01-01&to=2026-03-31&entities=acme")).json;
+    expect([one.income.total_cents, one.expenses.total_cents]).toEqual([500000, 50000]);
+    const both = (await call("GET", "/api/v1/reports/overview?from=2026-01-01&to=2026-03-31&entities=acme,personal")).json;
+    expect(both.net_cents).toBe(715000);
+    const b = (await call("GET", "/api/v1/reports/businesses?from=2026-01-01&to=2026-03-31&entities=personal")).json;
+    expect(b.entities.map((e: any) => e.slug)).toEqual(["personal"]);
+    const h = (await call("GET", "/api/v1/reports/balances?from=2026-03-01&to=2026-03-31&entities=acme")).json;
+    expect(h.accounts.map((a: any) => a.slug)).toEqual(["acme-checking"]);
+  });
+
   test("exclude_categories hides categories and their subcategories", async () => {
     const o = (await call("GET", "/api/v1/reports/overview?from=2026-01-01&to=2026-03-31&exclude_categories=Expenses:Food")).json;
     expect([o.income.total_cents, o.expenses.total_cents]).toEqual([900000, 50000]);

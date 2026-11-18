@@ -89,7 +89,7 @@ export function NetWorth() {
   const [mode, setMode] = useState<"totals" | "percent">("totals");
   const [closed, setClosed] = useState<Record<string, boolean>>({});
   const r = spanRange(span);
-  const { data: raw, error } = useApi(`/reports/balances${qs({ from: r.from, interval: r.interval, exclude: scope.param })}`, [scope.param, span]);
+  const { data: raw, error } = useApi(`/reports/balances${qs({ from: r.from, interval: r.interval, entities: scope.param })}`, [scope.param, span]);
   const data = raw ? (span === "all" ? trimLeading(raw) : raw) : null;
   const option = useCallback(
     (t: Theme) => {

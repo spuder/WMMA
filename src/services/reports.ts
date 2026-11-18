@@ -67,7 +67,7 @@ export interface Pnl {
 }
 
 /** Profit and loss for one entity (or all, combined) over [from, to] inclusive. */
-export async function pnl(ctx: ServiceContext, q: { entity?: string | null; exclude?: readonly string[] | null; excludeCategories?: readonly string[] | null; from: string; to: string }): Promise<Pnl> {
+export async function pnl(ctx: ServiceContext, q: { entity?: string | null; entities?: readonly string[] | null; exclude?: readonly string[] | null; excludeCategories?: readonly string[] | null; from: string; to: string }): Promise<Pnl> {
   checkRange(q.from, q.to);
   const keep = scopeFilter(ctx, q);
   const keepCat = categoryFilter(q);
@@ -191,7 +191,7 @@ export async function budgetReport(ctx: ServiceContext, q: { entity: string; mon
 // ---- Cash flow, spending, net worth --------------------------------------
 
 /** Sankey-ready income -> expenses flow for an entity (or all) over [from, to]. */
-export async function cashflow(ctx: ServiceContext, q: { entity?: string | null; exclude?: readonly string[] | null; excludeCategories?: readonly string[] | null; from: string; to: string; depth?: number }) {
+export async function cashflow(ctx: ServiceContext, q: { entity?: string | null; entities?: readonly string[] | null; exclude?: readonly string[] | null; excludeCategories?: readonly string[] | null; from: string; to: string; depth?: number }) {
   const p = await pnl(ctx, q);
   const depth = q.depth ?? 2;
   const group = (a: string) => a.split(":").slice(0, depth).join(":");
@@ -225,7 +225,7 @@ export async function cashflow(ctx: ServiceContext, q: { entity?: string | null;
 }
 
 /** Spending by category (Expenses), grouped to `depth` account levels. */
-export async function spending(ctx: ServiceContext, q: { entity?: string | null; exclude?: readonly string[] | null; excludeCategories?: readonly string[] | null; from: string; to: string; depth?: number }) {
+export async function spending(ctx: ServiceContext, q: { entity?: string | null; entities?: readonly string[] | null; exclude?: readonly string[] | null; excludeCategories?: readonly string[] | null; from: string; to: string; depth?: number }) {
   const p = await pnl(ctx, q);
   const depth = q.depth ?? 2;
   const m = new Map<string, number>();

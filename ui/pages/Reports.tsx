@@ -4,6 +4,10 @@ import { businessStyle, go, useApp } from "../app";
 import { Chart, type Theme } from "../components/chart";
 import {
   axis,
+  ByMenu,
+  ChartMenu,
+  type ChartKind,
+  Treemap,
   BarList,
   BY_OPTIONS,
   type By,
@@ -109,7 +113,7 @@ function CashflowReport({ from, to, label }: { from: string | null; to: string |
             {d && <div class="sub">{shortDate(d.from)} – {shortDate(d.to)}</div>}
           </div>
           <div class="row wrap">
-            <Seg value={view} onChange={setView} label="Chart" options={[["bars", "Trend bars"], ["sankey", "Flow"]]} />
+            <ChartMenu value={view === "bars" ? "trend" : "sankey"} onChange={(k) => setView(k === "sankey" ? "sankey" : "bars")} options={["trend", "sankey"]} noun="cash flow" />
             {view === "bars" && (
               <Seg
                 value={interval}
@@ -126,7 +130,7 @@ function CashflowReport({ from, to, label }: { from: string | null; to: string |
         <div class="card span-8">
           <div class="card-head">
             <h2>Breakdown</h2>
-            <Seg value={by} onChange={setBy} label="Group by" options={BY_OPTIONS} />
+            <ByMenu value={by} onChange={setBy} />
           </div>
           {d ? (
             <>
@@ -180,11 +184,11 @@ function CashflowReport({ from, to, label }: { from: string | null; to: string |
 
 function KindReport({ kind, from, to, label }: { kind: "expense" | "income"; from: string | null; to: string | null; label: string }) {
   const scope = useScope();
-  const [view, setView] = useStored<"pie" | "bars">(`reports.${kind}.view`, "pie", ["pie", "bars"]);
+  const [view, setView] = useStored<ChartKind>(`reports.${kind}.chart`, "pie", ["pie", "breakdown", "treemap", "trend"]);
   const [by, setBy] = useStored<By>(`reports.${kind}.by`, "category", ["category", "group", "merchant"]);
   const iv = autoInterval(from, to);
   const ov = useApi(`/reports/overview${qs({ from, to, ...scope.q })}`, [scope.key, from, to]);
-  const se = useApi(view === "bars" ? `/reports/series${qs({ from, to, ...scope.q, interval: iv, stack: kind, top: 8 })}` : null, [scope.key, from, to, view]);
+  const se = useApi(view === "trend" ? `/reports/series${qs({ from, to, ...scope.q, interval: iv, stack: kind, top: 8 })}` : null, [scope.key, from, to, view]);
   if (ov.error) return <ErrorBox error={ov.error} />;
   const d = ov.data;
   const k = d ? (kind === "income" ? d.income : d.expenses) : null;
@@ -192,19 +196,30 @@ function KindReport({ kind, from, to, label }: { kind: "expense" | "income"; fro
     <div class="stack">
       <div class="card chart-card">
         <div class="card-head">
-          <div>
-            <h2>{label}</h2>
-            {d && <div class="sub">{shortDate(d.from)} – {shortDate(d.to)}</div>}
+          <div class="stack" style={{ gap: 10 }}>
+            <div>
+              <h2>{label}</h2>
+              {d && <div class="sub">{shortDate(d.from)} – {shortDate(d.to)}</div>}
+            </div>
+            <ChartMenu value={view} onChange={setView} options={["pie", "breakdown", "treemap", "trend"]} noun={kind === "income" ? "income" : "expense"} />
           </div>
           <div class="row wrap">
-            <Seg value={view} onChange={setView} label="Chart" options={[["pie", "Pie"], ["bars", "Over time"]]} />
-            {view === "pie" && <Seg value={by} onChange={setBy} label="Group by" options={BY_OPTIONS} />}
+            {view !== "trend" && <ByMenu value={by} onChange={setBy} />}
+            {k && (
+              <button class="icon-btn" aria-label="Download CSV" title="Download CSV" onClick={() => downloadCsv(`${kind === "income" ? "income" : "spending"}-${d.from}-${d.to}.csv`, [[by, "amount"], ...slices(k, by).map((x) => [x.account ?? x.text, csvMoney(x.cents)])])}>
+                <Icon.download />
+              </button>
+            )}
           </div>
         </div>
         {!k ? (
           <Loading h={380} />
         ) : view === "pie" ? (
           <Donut items={slices(k, by)} total={k.total_cents} label="Total" />
+        ) : view === "breakdown" ? (
+          <BarList items={slices(k, by)} tone={kind === "income" ? "in" : "out"} onPick={openSlice} limit={15} />
+        ) : view === "treemap" ? (
+          <Treemap items={slices(k, by)} total={k.total_cents} />
         ) : se.data?.stack ? (
           <StackBars periods={se.data.periods} interval={se.data.interval} stack={se.data.stack} tone={kind === "income" ? "in" : "out"} />
         ) : (

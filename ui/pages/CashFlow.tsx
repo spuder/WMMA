@@ -1,6 +1,6 @@
 import { useEffect, useState } from "preact/hooks";
 import { money, monthEnd, monthShift, thisMonth, useApi } from "../api";
-import { BarList, BY_OPTIONS, type By, FlowBars, FlowSankey, Kpis, openSlice, pct, periodLabel, qs, Seg, slices, useStored, ReportFilters, useScope } from "../components/report-kit";
+import { BarList, ByMenu, type By, FlowBars, FlowSankey, Kpis, openSlice, pct, periodLabel, qs, Seg, slices, useStored, ReportFilters, useScope } from "../components/report-kit";
 import { ErrorBox, Icon, Loading } from "../components/ui";
 
 type Iv = "month" | "quarter" | "year";
@@ -79,14 +79,14 @@ function Period({ start, end, label }: { start: string; end: string; label: stri
       <div class="card">
         <div class="card-head">
           <h2>Income</h2>
-          <Seg value={byIn} onChange={setByIn} label="Income by" options={BY_OPTIONS} />
+          <ByMenu value={byIn} onChange={setByIn} />
         </div>
         <BarList items={slices(data.income, byIn)} tone="in" onPick={openSlice} />
       </div>
       <div class="card">
         <div class="card-head">
           <h2>Expenses</h2>
-          <Seg value={byOut} onChange={setByOut} label="Expenses by" options={BY_OPTIONS} />
+          <ByMenu value={byOut} onChange={setByOut} />
         </div>
         <BarList items={slices(data.expenses, byOut)} tone="out" onPick={openSlice} limit={15} />
       </div>

@@ -113,6 +113,8 @@ function checkEntity(ctx: ServiceContext, entity: string | null | undefined) {
 /** Which entities a report covers: one (`entity`), or everything except `exclude`. */
 export interface Scope {
   entity?: string | null;
+  /** Only these businesses (nothing = all). Postings with no business are left out when set. */
+  entities?: readonly string[] | null;
   exclude?: readonly string[] | null;
   /** Categories (and their subcategories) to leave out, e.g. "Expenses:Taxes". */
   excludeCategories?: readonly string[] | null;
@@ -128,9 +130,10 @@ export function scopeFilter(ctx: ServiceContext | null, q: Scope): (entity: stri
   // Unknown slugs in `exclude` are ignored: leaving out something that doesn't exist is harmless.
   if (ctx) checkEntity(ctx, q.entity);
   const ex = new Set(q.exclude ?? []);
+  const only = new Set(q.entities ?? []);
   if (q.entity) return (e) => e === q.entity;
-  if (ex.size === 0) return () => true;
-  return (e) => e === null || !ex.has(e);
+  if (ex.size === 0 && only.size === 0) return () => true;
+  return (e) => (only.size === 0 ? e === null || !ex.has(e) : e !== null && only.has(e) && !ex.has(e));
 }
 
 interface Line {
@@ -528,7 +531,7 @@ export function detectRecurring(raw: HledgerTransaction[], q: Scope & { today: s
 export async function recurring(ctx: ServiceContext, q: Scope & { today?: string }) {
   scopeFilter(ctx, q);
   const today = q.today ?? isoToday();
-  const items = detectRecurring(await ctx.hledger.transactions(), { entity: q.entity ?? null, exclude: q.exclude ?? null, excludeCategories: q.excludeCategories ?? null, today });
+  const items = detectRecurring(await ctx.hledger.transactions(), { entity: q.entity ?? null, entities: q.entities ?? null, exclude: q.exclude ?? null, excludeCategories: q.excludeCategories ?? null, today });
   const live = items.filter((i) => i.status !== "inactive");
   const sum = (k: "expense" | "income") => live.filter((i) => i.kind === k).reduce((s, i) => s + i.monthly_cents, 0);
   return { entity: q.entity ?? null, today, items, monthly_expense_cents: sum("expense"), monthly_income_cents: sum("income") };
@@ -570,8 +573,8 @@ export async function assignRecurring(ctx: ServiceContext, actor: string, q: { k
 // ---- business P&L ----------------------------------------------------------
 
 /** Income, expenses and net per entity for [from, to], with a monthly net series. */
-export async function businesses(ctx: ServiceContext, q: { from?: string | null; to?: string | null; interval?: string | null; exclude?: readonly string[] | null; excludeCategories?: readonly string[] | null; today?: string }) {
-  const keep = scopeFilter(ctx, { exclude: q.exclude ?? null });
+export async function businesses(ctx: ServiceContext, q: { from?: string | null; to?: string | null; interval?: string | null; entities?: readonly string[] | null; exclude?: readonly string[] | null; excludeCategories?: readonly string[] | null; today?: string }) {
+  const keep = scopeFilter(ctx, { entities: q.entities ?? null, exclude: q.exclude ?? null });
   const keepCat = categoryFilter(q);
   const interval = checkInterval(q.interval);
   const all = txns(await ctx.hledger.transactions());
