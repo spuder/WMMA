@@ -14,7 +14,7 @@ import { ServiceError, type ServiceContext } from "./services/context";
 import { listEntities } from "./services/entities";
 import { recordTransfer, recordValuation, setBudgets } from "./services/ledger";
 import { budgetReport, cashflow, netWorth, pnl, spending } from "./services/reports";
-import { accountHistory, businesses, overview, recurring, statement } from "./services/insights";
+import { accountHistory, assignRecurring, businesses, overview, recurring, statement } from "./services/insights";
 import { patchTransaction, searchTransactions, splitTransaction, updateMapping } from "./services/transactions";
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD");
@@ -149,6 +149,13 @@ export function buildMcpServer(ctx: ServiceContext, actor: string): McpServer {
   tool("set_budget", "Set a monthly budget amount for an Expenses category (or planned income for an Income category), from a month onward.", { entity, account: z.string(), month, amount }, true, async (a) => ({
     updated: await setBudgets(ctx, actor, [{ entity: a.entity, account: a.account, month: a.month, amount: a.amount }]),
   }));
+  tool(
+    "assign_recurring",
+    "Tag every transaction in a recurring series (key from get_recurring, e.g. \"expense:netflix com\") with a business, and by default add a rule so future charges get it too.",
+    { key: z.string(), entity, future: z.boolean().optional().describe("Also tag future charges (default true)") },
+    true,
+    async (a) => (await assignRecurring(ctx, actor, { key: a.key, entity: a.entity, ...(a.future !== undefined ? { future: a.future } : {}) })) as unknown as Json,
+  );
   tool("record_valuation", "Record an asset's value as of a date (difference goes to Equity:Unrealized).", { account: z.string().describe("Account slug"), date, value: amount }, true, async (a) =>
     (await recordValuation(ctx, actor, { account: a.account, date: a.date, value: a.value })) as unknown as Json,
   );

@@ -62,3 +62,14 @@ export function accountType(hledgerAccount: string): "A" | "L" | "E" | "R" | "X"
       return "X";
   }
 }
+
+/**
+ * Payee key for recurring series: case-insensitive, ignoring numbers and
+ * reference codes ("NETFLIX.COM 8842" and "Netflix.com 1102" -> "netflix com").
+ */
+export const recurringPayeeKey = (p: string) =>
+  p
+    .toLowerCase()
+    .split(/[^a-z0-9&]+/)
+    .filter((w) => w.length > 1 && !/\d/.test(w))
+    .join(" ");

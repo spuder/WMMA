@@ -10,11 +10,13 @@ import type { AccountKind, EntityType } from "../db";
 import type { HledgerTransaction } from "../hledger/web";
 import { validateDate } from "../journal/format";
 import * as M from "../money";
-import { KIND_PREFIX } from "../naming";
+import { KIND_PREFIX, recurringPayeeKey } from "../naming";
 import { TEMPLATES } from "../templates";
 import { getEntity, listAccounts } from "./accounts";
 import { ServiceError, type ServiceContext } from "./context";
 import { listEntities } from "./entities";
+import { upsertRecurringRule } from "./categorize";
+import { patchTransaction } from "./transactions";
 
 // ---- shared ----------------------------------------------------------------
 
@@ -422,6 +424,8 @@ export interface RecurringItem {
   kind: "expense" | "income";
   category: string;
   entity: string | null;
+  /** True when the series' transactions are split across businesses. */
+  entity_mixed: boolean;
   frequency: Frequency;
   amount_cents: number;
   average_cents: number;
@@ -435,19 +439,28 @@ export interface RecurringItem {
   history: Array<{ date: string; cents: number }>;
 }
 
-/** Group key for a payee: case-insensitive, ignoring numbers and reference codes ("NETFLIX.COM 8842" -> "netflix com"). */
-export const payeeKey = (p: string) =>
-  p
-    .toLowerCase()
-    .split(/[^a-z0-9&]+/)
-    .filter((w) => w.length > 1 && !/\d/.test(w))
-    .join(" ");
+/** Group key for a payee (see recurringPayeeKey). */
+export const payeeKey = recurringPayeeKey;
 
 const median = (xs: number[]) => {
   const s = [...xs].sort((a, b) => a - b);
   const m = s.length >> 1;
   return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2;
 };
+
+/** A transaction's place in a recurring series: its direction, amount and series key (null if it can't be part of one). */
+function seriesOf(t: Txn, keep: (e: string | null) => boolean, keepCat: (a: string) => boolean) {
+  if (t.tags.get("kind") === "transfer" || t.tags.get("kind") === "valuation") return null;
+  const mine = t.lines.filter((l) => (isIncome(l.account) || isExpense(l.account)) && keep(l.entity) && keepCat(l.account));
+  if (mine.length === 0) return null;
+  const exp = mine.filter((l) => isExpense(l.account)).reduce((s, l) => s + l.cents, 0);
+  const inc = -mine.filter((l) => isIncome(l.account)).reduce((s, l) => s + l.cents, 0);
+  const kind: "expense" | "income" = inc > exp ? "income" : "expense";
+  const cents = kind === "income" ? inc - exp : exp - inc;
+  const pk = payeeKey(t.payee);
+  if (cents <= 0 || !pk) return null;
+  return { kind, cents, mine, key: `${kind}:${pk}` };
+}
 
 /** Detect recurring income and charges: same payee, steady cadence, similar amounts. */
 export function detectRecurring(raw: HledgerTransaction[], q: Scope & { today: string }): RecurringItem[] {
@@ -456,17 +469,10 @@ export function detectRecurring(raw: HledgerTransaction[], q: Scope & { today: s
   const since = addDays(q.today, -800);
   const groups = new Map<string, { payee: string; kind: "expense" | "income"; byDate: Map<string, number>; cats: Map<string, number>; ents: Map<string, number> }>();
   for (const t of txns(raw)) {
-    if (t.date < since || t.date > q.today || t.tags.get("kind") === "transfer" || t.tags.get("kind") === "valuation") continue;
-    const mine = t.lines.filter((l) => (isIncome(l.account) || isExpense(l.account)) && keep(l.entity) && keepCat(l.account));
-    if (mine.length === 0) continue;
-    const exp = mine.filter((l) => isExpense(l.account)).reduce((s, l) => s + l.cents, 0);
-    const inc = -mine.filter((l) => isIncome(l.account)).reduce((s, l) => s + l.cents, 0);
-    const kind = inc > exp ? "income" : "expense";
-    const cents = kind === "income" ? inc - exp : exp - inc;
-    if (cents <= 0) continue;
-    const pk = payeeKey(t.payee);
-    if (!pk) continue;
-    const key = `${kind}:${pk}`;
+    if (t.date < since || t.date > q.today) continue;
+    const c = seriesOf(t, keep, keepCat);
+    if (!c) continue;
+    const { kind, cents, mine, key } = c;
     const g = groups.get(key) ?? { payee: t.payee, kind, byDate: new Map(), cats: new Map(), ents: new Map() };
     g.payee = t.payee; // most recent spelling (txns are sorted by date)
     g.byDate.set(t.date, (g.byDate.get(t.date) ?? 0) + cents);
@@ -502,6 +508,7 @@ export function detectRecurring(raw: HledgerTransaction[], q: Scope & { today: s
       kind: g.kind,
       category: [...g.cats].sort((a, b) => b[1] - a[1])[0]![0],
       entity: [...g.ents].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null,
+      entity_mixed: g.ents.size > 1,
       frequency: freq.f,
       amount_cents: last.cents,
       average_cents: average,
@@ -525,6 +532,39 @@ export async function recurring(ctx: ServiceContext, q: Scope & { today?: string
   const live = items.filter((i) => i.status !== "inactive");
   const sum = (k: "expense" | "income") => live.filter((i) => i.kind === k).reduce((s, i) => s + i.monthly_cents, 0);
   return { entity: q.entity ?? null, today, items, monthly_expense_cents: sum("expense"), monthly_income_cents: sum("income") };
+}
+
+/**
+ * Tag every transaction in a recurring series (all of its history) with a
+ * business, and optionally add a rule so future charges get it too.
+ */
+export async function assignRecurring(ctx: ServiceContext, actor: string, q: { key: string; entity: string; future?: boolean; today?: string }) {
+  const ent = getEntity(ctx, q.entity);
+  if (!ent) throw new ServiceError(`unknown entity ${JSON.stringify(q.entity)}`, 404);
+  const m = /^(expense|income):(.+)$/.exec(q.key);
+  if (!m) throw new ServiceError("key must look like expense:<payee> or income:<payee>");
+  const kind = m[1] as "expense" | "income";
+  const all = txns(await ctx.hledger.transactions());
+  const members = all.flatMap((t) => {
+    const c = seriesOf(t, () => true, () => true);
+    return c && c.key === q.key && t.id ? [{ t, c }] : [];
+  });
+  if (members.length === 0) throw new ServiceError("no transactions found for this recurring series", 404);
+  let updated = 0;
+  for (const { t, c } of members) {
+    if (c.mine.every((l) => l.entity === q.entity) && t.tags.get("entity") === q.entity) continue;
+    await patchTransaction(ctx, actor, t.id!, { entity: q.entity });
+    updated++;
+  }
+  let rule: { id: string; created: boolean } | null = null;
+  if (q.future !== false) {
+    const cats = new Map<string, number>();
+    for (const { c } of members) for (const l of c.mine) cats.set(l.account, (cats.get(l.account) ?? 0) + Math.abs(l.cents));
+    const target = [...cats].sort((a, b) => b[1] - a[1])[0]![0];
+    const r = await upsertRecurringRule(ctx, actor, { recurringKey: m[2]!, kind, target, entity: q.entity });
+    rule = { id: r.rule.id, created: r.created };
+  }
+  return { key: q.key, entity: q.entity, transactions: members.length, updated, rule };
 }
 
 // ---- business P&L ----------------------------------------------------------

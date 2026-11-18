@@ -26,7 +26,7 @@ import { importReiHub } from "./services/bank-imports";
 import { handleMcp } from "./mcp";
 import { checkedMileage, decodeVin, recordMileage, valuationHistory } from "./services/assets";
 import { cashflow, categories, netWorth, spending, trend } from "./services/reports";
-import { accountHistory, businesses, overview, recurring, series, statement } from "./services/insights";
+import { accountHistory, assignRecurring, businesses, overview, recurring, series, statement } from "./services/insights";
 import { getSettings, putSettings } from "./services/settings";
 import { getTransaction, listMappings, patchTransaction, searchTransactions, splitTransaction, updateMapping } from "./services/transactions";
 import { ACCOUNT_KINDS as KINDS, ENTITY_TYPES, type EntityType } from "./db";
@@ -473,6 +473,11 @@ Object.assign(routes, {
   "GET /api/v1/reports/recurring": async (req, _id, ctx) => {
     const q = new URL(req.url, "http://localhost").searchParams;
     return Response.json(await recurring(ctx, { entity: q.get("entity"), exclude: excludeParam(q), excludeCategories: excludeCategoriesParam(q) }));
+  },
+  "POST /api/v1/recurring/assign": async (req, identity, ctx) => {
+    const b = ((await jsonBody(req)) ?? {}) as Record<string, unknown>;
+    if (b.future !== undefined && typeof b.future !== "boolean") bad("future must be true or false");
+    return Response.json(await assignRecurring(ctx, identity.login, { key: str(b.key, "key"), entity: str(b.entity, "entity"), ...(b.future !== undefined ? { future: b.future as boolean } : {}) }));
   },
   "GET /api/v1/reports/businesses": async (req, _id, ctx) => {
     const q = new URL(req.url, "http://localhost").searchParams;

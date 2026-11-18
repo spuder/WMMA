@@ -1,8 +1,8 @@
 import { useState } from "preact/hooks";
-import { categoryMeta, money, monthEnd, monthName, monthShift, thisMonth, today, useApi } from "../api";
-import { businessStyle, go, useApp } from "../app";
+import { api, categoryMeta, money, monthEnd, monthName, monthShift, thisMonth, today, useApi } from "../api";
+import { businessStyle, type Entity, go, useApp } from "../app";
 import { Kpis, qs, Seg, shortDate, useStored, ReportFilters, useScope } from "../components/report-kit";
-import { Avatar, CatName, ErrorBox, Icon, Loading } from "../components/ui";
+import { Avatar, CatName, CellMenu, ErrorBox, Icon, Loading, MenuOption, toast } from "../components/ui";
 
 interface Item {
   key: string;
@@ -10,6 +10,7 @@ interface Item {
   kind: "expense" | "income";
   category: string;
   entity: string | null;
+  entity_mixed: boolean;
   frequency: string;
   amount_cents: number;
   average_cents: number;
@@ -60,7 +61,7 @@ function occurrences(i: Item, from: string, to: string): string[] {
 export function Recurring() {
   const { entities } = useApp();
   const scope = useScope();
-  const { data, error } = useApi(`/reports/recurring${qs({ ...scope.q })}`, [scope.key]);
+  const { data, error, reload } = useApi(`/reports/recurring${qs({ ...scope.q })}`, [scope.key]);
   const [kind, setKind] = useStored<"expense" | "income" | "all">("recurring.kind", "expense", ["expense", "income", "all"]);
   const [view, setView] = useStored<"list" | "calendar">("recurring.view", "list", ["list", "calendar"]);
   const [month, setMonth] = useState(thisMonth());
@@ -107,6 +108,7 @@ export function Recurring() {
                   <span>Merchant</span>
                   <span>Frequency</span>
                   <span>Category</span>
+                  <span>Business</span>
                   <span>Next</span>
                   <span class="r">Amount</span>
                   <span class="r">Per year</span>
@@ -116,24 +118,28 @@ export function Recurring() {
                 const e = ent(i.entity);
                 const soon = i.next_date <= monthEnd(thisMonth());
                 return (
-                  <button class={`rec-row ${i.status}`} onClick={() => go(`/transactions?q=${encodeURIComponent(i.payee)}`)}>
+                  <div
+                    class={`rec-row ${i.status}`}
+                    role="link"
+                    tabIndex={0}
+                    onClick={() => go(`/transactions?q=${encodeURIComponent(i.payee)}`)}
+                    onKeyDown={(ev) => ev.key === "Enter" && ev.target === ev.currentTarget && go(`/transactions?q=${encodeURIComponent(i.payee)}`)}
+                  >
                     <span class="rec-payee">
                       <Avatar name={i.payee} />
                       <span>
                         <strong>{i.payee}</strong>
                         <span class="meta">
                           {i.count} payments · last {shortDate(i.last_date)}
-                          {e && (
-                            <span class="business-tag" style={businessStyle(e.slug, e.color)}>
-                              {e.name}
-                            </span>
-                          )}
                         </span>
                       </span>
                     </span>
                     <span class="muted small">{FREQ[i.frequency]}</span>
                     <span class="hide-sm">
                       <CatName account={i.category} />
+                    </span>
+                    <span class="rec-biz">
+                      <AssignBusiness item={i} current={e ?? null} entities={entities} onDone={reload} />
                     </span>
                     <span class="small">
                       {i.status === "inactive" ? <span class="pill zero">Stopped?</span> : i.status === "late" ? <span class="pill warn">Late · {shortDate(i.next_date)}</span> : <span class={soon ? "" : "muted"}>{shortDate(i.next_date)}</span>}
@@ -143,7 +149,7 @@ export function Recurring() {
                       {money(i.average_cents)}
                     </span>
                     <span class="r num muted hide-sm">{money(i.yearly_cents, true)}</span>
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -151,6 +157,68 @@ export function Recurring() {
         </>
       )}
     </div>
+  );
+}
+
+/** Pick the business for a recurring series: retags all of its transactions, and (by default) future ones via a rule. */
+function AssignBusiness({ item, current, entities, onDone }: { item: Item; current: Entity | null; entities: Entity[]; onDone: () => void }) {
+  const [future, setFuture] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const assign = async (slug: string, close: () => void) => {
+    close();
+    setBusy(true);
+    try {
+      const r = await api<{ transactions: number; updated: number; rule: { created: boolean } | null }>("/recurring/assign", { body: { key: item.key, entity: slug, future } });
+      const name = entities.find((e) => e.slug === slug)?.name ?? slug;
+      toast(`${item.payee}: ${r.updated ? `${r.updated} of ${r.transactions} transactions` : "all transactions"} tagged ${name}${r.rule ? "; future charges too" : ""}`);
+      onDone();
+    } catch (e) {
+      toast((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <CellMenu
+      label={`Business for ${item.payee}`}
+      width={290}
+      value={
+        busy ? (
+          <span class="muted small">Tagging…</span>
+        ) : item.entity_mixed ? (
+          <span class="business-tag mixed">Mixed</span>
+        ) : current ? (
+          <span class="business-tag" style={businessStyle(current.slug, current.color)}>
+            {current.type === "personal" ? "👤" : <Icon.folder />} {current.name}
+          </span>
+        ) : (
+          <span class="muted small">Choose…</span>
+        )
+      }
+    >
+      {(close) => (
+        <>
+          <div class="menu-head">
+            <strong>Tag {item.payee}</strong>
+            <span class="muted tiny">
+              Sets the business on all {item.count}+ transactions in this series{item.entity_mixed ? " (they're currently split across businesses)" : ""}.
+            </span>
+          </div>
+          {entities.map((e, k) => (
+            <MenuOption index={k} selected={!item.entity_mixed && current?.slug === e.slug} onClick={() => assign(e.slug, close)}>
+              <span class="business-icon compact" style={businessStyle(e.slug, e.color)}>
+                {e.type === "personal" ? "👤" : <Icon.folder />}
+              </span>
+              {e.name}
+            </MenuOption>
+          ))}
+          <label class="menu-note switch-row" style={{ margin: "6px 0 0", display: "flex" }}>
+            <input type="checkbox" checked={future} onChange={(ev) => setFuture((ev.target as HTMLInputElement).checked)} />
+            <span>Also tag future charges from this payee</span>
+          </label>
+        </>
+      )}
+    </CellMenu>
   );
 }
 

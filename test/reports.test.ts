@@ -12,6 +12,8 @@ import { importQfx } from "../src/services/bank-imports";
 import { createRule } from "../src/services/categorize";
 import type { ServiceContext } from "../src/services/context";
 import { addMonths, detectRecurring, payeeKey, periodsBetween, periodStart } from "../src/services/insights";
+import { ruleMatches, validateRuleMatch } from "../src/services/categorize";
+import { cents } from "../src/money";
 import { freePort, hledgerWebBin } from "./helpers";
 
 // ---------------------------------------------------------------- unit
@@ -63,6 +65,12 @@ describe("recurring detection", () => {
     const items = detectRecurring(monthly("NETFLIX.COM 8842", "12", 1599), { today });
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({ payee: "NETFLIX.COM 8842", kind: "expense", frequency: "monthly", amount_cents: 1599, next_date: "2026-12-12", monthly_cents: 1599, yearly_cents: 19188, status: "active", variable: false });
+  });
+  test("rules can match a recurring series' payee key", () => {
+    const m = validateRuleMatch({ recurringKey: "spotify", amountMax: -1 });
+    expect(ruleMatches(m, { payee: "SPOTIFY P9Z8 #1102", amount: cents(-999), account: "Assets:Checking:Main" })).toBe(true);
+    expect(ruleMatches(m, { payee: "SPOTIFY P9Z8 #1102", amount: cents(999), account: "Assets:Checking:Main" })).toBe(false);
+    expect(ruleMatches(m, { payee: "SPOTIFY USA PREMIUM", amount: cents(-999), account: "Assets:Checking:Main" })).toBe(false);
   });
   test("payee spellings that differ only by numbers group together", () => {
     expect(payeeKey("SPOTIFY P1A2B3 #4421")).toBe(payeeKey("SPOTIFY P9Z8 #1102"));
@@ -255,5 +263,31 @@ describe.skipIf(!hledgerWebBin)("report endpoints", () => {
   test("recurring endpoint", async () => {
     const r = (await call("GET", "/api/v1/reports/recurring")).json;
     expect(r).toMatchObject({ items: expect.any(Array), monthly_expense_cents: expect.any(Number) });
+  });
+
+  // Runs last: it moves the grocery series from personal to acme.
+  test("assigning a recurring series to a business retags its history and future charges", async () => {
+    const before = (await call("GET", "/api/v1/reports/overview?entity=personal&from=2026-01-01&to=2026-03-31")).json;
+    expect(before.expenses.categories).toContainEqual({ account: "Expenses:Food:Groceries", cents: 135000, count: 3 });
+
+    const r = await call("POST", "/api/v1/recurring/assign", { key: "expense:grocer", entity: "acme" });
+    expect(r.status).toBe(200);
+    expect(r.json).toMatchObject({ transactions: 3, updated: 3, rule: { created: true } });
+    const acme = (await call("GET", "/api/v1/reports/overview?entity=acme&from=2026-01-01&to=2026-03-31")).json;
+    expect(acme.expenses.total_cents).toBe(50000 + 135000);
+    expect((await call("GET", "/api/v1/reports/overview?entity=personal&from=2026-01-01&to=2026-03-31")).json.expenses.total_cents).toBe(0);
+
+    // Again: nothing to change, and the rule is updated rather than duplicated.
+    expect((await call("POST", "/api/v1/recurring/assign", { key: "expense:grocer", entity: "acme" })).json).toMatchObject({ updated: 0, rule: { created: false } });
+    expect((await call("GET", "/api/v1/rules")).json.rules.filter((x: any) => x.match.recurringKey === "grocer")).toHaveLength(1);
+
+    // A new charge from a personal account gets acme, even though the older "grocer" rule picks its category.
+    await importQfx(ctx, me, { filename: "april.qfx", account: "personal-checking", content: qfx("600", [["P5", "2026-04-10", "-700.00", "GROCER #4"]]) });
+    const april = (await call("GET", "/api/v1/reports/overview?entity=acme&from=2026-04-01&to=2026-04-30")).json;
+    expect(april.expenses.categories).toEqual([{ account: "Expenses:Food:Groceries", cents: 70000, count: 1 }]);
+
+    expect((await call("POST", "/api/v1/recurring/assign", { key: "grocer", entity: "acme" })).status).toBe(400);
+    expect((await call("POST", "/api/v1/recurring/assign", { key: "expense:nobody", entity: "acme" })).status).toBe(404);
+    expect((await call("POST", "/api/v1/recurring/assign", { key: "expense:grocer", entity: "nope" })).status).toBe(404);
   });
 });

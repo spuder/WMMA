@@ -736,7 +736,7 @@ mark.fz { background: transparent; color: var(--accent); font-weight: 750; text-
 .meter.small .bar { height: 6px; }
 
 /* recurring */
-.rec-head, .rec-row { display: grid; grid-template-columns: minmax(0, 1.8fr) 0.9fr minmax(0, 1.1fr) 0.9fr 0.8fr 0.8fr; align-items: center; gap: 12px; }
+.rec-head, .rec-row { display: grid; grid-template-columns: minmax(0, 1.7fr) 0.8fr minmax(0, 1fr) minmax(0, 1.1fr) 0.8fr 0.75fr 0.7fr; align-items: center; gap: 10px; }
 .rec-head { padding: 10px 6px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 11.5px; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase; }
 .rec-head .r { text-align: right; }
 .rec-row { width: 100%; min-height: 62px; padding: 6px; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: 10px; transition: background 0.12s; }
@@ -750,7 +750,7 @@ mark.fz { background: transparent; color: var(--accent); font-weight: 750; text-
 .rec-payee .meta { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rec-payee .avatar { width: 34px; height: 34px; border-radius: 50%; font-size: 12px; }
 .rec-amt { font-weight: 680; }
-@media (max-width: 699.98px) { .rec-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "p a" "f n"; row-gap: 2px; } .rec-row > :nth-child(1) { grid-area: p; } .rec-row > :nth-child(2) { grid-area: f; } .rec-row > :nth-child(4) { grid-area: n; text-align: right; } .rec-row > :nth-child(5) { grid-area: a; } }
+@media (max-width: 699.98px) { .rec-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "p a" "f n" "b b"; row-gap: 2px; } .rec-row > :nth-child(1) { grid-area: p; } .rec-row > :nth-child(2) { grid-area: f; } .rec-row > :nth-child(4) { grid-area: b; justify-self: start; } .rec-row > :nth-child(5) { grid-area: n; text-align: right; } .rec-row > :nth-child(6) { grid-area: a; } }
 .cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
 .cal-dow { padding: 4px 6px; color: var(--muted); font-size: 11.5px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.05em; }
 .cal-day { display: flex; flex-direction: column; gap: 3px; min-height: 96px; padding: 6px; border-radius: 10px; background: var(--surface-2); min-width: 0; }
@@ -824,3 +824,12 @@ mark.fz { background: transparent; color: var(--accent); font-weight: 750; text-
 .scope-opt.sub:not(.checked) .catname-text { color: var(--muted); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--muted) 50%, transparent); }
 .scope-opt.sub .scope-name { text-decoration: none; color: inherit; }
 .filter-note { margin-bottom: 10px; padding: 8px 12px; border-radius: 10px; background: var(--warn-soft); color: var(--warn); font-size: 13px; font-weight: 600; }
+
+/* recurring business tagging */
+.rec-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.rec-biz { min-width: 0; }
+.rec-biz .cellmenu-btn { min-height: 34px; padding: 4px 6px; }
+.rec-row:hover .rec-biz .cellmenu-btn { border-color: var(--line); background: var(--surface); }
+.rec-row:hover .rec-biz .cellmenu-btn > svg { opacity: 1; }
+.rec-biz .business-tag { margin: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.business-tag.mixed { border-color: var(--warn); background: var(--warn-soft); color: var(--warn); }
