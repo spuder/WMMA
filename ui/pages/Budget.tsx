@@ -94,30 +94,21 @@ export function Budget() {
             <div class="card budget-card">
               <BudgetHead first="Income" />
               {income.length === 0 && <div class="empty small">No income this month. Add a planned amount with “+ Budget”.</div>}
-              {income.map((r) => (
-                <BudgetRow key={`${month}:${r.account}`} r={r} kind="income" onSave={save} />
-              ))}
+              {income.length > 0 && (
+                <GroupRow name="Income" rows={income} kind="income" open={!collapsed["Income"]} onToggle={() => setCollapsed({ ...collapsed, Income: !collapsed["Income"] })} />
+              )}
+              {!collapsed["Income"] && income.map((r) => <BudgetRow key={`${month}:${r.account}`} r={r} kind="income" onSave={save} />)}
               <BudgetTotal label="Total income" planned={plannedIn} actual={actualIn} remaining={income.reduce((s, r) => s + r.remaining, 0)} kind="income" />
             </div>
             <div class="card budget-card">
               <BudgetHead first="Expenses" />
               {groups.length === 0 && <div class="empty small">No budgets yet. Use “+ Budget” to plan a category.</div>}
-              {groups.map(({ g, rows }) => {
-                const gp = sum(rows, "planned");
-                const ga = sum(rows, "actual");
-                return (
-                  <>
-                    <button class="budget-group" onClick={() => setCollapsed({ ...collapsed, [g]: !collapsed[g] })} aria-expanded={!collapsed[g]}>
-                      <span class={`st-caret${collapsed[g] ? "" : " open"}`}>
-                        <Icon.chevron />
-                      </span>
-                      <span>{g}</span>
-                      <span class="num muted hide-sm">{money(gp, true)} planned · {money(ga, true)} spent</span>
-                    </button>
-                    {!collapsed[g] && rows.map((r) => <BudgetRow key={`${month}:${r.account}`} r={r} kind="expense" onSave={save} />)}
-                  </>
-                );
-              })}
+              {groups.map(({ g, rows }) => (
+                <>
+                  <GroupRow name={g} rows={rows} kind="expense" open={!collapsed[g]} onToggle={() => setCollapsed({ ...collapsed, [g]: !collapsed[g] })} />
+                  {!collapsed[g] && rows.map((r) => <BudgetRow key={`${month}:${r.account}`} r={r} kind="expense" onSave={save} />)}
+                </>
+              ))}
               {unbudgeted.length > 0 && (
                 <button class="linkbtn unbudgeted-toggle" onClick={() => setShowUnbudgeted(!showUnbudgeted)}>
                   <span class="tiny-ico">{showUnbudgeted ? "🙈" : "👁️"}</span>
@@ -164,6 +155,32 @@ function BudgetHead({ first }: { first: string }) {
   );
 }
 
+/** A category group (Monarch's "Fixed", "Income"…) with its own totals; its categories sit indented beneath it. */
+function GroupRow({ name, rows, kind, open, onToggle }: { name: string; rows: Row[]; kind: "income" | "expense"; open: boolean; onToggle: () => void }) {
+  const planned = rows.reduce((s, r) => s + (r.planned ?? 0) + (kind === "expense" ? Math.max(0, r.rolled) : 0), 0);
+  const actual = rows.reduce((s, r) => s + r.actual, 0);
+  const remaining = kind === "income" ? rows.reduce((s, r) => s + r.remaining, 0) : rows.reduce((s, r) => s + r.remaining, 0);
+  const over = kind === "expense" && remaining < 0;
+  return (
+    <div class="budget-row budget-group" role="button" tabIndex={0} aria-expanded={open} onClick={onToggle} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onToggle())}>
+      <span class="budget-group-name">
+        <span class={`st-caret${open ? " open" : ""}`}>
+          <Icon.chevron />
+        </span>
+        {name}
+      </span>
+      <span class="hide-sm">
+        <div class={`bar budget-bar ${over ? "over" : ""}`}>
+          <div style={{ width: `${planned > 0 ? Math.min(100, (actual / planned) * 100) : actual > 0 ? 100 : 0}%` }} />
+        </div>
+      </span>
+      <span class="r num">{money(rows.reduce((s, r) => s + (r.planned ?? 0), 0), true)}</span>
+      <span class="r num">{money(actual, true)}</span>
+      <span class={`r num ${over ? "neg" : kind === "expense" ? "in" : ""}`}>{money(remaining, true)}</span>
+    </div>
+  );
+}
+
 function BudgetRow({ r, kind, onSave }: { r: Row; kind: "income" | "expense"; onSave: (account: string, amount: string) => void }) {
   const text = (c: number | null) => (c === null ? "" : (c / 100).toFixed(c % 100 === 0 ? 0 : 2));
   const [v, setV] = useState(text(r.planned));
@@ -177,7 +194,7 @@ function BudgetRow({ r, kind, onSave }: { r: Row; kind: "income" | "expense"; on
   const ratio = budget > 0 ? r.actual / budget : r.actual > 0 ? 1.01 : 0;
   const state = kind === "income" ? (r.remaining <= 0 ? "ok" : "zero") : r.remaining < 0 ? "over" : ratio > 0.85 ? "warn" : "ok";
   return (
-    <div class={`budget-row${r.planned === null ? " unplanned" : ""}`}>
+    <div class={`budget-row budget-item${r.planned === null ? " unplanned" : ""}`}>
       <span class="budget-cat">
         <CatName account={r.account} />
       </span>

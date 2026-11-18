@@ -366,7 +366,7 @@ function Statement({ entity, from, to, label, range }: { entity: string; from: s
   const Section = ({ id, title, lines, totals, total, sign }: { id: string; title: string; lines: any[]; totals: number[]; total: number; sign?: string }) => (
     <>
       <tr class="st-section" onClick={() => setOpen({ ...open, [id]: !open[id] })}>
-        <td>
+        <td colSpan={2}>
           <span class={`st-caret${open[id] ? " open" : ""}`}>
             <Icon.chevron />
           </span>
@@ -378,6 +378,7 @@ function Statement({ entity, from, to, label, range }: { entity: string; from: s
       {open[id] &&
         lines.map((l) => (
           <tr class={`st-line${l.total_cents === 0 ? " zero" : ""}`} onClick={() => go(`/transactions?account=${encodeURIComponent(l.account)}`)}>
+            <td class="st-indent" />
             <td>
               <span class="st-name">
                 {l.line && <span class="st-lineno">Line {l.line}</span>}
@@ -390,6 +391,7 @@ function Statement({ entity, from, to, label, range }: { entity: string; from: s
         ))}
       {open[id] && lines.length === 0 && (
         <tr class="st-line zero">
+          <td class="st-indent" />
           <td colSpan={multi ? periods.length + 2 : 2}>
             <span class="muted small">Nothing recorded</span>
           </td>
@@ -435,7 +437,7 @@ function Statement({ entity, from, to, label, range }: { entity: string; from: s
           {multi && (
             <thead>
               <tr>
-                <th />
+                <th colSpan={2} />
                 {periods.map((p) => (
                   <th class="r">{periodLabel(p.start, data.interval)}</th>
                 ))}
@@ -449,7 +451,7 @@ function Statement({ entity, from, to, label, range }: { entity: string; from: s
               <>
                 <Section id="cogs" title="Cost of goods sold" lines={cogs} totals={t.cost_of_goods} total={t.cost_of_goods_total} />
                 <tr class="st-total">
-                  <td>Gross profit</td>
+                  <td colSpan={2}>Gross profit</td>
                   {multi && t.gross_profit.map((v: number) => <td class="r num">{money(v)}</td>)}
                   <td class="r num">{money(t.gross_profit_total)}</td>
                 </tr>
@@ -457,7 +459,7 @@ function Statement({ entity, from, to, label, range }: { entity: string; from: s
             )}
             <Section id="expenses" title={isBiz ? "Part II · Expenses" : "Expenses"} lines={expenses} totals={t.expenses} total={t.expenses_total} />
             <tr class="st-net">
-              <td>{isBiz ? "Net profit (or loss)" : "Net income"}</td>
+              <td colSpan={2}>{isBiz ? "Net profit (or loss)" : "Net income"}</td>
               {multi && t.net.map((v: number) => <td class={`r num ${v < 0 ? "neg" : ""}`}>{money(v)}</td>)}
               <td class={`r num ${t.net_total < 0 ? "neg" : ""}`}>{money(t.net_total)}</td>
             </tr>
