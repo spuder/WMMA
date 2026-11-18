@@ -96,7 +96,7 @@ export function Settings() {
                   <div class="muted tiny">Stored encrypted on the server. It is never shown again or written to the log.</div>
                 </>
               ) : (
-                <div class="muted small">To save a key here, set WMMA_SECRET_KEY on the server (16+ characters), or set JEV_API_KEY.</div>
+                <div class="muted small">Encrypted secret storage is unavailable. Ask the server administrator to restore the secret-key volume.</div>
               )}
             </>
           )}
@@ -118,9 +118,7 @@ export function Settings() {
                 </span>
               </div>
               <div class="small">1. Add the banks you want to connect in <a href="https://beta-bridge.simplefin.org/my-account" target="_blank" rel="noreferrer" style={{ color: "var(--accent)", fontWeight: 650 }}>your SimpleFIN Bridge account</a>.</div>
-              {s.data.simplefin.source === "env" ? (
-                <div class="muted small">The access URL comes from SIMPLEFIN_ACCESS_URL on the server. Change it in the server environment.</div>
-              ) : s.data.simplefin.canStoreInUi ? (
+              {s.data.simplefin.canStoreInUi ? (
                 <>
                   <div class="small">2. In SimpleFIN Bridge, create and copy a Setup Token. Paste it below; WMMA exchanges it for an Access URL and stores that URL encrypted.</div>
                   <div class="field">
@@ -138,7 +136,7 @@ export function Settings() {
                   <div class="muted tiny">Setup Tokens can only be claimed once. WMMA never displays or logs the saved Access URL.</div>
                 </>
               ) : (
-                <div class="muted small">Set WMMA_SECRET_KEY on the server (16+ characters) to store the Access URL encrypted here. Then create a Setup Token in SimpleFIN Bridge and paste it here, or configure SIMPLEFIN_ACCESS_URL in the server environment.</div>
+                <div class="muted small">Encrypted secret storage is unavailable. Ask the server administrator to restore the secret-key volume.</div>
               )}
             </>
           )}

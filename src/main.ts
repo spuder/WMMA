@@ -44,7 +44,8 @@ async function serve(): Promise<void> {
   const version = await hledger.start();
   console.log(`hledger-web ${version} on 127.0.0.1:${config.hledgerWebPort}`);
 
-  const secrets = new SecretStore(join(config.dataDir, "secrets.enc"), config.secretKey);
+  const secretKeyFile = config.dataDir === "/data" ? "/var/lib/wmma-secrets/key" : join(config.dataDir, ".wmma-secret-key");
+  const secrets = await SecretStore.open(join(config.dataDir, "secrets.enc"), config.secretKey, secretKeyFile);
   let jevKey = config.jev.apiKey;
   if (!jevKey) {
     try {
@@ -69,7 +70,7 @@ async function serve(): Promise<void> {
 
   let stopCron = () => {};
   stopCron = schedule(config.simplefinSyncCron, config.tz, async () => {
-    const simplefinUrl = config.simplefinAccessUrl ?? (await secrets.get("simplefin_access_url"));
+    const simplefinUrl = await secrets.get("simplefin_access_url");
     if (simplefinUrl) {
       const r = await syncSimplefin(ctx, "system:scheduler");
       console.log(`SimpleFIN sync: +${r.added} new, ${r.merged} merged, ${r.skippedDuplicates} duplicates, ${r.needsReview} to review`);

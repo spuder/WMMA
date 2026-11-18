@@ -10,7 +10,7 @@ const WRITABLE = /^ui\.[a-z0-9_.-]{1,64}$/;
 export interface SettingsView {
   settings: Record<string, string>;
   jev: { configured: boolean; source: "env" | "ui" | null; canStoreInUi: boolean };
-  simplefin: { configured: boolean; source: "env" | "ui" | null; canStoreInUi: boolean };
+  simplefin: { configured: boolean; source: "ui" | null; canStoreInUi: boolean };
 }
 
 export async function getSettings(ctx: ServiceContext): Promise<SettingsView> {
@@ -31,8 +31,8 @@ export async function getSettings(ctx: ServiceContext): Promise<SettingsView> {
       canStoreInUi: Boolean(ctx.secrets?.enabled),
     },
     simplefin: {
-      configured: Boolean(ctx.config.simplefinAccessUrl || simplefinUrl),
-      source: ctx.config.simplefinAccessUrl ? "env" : simplefinUrl ? "ui" : null,
+      configured: Boolean(simplefinUrl),
+      source: simplefinUrl ? "ui" : null,
       canStoreInUi: Boolean(ctx.secrets?.enabled),
     },
   };
@@ -75,8 +75,7 @@ export async function putSettings(
     throw new ServiceError("Connect or disconnect SimpleFIN in one request, not both");
   }
   if (input.simplefinSetupToken !== undefined) {
-    if (ctx.config.simplefinAccessUrl) throw new ServiceError("SIMPLEFIN_ACCESS_URL is set in the environment, which takes precedence; change it there", 409);
-    if (!ctx.secrets?.enabled) throw new ServiceError("set WMMA_SECRET_KEY to store SimpleFIN credentials from the UI", 422);
+    if (!ctx.secrets?.enabled) throw new ServiceError("encrypted secret storage is not available", 422);
     const accessUrl = await claimAccessUrl(input.simplefinSetupToken);
     try {
       await ctx.secrets.set("simplefin_access_url", accessUrl);
@@ -87,7 +86,6 @@ export async function putSettings(
     ctx.db.query("DELETE FROM settings WHERE key = ?").run("simplefin.last_sync");
   }
   if (input.simplefinDisconnect) {
-    if (ctx.config.simplefinAccessUrl) throw new ServiceError("SIMPLEFIN_ACCESS_URL is set in the environment, which takes precedence; change it there", 409);
     if (!ctx.secrets?.enabled) throw new ServiceError("secret storage is not available", 422);
     try {
       await ctx.secrets.set("simplefin_access_url", null);

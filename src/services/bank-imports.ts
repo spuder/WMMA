@@ -347,8 +347,8 @@ export function syncSimplefin(
   opts: BankImportOptions & { startDate?: string; fetch?: typeof fetch } = {},
 ): Promise<BankImportResult> {
   return serial(async () => {
-    const url = ctx.config.simplefinAccessUrl ?? (await ctx.secrets?.get("simplefin_access_url")) ?? null;
-    if (!url) throw new ServiceError("SIMPLEFIN_ACCESS_URL is not set", 422);
+    const url = (await ctx.secrets?.get("simplefin_access_url")) ?? null;
+    if (!url) throw new ServiceError("Connect SimpleFIN in Settings before syncing", 422);
     const last = (ctx.db.query("SELECT value FROM settings WHERE key = ?").get(SIMPLEFIN_LAST_SYNC) as { value: string } | null)?.value;
     // Overlap the previous sync by 14 days to catch late-posting transactions; first sync: 90 days.
     const start = opts.startDate

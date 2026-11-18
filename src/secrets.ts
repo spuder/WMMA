@@ -1,11 +1,11 @@
 /**
  * Secrets set from the UI (SPEC §13.4): an AES-256-GCM encrypted JSON file
- * (`/data/secrets.enc`, mode 0600). The key is derived from WMMA_SECRET_KEY,
- * which lives with the other secrets in the environment (e.g. 1Password),
- * never in /data. Environment variables still take precedence over this file.
+ * (`/data/secrets.enc`, mode 0600). A random key is kept in a separate
+ * persistent key directory; WMMA_SECRET_KEY is supported for legacy migration.
  */
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
-import { chmod, readFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import { atomicWrite } from "./journal/store";
 
 export class SecretsError extends Error {
@@ -19,12 +19,49 @@ export class SecretStore {
   readonly #key: Buffer | null;
   #queue: Promise<unknown> = Promise.resolve();
 
-  constructor(
-    readonly path: string,
-    passphrase: string | null,
-  ) {
+  constructor(readonly path: string, passphrase: string | null, rawKey = false) {
     if (passphrase !== null && passphrase.length < 16) throw new SecretsError("WMMA_SECRET_KEY must be at least 16 characters");
-    this.#key = passphrase ? createHash("sha256").update(`wmma-secrets-v1\u0000${passphrase}`).digest() : null;
+    if (rawKey && passphrase) {
+      const key = Buffer.from(passphrase, "base64");
+      if (key.length !== 32) throw new SecretsError("invalid generated secret key file");
+      this.#key = key;
+    } else {
+      this.#key = passphrase ? createHash("sha256").update(`wmma-secrets-v1\u0000${passphrase}`).digest() : null;
+    }
+  }
+
+  /** Open using a protected persistent key file, generating it on first run. */
+  static async open(path: string, passphrase: string | null, keyPath: string): Promise<SecretStore> {
+    try {
+      const key = (await readFile(keyPath, "utf8")).trim();
+      await chmod(keyPath, 0o600);
+      return new SecretStore(path, key, true);
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+    }
+
+    const store = passphrase ? new SecretStore(path, passphrase) : null;
+    if (store) await store.#readAll(); // validate a legacy secrets file before persisting the migrated key
+    else {
+      try {
+        await readFile(path);
+        throw new SecretsError("encrypted secrets exist but their key file is missing; restore the secret-key volume or set the legacy WMMA_SECRET_KEY");
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+      }
+    }
+
+    const key = store ? store.#key! : randomBytes(32);
+    await mkdir(dirname(keyPath), { recursive: true, mode: 0o700 });
+    try {
+      await writeFile(keyPath, key.toString("base64"), { flag: "wx", mode: 0o600 });
+      await chmod(keyPath, 0o600);
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+      const winnerKey = (await readFile(keyPath, "utf8")).trim();
+      return new SecretStore(path, winnerKey, true);
+    }
+    return store ?? new SecretStore(path, key.toString("base64"), true);
   }
 
   get enabled(): boolean {
@@ -39,7 +76,7 @@ export class SecretStore {
       if ((e as NodeJS.ErrnoException).code === "ENOENT") return {};
       throw e;
     }
-    if (!this.#key) throw new SecretsError("secrets file exists but WMMA_SECRET_KEY is not set");
+    if (!this.#key) throw new SecretsError("secret storage is not available");
     const f = JSON.parse(raw) as { v: number; iv: string; tag: string; data: string };
     if (f.v !== 1) throw new SecretsError(`unsupported secrets file version ${f.v}`);
     try {
@@ -48,7 +85,7 @@ export class SecretStore {
       const plain = Buffer.concat([d.update(Buffer.from(f.data, "base64")), d.final()]).toString("utf8");
       return JSON.parse(plain) as Record<string, string>;
     } catch {
-      throw new SecretsError("cannot decrypt secrets file (wrong WMMA_SECRET_KEY?)");
+      throw new SecretsError("cannot decrypt secrets file (wrong key or missing secret-key volume?)");
     }
   }
 
@@ -60,7 +97,7 @@ export class SecretStore {
   /** Set (or with null, remove) a secret. */
   set(name: SecretName, value: string | null): Promise<void> {
     const run = this.#queue.then(async () => {
-      if (!this.#key) throw new SecretsError("set WMMA_SECRET_KEY to store secrets from the UI");
+      if (!this.#key) throw new SecretsError("secret storage is not available");
       const all = await this.#readAll();
       if (value === null) delete all[name];
       else all[name] = value;

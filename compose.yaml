@@ -5,7 +5,7 @@
 # the Tailscale-User-* identity headers WMMA trusts (SPEC §2). No ports are
 # published to the host.
 #
-# Secrets come from the environment, e.g. via 1Password:
+# Deployment secrets come from the environment, e.g. via 1Password:
 #   op run --env-file=.env -- docker compose up -d
 
 services:
@@ -39,13 +39,15 @@ services:
       JEV_API_KEY: ${JEV_API_KEY:-}
       JEV_BASE_URL: ${JEV_BASE_URL:-}
       JEV_MODEL: ${JEV_MODEL:-}
+      # Optional legacy migration key; new SimpleFIN connections use Settings.
       WMMA_SECRET_KEY: ${WMMA_SECRET_KEY:-}
-      SIMPLEFIN_ACCESS_URL: ${SIMPLEFIN_ACCESS_URL:-}
       SIMPLEFIN_SYNC_CRON: ${SIMPLEFIN_SYNC_CRON:-}
       YNAB_TOKEN: ${YNAB_TOKEN:-}
     volumes:
       - ./data:/data
+      - wmma-secret-key:/var/lib/wmma-secrets
     restart: unless-stopped
 
 volumes:
   tailscale-state:
+  wmma-secret-key:

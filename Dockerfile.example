@@ -28,7 +28,8 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates tzdata \
  && rm -rf /var/lib/apt/lists/* \
  && useradd --system --uid 10001 --home-dir /data wmma \
- && mkdir /data && chown wmma:wmma /data
+ && mkdir -p /data /var/lib/wmma-secrets \
+ && chown wmma:wmma /data /var/lib/wmma-secrets
 COPY --from=hledger /out/hledger /out/hledger-web /usr/local/bin/
 COPY --from=build /out/wmma /usr/local/bin/wmma
 ENV LANG=C.UTF-8 \
