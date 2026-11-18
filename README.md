@@ -10,6 +10,7 @@ See [SPEC.md](SPEC.md) for the full design and milestones.
 
 - **M1 skeleton:** Bun/TypeScript service, `Money` module, journal writer, Tailscale identity auth, hledger-web (read-only, localhost), Docker image and Compose file.
 - **M2 YNAB import:** API and register-CSV importers. Re-running adds nothing; the result reports per-account balances against YNAB.
+- **M4 categorization:** rules → Jev (applied at ≥ 0.90 confidence) → review queue; 3 accepts of a payee create a rule. Runs after every import.
 - **M3 bank imports:** QFX/OFX, generic CSV (per-bank column profiles), SimpleFIN (daily + on demand). Overlapping imports from different sources merge instead of duplicating.
 
 ## Importing from YNAB
@@ -54,6 +55,21 @@ wmma duplicate <id> merge --wmma-id <ID>   # or: import | discard
 
 Profile fields: `columns.{date,payee,memo,amount | debit+credit,id}`, `dateFormat`, `invertAmount`, `delimiter`, `skipRows`.
 
+## Categorization
+
+Every import runs new uncategorised transactions through: rules → Jev (`JEV_API_KEY`; applied when confidence ≥ 0.90) → review queue. Without a Jev key, unknown transactions go straight to the queue.
+
+```sh
+curl -H "Tailscale-User-Login: $ME" localhost:3000/api/v1/review                 # pending items with Jev's top 3
+curl -H "Tailscale-User-Login: $ME" -X POST localhost:3000/api/v1/review/<wmma_id> \
+     -d '{"account":"Expenses:Food:Groceries"}'                                    # accept / change (a "swipe")
+curl -H "Tailscale-User-Login: $ME" -X POST localhost:3000/api/v1/rules \
+     -d '{"match":{"payeeContains":"costco"},"target":"Expenses:Food:Groceries"}'
+curl -H "Tailscale-User-Login: $ME" -X POST localhost:3000/api/v1/categorize      # re-run on the backlog
+```
+
+The 3rd time a payee is accepted into the same category, WMMA creates a rule for it. Rule `match` fields: `payeeKey`, `payeeContains`, `amountMin`/`amountMax` (signed cents), `account`.
+
 REST: `POST /api/v1/imports/ynab-api` (JSON options), `POST /api/v1/imports` (multipart: `type=ynab-csv`, `file`, `options`), `GET /api/v1/import-runs`, `GET /api/v1/accounts`, `POST /api/v1/sync/simplefin`, `GET|PUT /api/v1/csv-profiles[/:name]`, `GET /api/v1/duplicates`, `POST /api/v1/duplicates/:id`.
 
 ## Run with Docker Compose
@@ -75,7 +91,7 @@ Then open `https://wmma.<your-tailnet>.ts.net`. Only Tailscale users in `WMMA_AL
 | `WMMA_DATA_DIR` | default `/data` |
 | `YNAB_TOKEN` | YNAB personal access token (for `import ynab-api`) |
 | `SIMPLEFIN_ACCESS_URL`, `SIMPLEFIN_SYNC_CRON` | SimpleFIN access URL; sync schedule (default `0 6 * * *`) |
-| `JEV_API_KEY` | used from M4 |
+| `JEV_API_KEY` | Jev (TypeSafe) API key; optional `JEV_BASE_URL`, `JEV_MODEL` |
 
 ## Development
 

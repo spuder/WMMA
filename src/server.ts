@@ -179,7 +179,7 @@ const routes: Record<string, Handler> = {
 
 Object.assign(routes, {
   "GET /api/v1/review": (req, _id, ctx) => {
-    const status = new URL(req.url).searchParams.get("status") ?? "pending";
+    const status = new URL(req.url, "http://localhost").searchParams.get("status") ?? "pending";
     if (!["pending", "accepted", "changed"].includes(status)) bad("invalid status");
     return Response.json({ items: listReview(ctx, status) });
   },
