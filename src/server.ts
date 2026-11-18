@@ -22,9 +22,9 @@ import { listBudgets, recordTransfer, recordValuation, setBudgets } from "./serv
 import { budgetReport, pnl } from "./services/reports";
 import { importReiHub } from "./services/bank-imports";
 import { handleMcp } from "./mcp";
-import { cashflow, netWorth, spending } from "./services/reports";
+import { cashflow, categories, netWorth, spending, trend } from "./services/reports";
 import { getSettings, putSettings } from "./services/settings";
-import { listMappings, patchTransaction, searchTransactions, splitTransaction, updateMapping } from "./services/transactions";
+import { getTransaction, listMappings, patchTransaction, searchTransactions, splitTransaction, updateMapping } from "./services/transactions";
 import { ACCOUNT_KINDS as KINDS, ENTITY_TYPES, type EntityType } from "./db";
 
 type Handler = (req: Request, identity: Identity, ctx: ServiceContext, params: Record<string, string>) => Response | Promise<Response>;
@@ -334,6 +334,10 @@ Object.assign(routes, {
       }),
     );
   },
+  "GET /api/v1/transactions/:id": async (_req, _id, ctx, params) => {
+    const { file: _f, ...t } = await getTransaction(ctx, params["id"]!);
+    return Response.json(t);
+  },
   "PATCH /api/v1/transactions/:id": async (req, identity, ctx, params) => {
     const b = ((await jsonBody(req)) ?? {}) as Record<string, unknown>;
     const patch: Parameters<typeof patchTransaction>[3] = {};
@@ -376,6 +380,11 @@ Object.assign(routes, {
     const q = new URL(req.url, "http://localhost").searchParams;
     return Response.json(await netWorth(ctx, { from: str(q.get("from"), "from"), to: str(q.get("to"), "to") }));
   },
+  "GET /api/v1/reports/trend": async (req, _id, ctx) => {
+    const q = new URL(req.url, "http://localhost").searchParams;
+    return Response.json(await trend(ctx, { entity: q.get("entity"), from: str(q.get("from"), "from"), to: str(q.get("to"), "to") }));
+  },
+  "GET /api/v1/categories": async (_req, _id, ctx) => Response.json({ categories: await categories(ctx) }),
   "GET /api/v1/settings": async (_req, _id, ctx) => Response.json(await getSettings(ctx)),
   "PUT /api/v1/settings": async (req, identity, ctx) => {
     const b = ((await jsonBody(req)) ?? {}) as Record<string, unknown>;

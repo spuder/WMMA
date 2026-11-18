@@ -10,6 +10,7 @@ See [SPEC.md](SPEC.md) for the full design and milestones.
 
 - **M1 skeleton:** Bun/TypeScript service, `Money` module, journal writer, Tailscale identity auth, hledger-web (read-only, localhost), Docker image and Compose file.
 - **M2 YNAB import:** API and register-CSV importers. Re-running adds nothing; the result reports per-account balances against YNAB.
+- **M7 web UI:** mobile-first app (dashboard, swipe review, activity, reports, accounts, imports, settings) served by the same binary.
 - **M6 REST API + MCP:** transaction search/edit/split, mappings with regeneration, cash-flow / spending / net-worth reports, settings (Jev key stored encrypted), and an MCP server with 9 read and 9 write tools.
 - **M5 entities, budgets, transfers, assets, REI Hub:** tax-form category templates per entity, archive with history kept, budgets with rollover, inter-entity transfers via due-to/due-from, asset valuations, REI Hub CSV, YNAB past budgets; P&L and budget reports.
 - **M4 categorization:** rules → Jev (applied at ≥ 0.90 confidence) → review queue; 3 accepts of a payee create a rule. Runs after every import.
@@ -56,6 +57,28 @@ wmma duplicate <id> merge --wmma-id <ID>   # or: import | discard
 ```
 
 Profile fields: `columns.{date,payee,memo,amount | debit+credit,id}`, `dateFormat`, `invertAmount`, `delimiter`, `skipRows`.
+
+## Web UI
+
+Open `https://wmma.<your-tailnet>.ts.net` on your phone or computer (add it to your home screen for an app-like feel).
+
+- **Home**: net worth with trend, this month's income and spending, spending donut, income vs spending, recent activity
+- **Review**: the swipe game. Swipe right to accept Jev's pick, left to choose another category (keyboard: → / ← / S). The 3rd accept of a payee teaches a rule
+- **Activity**: search and filter transactions; tap one to change category, entity or memo, or split it
+- **Reports**: P&L, cash-flow Sankey, budget vs actual with rollover (tap a category to set its budget), net worth, spending, 12-month trend
+- **Accounts**, **Imports** (upload QFX / bank CSV / YNAB CSV / REI Hub, sync SimpleFIN or YNAB, resolve possible duplicates), **Settings** (Jev key, appearance)
+
+Pick an entity (or "All entities") from the pill at the top of each screen.
+
+### Trying it locally
+
+```sh
+bun run build                                       # dist/wmma, UI included
+WMMA_DATA_DIR=./data WMMA_ALLOWED_USERS=you@example.com HLEDGER_WEB_BIN=$(which hledger-web) dist/wmma &
+WMMA_DEV_USER=you@example.com bun run dev:proxy &   # stands in for Tailscale Serve (localhost only)
+WMMA_DEV_USER=you@example.com bun run demo:seed     # synthetic demo data
+open http://127.0.0.1:8080
+```
 
 ## Entities, budgets, transfers, assets
 

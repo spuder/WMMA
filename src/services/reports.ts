@@ -246,3 +246,40 @@ export async function netWorth(ctx: ServiceContext, q: { from: string; to: strin
   });
   return { from: q.from, to: q.to, entities, series };
 }
+
+/** Monthly income and expenses for an entity (or all), for trend charts. */
+export async function trend(ctx: ServiceContext, q: { entity?: string | null; from: string; to: string }) {
+  try {
+    validateMonth(q.from);
+    validateMonth(q.to);
+  } catch {
+    throw new ServiceError("from and to must be YYYY-MM");
+  }
+  if (q.from > q.to) throw new ServiceError("from must not be after to");
+  if (q.entity && !getEntity(ctx, q.entity)) throw new ServiceError(`unknown entity ${JSON.stringify(q.entity)}`, 404);
+  const months = monthsBetween(q.from, q.to);
+  if (months.length > 240) throw new ServiceError("at most 240 months");
+  const inc = new Map<string, number>();
+  const exp = new Map<string, number>();
+  for (const p of flatPostings(await ctx.hledger.transactions())) {
+    const m = p.date.slice(0, 7);
+    if (m < q.from || m > q.to || (q.entity && p.entity !== q.entity)) continue;
+    if (p.account.startsWith("Income:")) inc.set(m, (inc.get(m) ?? 0) - M.toCents(p.amount));
+    else if (p.account.startsWith("Expenses:")) exp.set(m, (exp.get(m) ?? 0) + M.toCents(p.amount));
+  }
+  return { entity: q.entity ?? null, months: months.map((m) => ({ month: m, income_cents: inc.get(m) ?? 0, expenses_cents: exp.get(m) ?? 0, net_cents: (inc.get(m) ?? 0) - (exp.get(m) ?? 0) })) };
+}
+
+/** Income/Expenses accounts to pick from (declared or used), excluding the uncategorised buckets. */
+export async function categories(ctx: ServiceContext): Promise<string[]> {
+  const names = new Set<string>();
+  try {
+    for (const a of await ctx.hledger.accountNames()) names.add(a);
+  } catch {
+    // fall through to transactions only
+  }
+  for (const p of flatPostings(await ctx.hledger.transactions())) names.add(p.account);
+  const leafish = [...names].filter((a) => /^(Income|Expenses):/.test(a) && a !== "Income:Uncategorized" && a !== "Expenses:Uncategorized");
+  // Drop parents that only exist because a child does (hledger lists both).
+  return leafish.filter((a) => !leafish.some((b) => b.startsWith(`${a}:`))).sort();
+}

@@ -7,7 +7,8 @@ COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 COPY tsconfig.json ./
 COPY src ./src
-RUN bun build src/main.ts --compile --target=bun-linux-x64 --outfile /out/wmma
+COPY ui ./ui
+RUN bun build src/main.ts --compile --minify --sourcemap=none --target=bun-linux-x64 --outfile /out/wmma
 
 FROM --platform=linux/amd64 debian:trixie-slim AS hledger
 ARG HLEDGER_VERSION=1.52.4

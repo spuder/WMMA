@@ -266,3 +266,6 @@ Raised during spec review. Resolve before the milestone noted.
 - **M6 — `PUT /mappings` with `apply: true`** moves existing transactions that are still categorised by that mapping (`cat_by:mapping`, same `orig_category`, still on the old target).
 - **M6 — writable settings** are limited to `ui.*` keys; internal keys (e.g. `simplefin.last_sync`) are read-only over the API.
 - **M6 — net worth** sums Assets and Liabilities postings by effective entity at each month end; intra-household due-to/due-from cancel out in the combined figure.
+- **M7 — UI stack**: Preact + Apache ECharts (tree-shaken: line, bar, pie, Sankey), bundled by Bun into the same single executable (`bun build --compile --minify`); ~650 KB JS (~215 KB gzipped), cached by ETag. Hash routing; light/dark from the system with a per-device override.
+- **M7 — the UI shell is served without the identity check.** Bun serves the bundled HTML/JS/CSS directly; it contains no data, and every data request still goes through the Tailscale-authenticated API (`/api/v1`, `/mcp`), so a tailnet device not on the allowlist sees an empty shell with an error.
+- **M7 — local development** without Tailscale uses `scripts/dev-proxy.ts`, a localhost-only proxy that adds the identity header. It is a separate script, not a server flag, so production has no way to bypass identity.

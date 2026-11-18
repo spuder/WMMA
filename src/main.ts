@@ -9,6 +9,7 @@ import { SecretStore } from "./secrets";
 import { JournalStore } from "./journal/store";
 import { schedule } from "./scheduler";
 import { createFetchHandler } from "./server";
+import ui from "../ui/index.html";
 import { syncSimplefin } from "./services/bank-imports";
 import type { ServiceContext } from "./services/context";
 
@@ -60,6 +61,9 @@ async function serve(): Promise<void> {
     port: config.port,
     maxRequestBodySize: 64 * 1024 * 1024,
     idleTimeout: 255, // long YNAB imports
+    // The UI shell and its bundled assets carry no data; every API call is authenticated.
+    routes: { "/": ui },
+    development: false,
     fetch: createFetchHandler(ctx),
   });
 
