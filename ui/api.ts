@@ -56,8 +56,16 @@ export const compact = (cents: number) => {
 };
 
 /** "Expenses:Food:Groceries" -> "Groceries"; with group -> "Food / Groceries" */
-export const leaf = (account: string) => humanize(account.split(":").pop() ?? account);
-export const catLabel = (account: string) => account.split(":").slice(1).map(humanize).join(" / ") || account;
+/** Monarch's names for the common income categories (the accounts keep their names). */
+const DISPLAY_NAMES: Record<string, string> = {
+  "Income:Salary": "Paychecks",
+  "Income:Other": "Other Income",
+  "Income:Dividends": "Dividends & Capital Gains",
+  "Income:BusinessIncome": "Business Income",
+  "Income:Uncategorized": "Uncategorized Income",
+};
+export const leaf = (account: string) => DISPLAY_NAMES[account] ?? humanize(account.split(":").pop() ?? account);
+export const catLabel = (account: string) => DISPLAY_NAMES[account] ?? (account.split(":").slice(1).map(humanize).join(" / ") || account);
 export const humanize = (s: string) => s.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2");
 
 export const today = () => new Date().toISOString().slice(0, 10);
@@ -141,9 +149,10 @@ const CATEGORY_RULES: Array<[top: "Income" | "Expenses" | "*", pattern: RegExp, 
   ["*", /transfer/, "🔄", "Transfers"],
   ["Income", /salary|paycheck|payroll|wages/, "💵", "Income"],
   ["Income", /dividend|capital gain/, "📈", "Income"],
-  ["Income", /interest/, "🏦", "Income"],
+  ["Income", /interest/, "💸", "Income"],
   ["Income", /\brent/, "🏠", "Income"],
   ["Income", /refund|reimburse/, "↩️", "Income"],
+  ["Income", /business income/, "💰", "Income"],
   ["Income", /gross receipts|business|sales/, "💼", "Income"],
   ["Income", /./, "💰", "Income"],
   ["Expenses", /grocer/, "🍏", "Food & Dining"],

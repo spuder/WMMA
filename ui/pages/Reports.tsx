@@ -5,7 +5,9 @@ import { Chart, type Theme } from "../components/chart";
 import {
   axis,
   ByMenu,
+  ChartCardHead,
   ChartMenu,
+  PickMenu,
   type ChartKind,
   Treemap,
   BarList,
@@ -63,8 +65,9 @@ export function Reports({ query }: { query: URLSearchParams }) {
           </nav>
         </div>
         <div class="toolbar">
-          <RangeMenu value={range} onChange={setRange} />
-          <ReportFilters />
+          <ReportFilters>
+            <RangeMenu value={range} onChange={setRange} />
+          </ReportFilters>
         </div>
       </div>
       {tab === "cashflow" && <CashflowReport from={r.from} to={r.to} label={r.label} />}
@@ -107,23 +110,22 @@ function CashflowReport({ from, to, label }: { from: string | null; to: string |
         <Loading h={92} />
       )}
       <div class="card chart-card">
-        <div class="card-head">
-          <div>
-            <h2>{label}</h2>
-            {d && <div class="sub">{shortDate(d.from)} – {shortDate(d.to)}</div>}
-          </div>
-          <div class="row wrap">
-            <ChartMenu value={view === "bars" ? "trend" : "sankey"} onChange={(k) => setView(k === "sankey" ? "sankey" : "bars")} options={["trend", "sankey"]} noun="cash flow" />
-            {view === "bars" && (
-              <Seg
+        <ChartCardHead
+          title={label}
+          sub={d ? `${shortDate(d.from)} – ${shortDate(d.to)}` : null}
+          left={<ChartMenu value={view === "bars" ? "trend" : "sankey"} onChange={(k) => setView(k === "sankey" ? "sankey" : "bars")} options={["trend", "sankey"]} noun="cash flow" />}
+          right={
+            view === "bars" && (
+              <PickMenu
                 value={interval}
                 onChange={setInterval}
                 label="Interval"
+                width={180}
                 options={[["auto", "Auto"], ["month", "Monthly"], ["quarter", "Quarterly"], ["year", "Yearly"]]}
               />
-            )}
-          </div>
-        </div>
+            )
+          }
+        />
         {view === "sankey" ? <FlowSankey from={d?.from ?? from} to={d?.to ?? to} /> : se.data ? <FlowBars periods={se.data.periods} interval={se.data.interval} /> : <Loading h={380} />}
       </div>
       <div class="grid">
@@ -195,23 +197,24 @@ function KindReport({ kind, from, to, label }: { kind: "expense" | "income"; fro
   return (
     <div class="stack">
       <div class="card chart-card">
-        <div class="card-head">
-          <div class="stack" style={{ gap: 10 }}>
-            <div>
-              <h2>{label}</h2>
-              {d && <div class="sub">{shortDate(d.from)} – {shortDate(d.to)}</div>}
-            </div>
-            <ChartMenu value={view} onChange={setView} options={["pie", "breakdown", "treemap", "trend"]} noun={kind === "income" ? "income" : "expense"} />
-          </div>
-          <div class="row wrap">
-            {view !== "trend" && <ByMenu value={by} onChange={setBy} />}
-            {k && (
-              <button class="icon-btn" aria-label="Download CSV" title="Download CSV" onClick={() => downloadCsv(`${kind === "income" ? "income" : "spending"}-${d.from}-${d.to}.csv`, [[by, "amount"], ...slices(k, by).map((x) => [x.account ?? x.text, csvMoney(x.cents)])])}>
-                <Icon.download />
-              </button>
-            )}
-          </div>
-        </div>
+        <ChartCardHead
+          title={label}
+          sub={d ? `${shortDate(d.from)} – ${shortDate(d.to)}` : null}
+          left={<ChartMenu value={view} onChange={setView} options={["pie", "breakdown", "treemap", "trend"]} noun={kind === "income" ? "income" : "expense"} />}
+          right={
+            <>
+              {view !== "trend" && <ByMenu value={by} onChange={setBy} />}
+              {k && (
+                <>
+                  <span class="toolbar-sep" />
+                  <button class="icon-btn" aria-label="Download CSV" title="Download CSV" onClick={() => downloadCsv(`${kind === "income" ? "income" : "spending"}-${d.from}-${d.to}.csv`, [[by, "amount"], ...slices(k, by).map((x) => [x.account ?? x.text, csvMoney(x.cents)])])}>
+                    <Icon.download />
+                  </button>
+                </>
+              )}
+            </>
+          }
+        />
         {!k ? (
           <Loading h={380} />
         ) : view === "pie" ? (
@@ -227,10 +230,7 @@ function KindReport({ kind, from, to, label }: { kind: "expense" | "income"; fro
         )}
       </div>
       <div class="grid">
-        <div class="card span-8">
-          <div class="card-head">
-            <h2>Transactions</h2>
-          </div>
+        <div class="card span-8 ptx-card">
           <PeriodTransactions from={d?.from ?? from} to={d?.to ?? to} kind={kind} />
         </div>
         <div class="span-4 stack">

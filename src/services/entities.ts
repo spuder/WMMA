@@ -24,6 +24,15 @@ export async function applyTemplate(ctx: ServiceContext, type: EntityType): Prom
   return lines.map((l) => l.account);
 }
 
+/**
+ * Declare the template categories of every entity type in use, so categories
+ * added to a template later (e.g. new income categories) reach existing
+ * profiles. Idempotent; runs at startup.
+ */
+export async function syncTemplates(ctx: ServiceContext): Promise<void> {
+  for (const type of new Set(listEntities(ctx, "all").map((e) => e.type))) await applyTemplate(ctx, type);
+}
+
 export async function addEntity(ctx: ServiceContext, actor: string, input: { name: string; type: EntityType; slug?: string; color?: string }): Promise<EntityRow> {
   const name = input.name?.trim();
   if (!name) throw new ServiceError("name is required");

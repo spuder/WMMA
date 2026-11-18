@@ -10,6 +10,7 @@ import { JournalStore } from "./journal/store";
 import { schedule } from "./scheduler";
 import { createFetchHandler } from "./server";
 import ui from "../ui/index.html";
+import { syncTemplates } from "./services/entities";
 import { syncSimplefin } from "./services/bank-imports";
 import { parseAccessUrl } from "./importers/simplefin";
 import type { Database } from "bun:sqlite";
@@ -93,6 +94,11 @@ async function serve(): Promise<void> {
   const jev = jevKey ? new JevClient({ apiKey: jevKey, baseUrl: config.jev.baseUrl, model: config.jev.model }) : null;
   if (!jev) console.log("No Jev key (JEV_API_KEY or set in the UI): uncategorised transactions go straight to the review queue");
   const ctx: ServiceContext = { config, db, store, audit, hledger: hledger.client, jev, secrets };
+  try {
+    await syncTemplates(ctx);
+  } catch (e) {
+    console.error(`templates: ${e instanceof Error ? e.message : String(e)}`);
+  }
   const server = Bun.serve({
     hostname: config.host,
     port: config.port,

@@ -26,6 +26,8 @@ export const TEMPLATES: Record<EntityType, TemplateLine[]> = {
   personal: pairs("", [
     ["Income:Salary"],
     ["Income:Interest"],
+    ["Income:Dividends"],
+    ["Income:BusinessIncome"],
     ["Income:Other"],
     ["Expenses:Housing:Rent"],
     ["Expenses:Housing:Utilities"],

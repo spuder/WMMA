@@ -1,7 +1,7 @@
 /** Building blocks shared by the report pages: ranges, KPI cards, breakdown bars, summaries, charts. */
 import type { ComponentChildren } from "preact";
 import { useCallback, useEffect, useState } from "preact/hooks";
-import { CATEGORY_GROUPS, catLabel, categoryMeta, compact, dayLabel, money, monthEnd, monthShift, monthStart, store, thisMonth, today, useApi } from "../api";
+import { CATEGORY_GROUPS, catLabel, categoryMeta, compact, dayLabel, humanize, money, monthEnd, monthShift, monthStart, store, thisMonth, today, useApi } from "../api";
 import { businessStyle, go, useApp } from "../app";
 import { Chart, type Theme, useTheme } from "./chart";
 import { Avatar, CatName, CellMenu, Icon, Loading, MenuOption } from "./ui";
@@ -166,7 +166,7 @@ export function useScope() {
 }
 
 /** Clear + Filters (categories) + Business, as in Monarch's report toolbar. */
-export function ReportFilters({ categories = true }: { categories?: boolean }) {
+export function ReportFilters({ categories = true, children }: { categories?: boolean; children?: ComponentChildren }) {
   const scope = useScope();
   const active = scope.entities.length > 0 || (categories && scope.excludeCategories.length > 0);
   return (
@@ -176,8 +176,9 @@ export function ReportFilters({ categories = true }: { categories?: boolean }) {
           Clear
         </button>
       )}
-      {categories && <CategoryFilter />}
+      {children}
       <BusinessFilter />
+      {categories && <CategoryFilter />}
     </div>
   );
 }
@@ -757,11 +758,11 @@ function chartInfo(k: ChartKind, noun: string): [string, string] {
     case "pie":
       return ["Pie", `Your ${noun} breakdown at a glance`];
     case "breakdown":
-      return ["Breakdown", `${noun[0]!.toUpperCase()}${noun.slice(1)}, biggest to smallest`];
+      return ["Breakdown", noun === "income" ? "Income streams, biggest to smallest" : "Expenses, biggest to smallest"];
     case "treemap":
       return ["Treemap", "Proportional category breakdown"];
     case "trend":
-      return ["Trend bars", noun === "cash flow" ? "Income and expenses over time" : `Your ${noun === "income" ? "income" : "spending"} behavior over time`];
+      return ["Trend bars", noun === "cash flow" ? "Income and expenses over time" : noun === "income" ? "Your income over time" : "Your spending behavior over time"];
     case "sankey":
       return ["Sankey", "Where money comes from and where it goes"];
   }
@@ -804,6 +805,46 @@ export function ChartMenu({ value, options, onChange, noun = "expense" }: { valu
         })
       }
     </CellMenu>
+  );
+}
+
+/** A plain toolbar dropdown (Monarch's "Monthly ▾", "Grouped ▾"). */
+export function PickMenu<T extends string>({ value, options, onChange, label, width = 200 }: { value: T; options: Array<[T, string]>; onChange: (v: T) => void; label: string; width?: number }) {
+  return (
+    <CellMenu tool label={label} width={width} value={<>{options.find(([k]) => k === value)?.[1] ?? value}</>}>
+      {(close) =>
+        options.map(([k, l], i) => (
+          <MenuOption
+            index={i}
+            selected={k === value}
+            onClick={() => {
+              onChange(k);
+              close();
+            }}
+          >
+            {l}
+          </MenuOption>
+        ))
+      }
+    </CellMenu>
+  );
+}
+
+/** Monarch's chart card top: the title, then a toolbar row (chart picker left, options right) over a divider. */
+export function ChartCardHead({ title, sub, left, right }: { title: ComponentChildren; sub?: ComponentChildren; left?: ComponentChildren; right?: ComponentChildren }) {
+  return (
+    <div class="chart-head">
+      <div class="chart-title">
+        <h2>{title}</h2>
+        {sub && <span class="muted small">{sub}</span>}
+      </div>
+      {(left || right) && (
+        <div class="chart-toolbar">
+          <div class="row wrap">{left}</div>
+          <div class="row wrap chart-toolbar-right">{right}</div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -870,55 +911,104 @@ export function Spark({ values, tone }: { values: number[]; tone?: "in" | "out" 
 // ---- transactions in a period -------------------------------------------------
 
 /** Recent transactions of one kind in [from, to], grouped by day like Activity. */
+type TxSort = "newest" | "oldest" | "largest" | "smallest";
+const TX_SORTS: Array<[TxSort, string]> = [
+  ["newest", "Date (newest)"],
+  ["oldest", "Date (oldest)"],
+  ["largest", "Amount (largest)"],
+  ["smallest", "Amount (smallest)"],
+];
+const accountLabel = (a: string) => humanize(a.split(":").pop() ?? a);
+
+/** Transactions of one kind in [from, to], as a card: grouped by day (or a flat list when sorted by amount). */
 export function PeriodTransactions({ from, to, kind }: { from: string | null; to: string | null; kind: "income" | "expense" }) {
   const { keep, keepCategory } = useScope();
+  const { entities } = useApp();
   const [limit, setLimit] = useState(60);
+  const [sort, setSort] = useStored<TxSort>("reports.tx.sort", "newest", TX_SORTS.map(([k]) => k));
   const { data, loading } = useApi(`/transactions${qs({ from, to, limit: 1000 })}`, [from, to]);
-  if (loading || !data) return <Loading h={300} />;
   const re = kind === "income" ? /^Income:/ : /^Expenses:/;
-  const rows = (data.transactions as any[])
+  const rows = ((data?.transactions ?? []) as any[])
     .map((t) => {
       const ps = t.postings.filter((p: any) => re.test(p.account) && keep(p.entity) && keepCategory(p.account));
-      return ps.length ? { t, cat: ps[0].account as string, cents: ps.reduce((s: number, p: any) => s + p.amount_cents, 0) * (kind === "income" ? -1 : 1) } : null;
+      if (!ps.length) return null;
+      const bank = t.postings.find((p: any) => /^(Assets|Liabilities):/.test(p.account));
+      return { t, cat: ps[0].account as string, entity: (ps[0].entity ?? t.tags?.entity ?? null) as string | null, account: bank ? accountLabel(bank.account) : "", cents: ps.reduce((s: number, p: any) => s + p.amount_cents, 0) * (kind === "income" ? -1 : 1) };
     })
-    .filter((x): x is { t: any; cat: string; cents: number } => x !== null);
-  if (rows.length === 0) return <div class="empty">No {kind === "income" ? "income" : "spending"} in this period</div>;
-  const days: Array<[string, typeof rows]> = [];
+    .filter((x): x is { t: any; cat: string; entity: string | null; account: string; cents: number } => x !== null);
+  if (sort === "oldest") rows.reverse();
+  if (sort === "largest") rows.sort((a, b) => b.cents - a.cents);
+  if (sort === "smallest") rows.sort((a, b) => a.cents - b.cents);
+  const byDate = sort === "newest" || sort === "oldest";
+  const groups: Array<[string | null, typeof rows]> = [];
   for (const r of rows.slice(0, limit)) {
-    const last = days.at(-1);
-    if (last && last[0] === r.t.date) last[1].push(r);
-    else days.push([r.t.date, [r]]);
+    const last = groups.at(-1);
+    if (byDate && last && last[0] === r.t.date) last[1].push(r);
+    else if (byDate) groups.push([r.t.date, [r]]);
+    else if (last) last[1].push(r);
+    else groups.push([null, [r]]);
   }
+  const Row = ({ r }: { r: (typeof rows)[number] }) => {
+    const e = entities.find((x) => x.slug === r.entity);
+    return (
+      <button class="ptx-row" onClick={() => go(`/transactions?id=${r.t.wmma_id}`)}>
+        <span class="ptx-payee">
+          <Avatar name={r.t.payee} />
+          <span>
+            {r.t.payee}
+            {!byDate && <span class="ptx-date">{shortDate(r.t.date)}</span>}
+          </span>
+        </span>
+        <span class="ptx-cat hide-sm">
+          <CatName account={r.cat} />
+        </span>
+        <span class="ptx-acct hide-sm">{r.account}</span>
+        <span class="ptx-biz hide-sm">
+          {e && (
+            <span class="business-tag" style={businessStyle(e.slug, e.color)}>
+              {e.type === "personal" ? "🏠" : <Icon.folder />} {e.name}
+            </span>
+          )}
+        </span>
+        <span class={`num ptx-amt ${kind === "income" ? "in" : ""}`}>{kind === "income" ? `+${money(r.cents)}` : money(r.cents)}</span>
+        <span class="muted" style={{ display: "inline-flex" }}>
+          <Icon.chevron />
+        </span>
+      </button>
+    );
+  };
   return (
-    <div class="ptx">
-      {days.map(([d, rs]) => (
-        <>
-          <div class="ptx-day">
-            <span>{dayLabel(d)}</span>
-            <span class="num">{money(rs.reduce((s, r) => s + r.cents, 0))}</span>
-          </div>
-          {rs.map((r) => (
-            <button class="ptx-row" onClick={() => go(`/transactions?id=${r.t.wmma_id}`)}>
-              <span class="ptx-payee">
-                <Avatar name={r.t.payee} />
-                <span>{r.t.payee}</span>
-              </span>
-              <span class="ptx-cat hide-sm">
-                <CatName account={r.cat} />
-              </span>
-              <span class={`num ptx-amt ${kind === "income" ? "in" : ""}`}>{kind === "income" ? `+${money(r.cents)}` : money(r.cents)}</span>
-              <span class="muted" style={{ display: "inline-flex" }}>
-                <Icon.chevron />
-              </span>
-            </button>
+    <>
+      <div class="ptx-head">
+        <h2>Transactions</h2>
+        <PickMenu value={sort} options={TX_SORTS} onChange={setSort} label="Sort transactions" width={210} />
+      </div>
+      {loading || !data ? (
+        <Loading h={300} />
+      ) : rows.length === 0 ? (
+        <div class="empty">No {kind === "income" ? "income" : "spending"} in this period</div>
+      ) : (
+        <div class="ptx">
+          {groups.map(([d, rs]) => (
+            <>
+              {d && (
+                <div class="ptx-day">
+                  <span>{shortDate(d)}</span>
+                  <span class="num">{kind === "income" ? "+" : ""}{money(rs.reduce((s, r) => s + r.cents, 0))}</span>
+                </div>
+              )}
+              {rs.map((r) => (
+                <Row r={r} />
+              ))}
+            </>
           ))}
-        </>
-      ))}
-      {rows.length > limit && (
-        <button class="linkbtn" onClick={() => setLimit(limit + 100)}>
-          Show more ({rows.length - limit} left)
-        </button>
+          {rows.length > limit && (
+            <button class="linkbtn" onClick={() => setLimit(limit + 100)}>
+              Show more ({rows.length - limit} left)
+            </button>
+          )}
+        </div>
       )}
-    </div>
+    </>
   );
 }
