@@ -23,7 +23,9 @@ const routes: Record<string, Handler> = {
 
 export function createFetchHandler(deps: AppDeps): (req: Request) => Promise<Response> {
   return async (req) => {
-    const url = new URL(req.url);
+    // Bun leaves req.url relative when the client sends no Host header
+    // (e.g. a bare HTTP/1.0 request), so parse against a placeholder base.
+    const url = new URL(req.url, "http://localhost");
     // Unauthenticated liveness probe for Docker's healthcheck; reveals nothing.
     if (url.pathname === "/healthz") return new Response("ok\n");
 
