@@ -381,6 +381,9 @@ textarea.input { height: auto; padding: 10px 14px; }
 .cat-emoji { flex: none; width: 1.35em; text-align: center; font-size: 1.1em; line-height: 1; font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; }
 .catname-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .catbtn .p { color: var(--accent); font-weight: 700; font-size: 13px; }
+.catbtn.active { background: var(--accent-soft); }
+.catbtn .cathint { flex: none; margin-left: 12px; }
+mark.fz { background: transparent; color: var(--accent); font-weight: 750; text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 2px; }
 
 /* ---------- tables ---------- */
 .balance-list { display: flex; flex-direction: column; }

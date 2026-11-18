@@ -1,6 +1,7 @@
 import type { ComponentChildren } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { CATEGORY_GROUPS, catLabel, categoryMeta, hue, initials } from "../api";
+import { fuzzyMatch } from "../fuzzy";
 
 const P = { fill: "none", stroke: "currentColor", "stroke-width": 1.9, "stroke-linecap": "round", "stroke-linejoin": "round" } as const;
 export const Icon = {
@@ -166,7 +167,7 @@ export function MenuOption({ selected = false, index = 0, onClick, children }: {
 }
 
 /** A category with its emoji, e.g. "🍏 Food / Groceries". */
-export function CatName({ account, label }: { account: string; label?: string }) {
+export function CatName({ account, label }: { account: string; label?: ComponentChildren }) {
   return (
     <span class="catname">
       <span class="cat-emoji" aria-hidden="true">
@@ -175,6 +176,28 @@ export function CatName({ account, label }: { account: string; label?: string })
       <span class="catname-text">{label ?? catLabel(account)}</span>
     </span>
   );
+}
+
+/** Mouse or trackpad (desktop): focus search fields straight away. Touch devices skip it so the on-screen keyboard doesn't pop up. */
+const finePointer = () => matchMedia("(pointer: fine)").matches;
+
+/** Text with fuzzy-matched characters highlighted. */
+function Highlight({ text, indices }: { text: string; indices: number[] }) {
+  if (!indices.length) return <>{text}</>;
+  const set = new Set(indices);
+  const out: ComponentChildren[] = [];
+  let run = "";
+  let on = false;
+  for (let i = 0; i <= text.length; i++) {
+    const hit = set.has(i);
+    if (i === text.length || hit !== on) {
+      if (run) out.push(on ? <mark class="fz">{run}</mark> : run);
+      run = "";
+      on = hit;
+    }
+    if (i < text.length) run += text[i];
+  }
+  return <>{out}</>;
 }
 
 export function CategoryPicker({
@@ -189,13 +212,36 @@ export function CategoryPicker({
   direction?: "in" | "out";
 }) {
   const [q, setQ] = useState("");
+  const [active, setActive] = useState(-1);
+  const input = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // Desktop: start typing immediately.
+  useEffect(() => {
+    if (finePointer()) input.current?.focus({ preventScroll: true });
+  }, []);
+
+  const pool = useMemo(() => categories.filter((c) => !direction || (direction === "out" ? c.startsWith("Expenses:") : true)), [categories, direction]);
+
+  /** Ranked fuzzy matches on the label (highlighted) or, more weakly, the group and full path. */
+  const results = useMemo(() => {
+    if (!q.trim()) return [];
+    return pool
+      .map((c) => {
+        const label = catLabel(c);
+        const onLabel = fuzzyMatch(q, label);
+        const onGroup = fuzzyMatch(q, categoryMeta(c).group);
+        const onPath = fuzzyMatch(q, c);
+        const score = Math.max(onLabel?.score ?? -Infinity, (onGroup?.score ?? -Infinity) * 0.6, (onPath?.score ?? -Infinity) * 0.5);
+        return score === -Infinity ? null : { c, label, score, indices: onLabel?.indices ?? [] };
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null)
+      .sort((a, b) => b.score - a.score || a.label.localeCompare(b.label));
+  }, [pool, q]);
+
   const groups = useMemo(() => {
-    const ql = q.toLowerCase();
-    const list = categories
-      .filter((c) => !direction || (direction === "out" ? c.startsWith("Expenses:") : true))
-      .filter((c) => !ql || c.toLowerCase().includes(ql) || catLabel(c).toLowerCase().includes(ql) || categoryMeta(c).group.toLowerCase().includes(ql));
     const g = new Map<string, string[]>();
-    for (const c of list) {
+    for (const c of pool) {
       const key = categoryMeta(c).group;
       g.set(key, [...(g.get(key) ?? []), c]);
     }
@@ -203,40 +249,96 @@ export function CategoryPicker({
     return [...g]
       .map(([k, cs]) => [k, cs.sort((a, b) => catLabel(a).localeCompare(catLabel(b)))] as [string, string[]])
       .sort((a, b) => order(a[0]) - order(b[0]));
-  }, [categories, q, direction]);
+  }, [pool]);
+
+  // Keyboard order: matches while searching, otherwise suggestions then every group.
+  const ordered = q.trim() ? results.map((r) => r.c) : [...suggested.map((s) => s.account), ...groups.flatMap(([, cs]) => cs)];
+  useEffect(() => setActive(q.trim() ? 0 : -1), [q]);
+  useEffect(() => {
+    listRef.current?.querySelector(".catbtn.active")?.scrollIntoView({ block: "nearest" });
+  }, [active]);
+
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const n = ordered.length;
+      if (!n) return;
+      setActive((a) => (e.key === "ArrowDown" ? (a + 1) % n : a <= 0 ? n - 1 : a - 1));
+    } else if (e.key === "Enter") {
+      const pick = ordered[active < 0 ? 0 : active];
+      if (pick && (q.trim() || active >= 0)) {
+        e.preventDefault();
+        onPick(pick);
+      }
+    }
+  };
+  let idx = 0;
+  const btn = (c: string, body: ComponentChildren, trailing: ComponentChildren) => {
+    const i = idx++;
+    return (
+      <button class={`catbtn${i === active ? " active" : ""}`} onClick={() => onPick(c)} onMouseMove={() => active !== i && setActive(i)}>
+        {body}
+        {trailing}
+      </button>
+    );
+  };
+
   return (
-    <div class="stack" style={{ gap: 10 }}>
+    <div class="stack catpicker" style={{ gap: 10 }} ref={listRef}>
       <div class="search">
         <Icon.search />
-        <input class="input" placeholder="Search categories" value={q} onInput={(e) => setQ((e.target as HTMLInputElement).value)} autoFocus={matchMedia("(min-width: 700px)").matches} />
+        <input
+          ref={input}
+          class="input"
+          placeholder="Type to search categories"
+          value={q}
+          onInput={(e) => setQ((e.target as HTMLInputElement).value)}
+          onKeyDown={onKey}
+          role="combobox"
+          aria-expanded="true"
+          aria-autocomplete="list"
+          autoComplete="off"
+          spellcheck={false}
+        />
       </div>
-      {suggested.length > 0 && !q && (
-        <div>
-          <div class="upper catgroup">Suggested</div>
-          {suggested.map((s) => (
-            <button class="catbtn" onClick={() => onPick(s.account)}>
-              <CatName account={s.account} />
-              <span class="p">{Math.round(s.probability * 100)}%</span>
-            </button>
-          ))}
+      {q.trim() ? (
+        <div class="catlist">
+          {results.length > 0 && <div class="upper catgroup">{results.length === 1 ? "1 match" : `${results.length} matches`} · Enter to choose</div>}
+          {results.map((r) =>
+            btn(
+              r.c,
+              <CatName account={r.c} label={<Highlight text={r.label} indices={r.indices} />} />,
+              <span class="muted tiny cathint">{categoryMeta(r.c).group}</span>,
+            ),
+          )}
+          {results.length === 0 && <div class="empty">No categories match “{q.trim()}”</div>}
         </div>
-      )}
-      <div class="catlist">
-        {groups.map(([g, list]) => (
-          <div>
-            <div class="upper catgroup">{g}</div>
-            {list.map((c) => (
-              <button class="catbtn" onClick={() => onPick(c)}>
-                <CatName account={c} />
-                <span class="muted" style={{ display: "inline-flex" }}>
-                  <Icon.chevron />
-                </span>
-              </button>
+      ) : (
+        <>
+          {suggested.length > 0 && (
+            <div>
+              <div class="upper catgroup">Suggested</div>
+              {suggested.map((s) => btn(s.account, <CatName account={s.account} />, <span class="p">{Math.round(s.probability * 100)}%</span>))}
+            </div>
+          )}
+          <div class="catlist">
+            {groups.map(([g, list]) => (
+              <div>
+                <div class="upper catgroup">{g}</div>
+                {list.map((c) =>
+                  btn(
+                    c,
+                    <CatName account={c} />,
+                    <span class="muted" style={{ display: "inline-flex" }}>
+                      <Icon.chevron />
+                    </span>,
+                  ),
+                )}
+              </div>
             ))}
           </div>
-        ))}
-        {groups.length === 0 && <div class="empty">No matching categories</div>}
-      </div>
+        </>
+      )}
     </div>
   );
 }
