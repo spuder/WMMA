@@ -162,12 +162,25 @@ export function Imports() {
               <div class="small">
                 {last.added} added · {last.merged ?? 0} merged · {last.skippedDuplicates} duplicates{last.needsReview ? ` · ${last.needsReview} possible duplicates to check` : ""}
               </div>
-              {(last.balances ?? []).map((b: any) => (
-                <div class="spread small">
-                  <span>{b.account}</span>
-                  <span class={`pill ${b.match ? "ok" : "warn"}`}>{b.match ? `✓ ${b.wmma}` : `${b.wmma} vs ${b.source}`}</span>
+              {(last.balances ?? []).length > 0 && (
+                <div class="balance-list">
+                  {(last.balances ?? []).map((b: any) => (
+                    <div class="balance-row" key={b.account}>
+                      <span class="name">{b.account}</span>
+                      {b.match ? (
+                        <span class="pill ok" title="Bank and WMMA balances match">✓ {b.wmma}</span>
+                      ) : (
+                        <dl class="balance-diff" title="Balances differ">
+                          <dt>Bank</dt>
+                          <dd>{b.source}</dd>
+                          <dt>WMMA</dt>
+                          <dd>{b.wmma}</dd>
+                        </dl>
+                      )}
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
               {(last.errors ?? []).map((e: string) => (
                 <div class="error small">{e}</div>
               ))}

@@ -126,6 +126,8 @@ const MIGRATIONS: string[] = [
   `,
   `ALTER TABLE accounts ADD COLUMN website_url TEXT;`,
   `ALTER TABLE entities ADD COLUMN color TEXT;`,
+  // Account names imported before U+FFFD (mangled ®/™ from banks) was stripped.
+  `UPDATE accounts SET name = trim(replace(replace(name, char(65533), ''), '  ', ' ')) WHERE instr(name, char(65533)) > 0;`,
 ];
 
 export function openDb(path: string): Database {

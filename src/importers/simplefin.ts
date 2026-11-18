@@ -113,15 +113,19 @@ export function simplefinErrors(set: SimplefinAccountSet): string[] {
   return [...(set.errlist ?? []).map((e) => `${e.code}: ${e.msg}`), ...(set.errors ?? [])];
 }
 
+/** Drop U+FFFD left by banks that send non-UTF-8 names (e.g. "Way2Save®" → "Way2Save��"). */
+const displayName = (s: string) => s.replace(/\uFFFD/g, "").replace(/\s+/g, " ").trim();
+
 export function normaliseSimplefin(set: SimplefinAccountSet, tz: string): BankAccountData[] {
   const connName = new Map((set.connections ?? []).map((c) => [c.conn_id, c.name]));
   return set.accounts
     .filter((a) => a.currency.toUpperCase() === "USD")
     .map((a) => {
       const org = (a.conn_id && connName.get(a.conn_id)) || a.org?.name;
+      const name = displayName(a.name);
       return {
         externalKey: a.id,
-        name: org && !a.name.toLowerCase().includes(org.toLowerCase()) ? `${org} ${a.name}` : a.name,
+        name: org && !name.toLowerCase().includes(org.toLowerCase()) ? `${displayName(org)} ${name}` : name,
         kindHint: /credit|card|visa|mastercard|amex/i.test(a.name) ? "credit" : /brokerage|ira|401k|invest|roth/i.test(a.name) ? "investment" : null,
         balance: { amount: M.parse(a.balance), asOf: epochToDate(a["balance-date"], tz) },
         records: (a.transactions ?? [])

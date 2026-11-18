@@ -286,7 +286,7 @@ textarea.input { height: auto; padding: 10px 14px; }
 .bar > div { height: 100%; border-radius: 4px; background: var(--accent); transition: width 0.4s ease; }
 .bar.warn > div { background: var(--warn); }
 .bar.over > div { background: var(--out); }
-.pill { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 999px; font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.pill { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; white-space: nowrap; flex-shrink: 0; border-radius: 999px; font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .pill.ok { background: var(--accent-soft); color: var(--in); }
 .pill.warn { background: var(--warn-soft); color: var(--warn); }
 .pill.over { background: var(--bad-soft); color: var(--out); }
@@ -373,6 +373,12 @@ textarea.input { height: auto; padding: 10px 14px; }
 .catbtn .p { color: var(--accent); font-weight: 700; font-size: 13px; }
 
 /* ---------- tables ---------- */
+.balance-list { display: flex; flex-direction: column; }
+.balance-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 10px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.balance-row .name { min-width: 0; overflow-wrap: anywhere; }
+.balance-diff { display: grid; grid-template-columns: auto auto; gap: 1px 10px; padding: 5px 10px; border-radius: 10px; background: var(--warn-soft); color: var(--warn); font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.balance-diff dt { font-weight: 600; opacity: 0.8; }
+.balance-diff dd { margin: 0; text-align: right; }
 .table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .table td, .table th { padding: 10px 4px; border-bottom: 1px solid var(--line); text-align: left; }
 .table th { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 650; }
@@ -388,6 +394,7 @@ textarea.input { height: auto; padding: 10px 14px; }
 @keyframes shimmer { to { background-position: -200% 0; } }
 .error { padding: 12px 14px; border-radius: 12px; background: var(--bad-soft); color: var(--out); font-weight: 600; font-size: 14px; }
 .kbd { font-size: 11px; padding: 1px 6px; border-radius: 5px; border: 1px solid var(--line); color: var(--muted); }
-.hide-sm { display: none; }
-@media (min-width: 700px) { .hide-sm { display: initial; } .hide-lg { display: none; } }
+/* Hide only; never set a display value, so table cells and flex rows keep their own. */
+@media (max-width: 699.98px) { .hide-sm { display: none !important; } }
+@media (min-width: 700px) { .hide-lg { display: none !important; } }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
