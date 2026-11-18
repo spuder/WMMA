@@ -159,7 +159,7 @@ const routes: Record<string, Handler> = {
     Response.json({ name: params["name"], config: await putCsvProfile(ctx, identity.login, params["name"]!, await jsonBody(req)) }),
 
   "GET /api/v1/duplicates": (req, _id, ctx) => {
-    const status = new URL(req.url).searchParams.get("status") ?? "pending";
+    const status = new URL(req.url, "http://localhost").searchParams.get("status") ?? "pending";
     if (!["pending", "imported", "merged", "discarded"].includes(status)) bad("invalid status");
     return Response.json({ duplicates: listDuplicates(ctx, status) });
   },
