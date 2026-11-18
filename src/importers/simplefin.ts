@@ -31,6 +31,45 @@ export class SimplefinError extends Error {
   }
 }
 
+/** Exchange a one-time SimpleFIN Bridge setup token for its private Access URL. */
+export async function claimAccessUrl(setupToken: string, fetcher: typeof fetch = fetch): Promise<string> {
+  const token = setupToken.trim();
+  if (!token || token.length > 4096) throw new SimplefinError("Enter a valid SimpleFIN Setup Token", 422);
+  let claim: URL;
+  try {
+    const decoded = Buffer.from(token, "base64").toString("utf8");
+    claim = new URL(decoded);
+  } catch {
+    throw new SimplefinError("That Setup Token is not valid base64", 422);
+  }
+  if (
+    claim.protocol !== "https:" ||
+    !["bridge.simplefin.org", "beta-bridge.simplefin.org"].includes(claim.hostname.toLowerCase()) ||
+    (claim.port && claim.port !== "443") ||
+    claim.username || claim.password ||
+    !claim.pathname.startsWith("/simplefin/claim/")
+  ) {
+    throw new SimplefinError("This Setup Token is not a SimpleFIN Bridge claim URL", 422);
+  }
+  let response: Response;
+  try {
+    response = await fetcher(claim, { method: "POST", redirect: "error", signal: AbortSignal.timeout(30_000) });
+  } catch {
+    throw new SimplefinError("Could not reach SimpleFIN Bridge to claim the Setup Token", 502);
+  }
+  if (response.status === 403) throw new SimplefinError("SimpleFIN rejected this Setup Token. It may already have been claimed; create a new one.", 422);
+  if (!response.ok) throw new SimplefinError(`SimpleFIN claim failed: HTTP ${response.status}`, 502);
+  const accessUrl = (await response.text()).trim();
+  if (accessUrl.length > 4096) throw new SimplefinError("SimpleFIN returned an invalid Access URL", 502);
+  try {
+    const parsed = new URL(accessUrl);
+    if (parsed.protocol !== "https:" || !parsed.username || !parsed.password) throw new Error("invalid access URL");
+  } catch {
+    throw new SimplefinError("SimpleFIN returned an invalid Access URL", 502);
+  }
+  return accessUrl;
+}
+
 /** Split an access URL into a credential-free base and a Basic auth header. */
 export function parseAccessUrl(accessUrl: string): { base: string; authorization: string } {
   let u: URL;

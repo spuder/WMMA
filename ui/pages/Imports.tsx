@@ -17,6 +17,7 @@ export function Imports() {
   const dups = useApi<{ duplicates: any[] }>("/duplicates");
   const accts = useApi<{ accounts: any[] }>("/accounts");
   const profiles = useApi<{ profiles: any[] }>("/csv-profiles");
+  const settings = useApi<any>("/settings");
   const [kind, setKind] = useState<Kind>("qfx");
   const [file, setFile] = useState<File | null>(null);
   const [plan, setPlan] = useState<File | null>(null);
@@ -140,7 +141,12 @@ export function Imports() {
         <div class="span-5 stack">
           <div class="card stack">
             <h2>Connected sources</h2>
-            <button class="btn block" disabled={busy !== null} onClick={() => action("sf", "/sync/simplefin", {}, "SimpleFIN")}>
+            {settings.data?.simplefin.configured ? (
+              <div class="muted small">SimpleFIN is connected. New accounts are created and linked automatically on the first sync.</div>
+            ) : (
+              <div class="small">Connect SimpleFIN in <a href="#/settings" style={{ color: "var(--accent)", fontWeight: 650 }}>Settings</a> before syncing.</div>
+            )}
+            <button class="btn block" disabled={busy !== null || settings.loading || !settings.data?.simplefin.configured} onClick={() => action("sf", "/sync/simplefin", {}, "SimpleFIN")}>
               {busy === "sf" ? "Syncing…" : "Sync SimpleFIN now"}
             </button>
             <button class="btn block" disabled={busy !== null} onClick={() => action("ynab", "/imports/ynab-api", { includeBudgets: true }, "YNAB")}>

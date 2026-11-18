@@ -1,6 +1,7 @@
 /** Non-secret settings (SQLite) and the UI-settable Jev key (encrypted file). */
 import { JevClient } from "../jev";
 import { SecretsError } from "../secrets";
+import { claimAccessUrl } from "../importers/simplefin";
 import { ServiceError, type ServiceContext } from "./context";
 
 /** Settings the UI may change. Internal bookkeeping keys (e.g. simplefin.last_sync) are read-only. */
@@ -9,13 +10,16 @@ const WRITABLE = /^ui\.[a-z0-9_.-]{1,64}$/;
 export interface SettingsView {
   settings: Record<string, string>;
   jev: { configured: boolean; source: "env" | "ui" | null; canStoreInUi: boolean };
+  simplefin: { configured: boolean; source: "env" | "ui" | null; canStoreInUi: boolean };
 }
 
 export async function getSettings(ctx: ServiceContext): Promise<SettingsView> {
   const rows = ctx.db.query("SELECT key, value FROM settings ORDER BY key").all() as Array<{ key: string; value: string }>;
   let uiKey: string | null = null;
+  let simplefinUrl: string | null = null;
   try {
     uiKey = (await ctx.secrets?.get("jev_api_key")) ?? null;
+    simplefinUrl = (await ctx.secrets?.get("simplefin_access_url")) ?? null;
   } catch {
     // unreadable secrets file: report as not configured from the UI
   }
@@ -24,6 +28,11 @@ export async function getSettings(ctx: ServiceContext): Promise<SettingsView> {
     jev: {
       configured: Boolean(ctx.config.jev.apiKey || uiKey),
       source: ctx.config.jev.apiKey ? "env" : uiKey ? "ui" : null,
+      canStoreInUi: Boolean(ctx.secrets?.enabled),
+    },
+    simplefin: {
+      configured: Boolean(ctx.config.simplefinAccessUrl || simplefinUrl),
+      source: ctx.config.simplefinAccessUrl ? "env" : simplefinUrl ? "ui" : null,
       canStoreInUi: Boolean(ctx.secrets?.enabled),
     },
   };
@@ -36,7 +45,7 @@ export function jevFromConfig(ctx: ServiceContext, key: string | null): JevClien
 export async function putSettings(
   ctx: ServiceContext,
   actor: string,
-  input: { settings?: Record<string, unknown>; jevApiKey?: string | null },
+  input: { settings?: Record<string, unknown>; jevApiKey?: string | null; simplefinSetupToken?: string; simplefinDisconnect?: boolean },
 ): Promise<SettingsView> {
   const before = await getSettings(ctx);
   if (input.settings !== undefined) {
@@ -62,12 +71,43 @@ export async function putSettings(
     }
     ctx.jev = jevFromConfig(ctx, input.jevApiKey === null ? null : input.jevApiKey.trim());
   }
+  if (input.simplefinSetupToken !== undefined && input.simplefinDisconnect) {
+    throw new ServiceError("Connect or disconnect SimpleFIN in one request, not both");
+  }
+  if (input.simplefinSetupToken !== undefined) {
+    if (ctx.config.simplefinAccessUrl) throw new ServiceError("SIMPLEFIN_ACCESS_URL is set in the environment, which takes precedence; change it there", 409);
+    if (!ctx.secrets?.enabled) throw new ServiceError("set WMMA_SECRET_KEY to store SimpleFIN credentials from the UI", 422);
+    const accessUrl = await claimAccessUrl(input.simplefinSetupToken);
+    try {
+      await ctx.secrets.set("simplefin_access_url", accessUrl);
+    } catch (e) {
+      if (e instanceof SecretsError) throw new ServiceError(e.message, 422);
+      throw e;
+    }
+    ctx.db.query("DELETE FROM settings WHERE key = ?").run("simplefin.last_sync");
+  }
+  if (input.simplefinDisconnect) {
+    if (ctx.config.simplefinAccessUrl) throw new ServiceError("SIMPLEFIN_ACCESS_URL is set in the environment, which takes precedence; change it there", 409);
+    if (!ctx.secrets?.enabled) throw new ServiceError("secret storage is not available", 422);
+    try {
+      await ctx.secrets.set("simplefin_access_url", null);
+    } catch (e) {
+      if (e instanceof SecretsError) throw new ServiceError(e.message, 422);
+      throw e;
+    }
+    ctx.db.query("DELETE FROM settings WHERE key = ?").run("simplefin.last_sync");
+  }
   const after = await getSettings(ctx);
   // The key itself is never logged.
   await ctx.audit.append({
     actor,
     operation: "settings.put",
-    inputs: { settings: input.settings, jevApiKey: input.jevApiKey === undefined ? undefined : input.jevApiKey === null ? "(removed)" : "(set)" },
+    inputs: {
+      settings: input.settings,
+      jevApiKey: input.jevApiKey === undefined ? undefined : input.jevApiKey === null ? "(removed)" : "(set)",
+      simplefinSetupToken: input.simplefinSetupToken === undefined ? undefined : "(claimed)",
+      simplefinDisconnect: input.simplefinDisconnect || undefined,
+    },
     before,
     after,
   });

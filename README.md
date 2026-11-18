@@ -58,6 +58,21 @@ wmma duplicate <id> merge --wmma-id <ID>   # or: import | discard
 
 Profile fields: `columns.{date,payee,memo,amount | debit+credit,id}`, `dateFormat`, `invertAmount`, `delimiter`, `skipRows`.
 
+### Connect SimpleFIN
+
+In WMMA, open **Settings → SimpleFIN bank sync**, follow the link to SimpleFIN
+Bridge, connect your bank, and copy the one-time Setup Token. Paste that token
+into WMMA and select **Connect SimpleFIN**. WMMA claims it once and stores the
+resulting Access URL encrypted; it does not display or log the Access URL.
+This requires `WMMA_SECRET_KEY` (at least 16 characters). After connecting,
+open **Imports** and select **Sync SimpleFIN now**. New bank accounts are
+created automatically on the first sync; review them under **Accounts**.
+
+To configure SimpleFIN outside the UI, exchange a Setup Token for an Access URL
+using [SimpleFIN Bridge's instructions](https://beta-bridge.simplefin.org/info/developers),
+then set `SIMPLEFIN_ACCESS_URL` in the server environment. This environment
+setting takes precedence over the UI connection.
+
 ## Web UI
 
 Open `https://wmma.<your-tailnet>.ts.net` on your phone or computer (add it to your home screen for an app-like feel).
@@ -188,7 +203,7 @@ Then open `https://wmma.<your-tailnet>.ts.net`. Only Tailscale users in `WMMA_AL
 | `YNAB_TOKEN` | YNAB personal access token (for `import ynab-api`) |
 | `SIMPLEFIN_ACCESS_URL`, `SIMPLEFIN_SYNC_CRON` | SimpleFIN access URL; sync schedule (default `0 6 * * *`) |
 | `JEV_API_KEY` | Jev (TypeSafe) API key; optional `JEV_BASE_URL`, `JEV_MODEL` |
-| `WMMA_SECRET_KEY` | ≥16 chars; encrypts secrets set in the UI (`/data/secrets.enc`). Needed only to set the Jev key from the UI |
+| `WMMA_SECRET_KEY` | ≥16 chars; encrypts secrets set in the UI (`/data/secrets.enc`), including Jev keys and SimpleFIN credentials |
 
 ## Development
 

@@ -389,10 +389,14 @@ Object.assign(routes, {
   "PUT /api/v1/settings": async (req, identity, ctx) => {
     const b = ((await jsonBody(req)) ?? {}) as Record<string, unknown>;
     if (b.jevApiKey !== undefined && b.jevApiKey !== null && typeof b.jevApiKey !== "string") bad("jevApiKey must be a string or null");
+    if (b.simplefinSetupToken !== undefined && typeof b.simplefinSetupToken !== "string") bad("simplefinSetupToken must be a string");
+    if (b.simplefinDisconnect !== undefined && typeof b.simplefinDisconnect !== "boolean") bad("simplefinDisconnect must be a boolean");
     return Response.json(
       await putSettings(ctx, identity.login, {
         ...(b.settings !== undefined ? { settings: b.settings as Record<string, unknown> } : {}),
         ...(b.jevApiKey !== undefined ? { jevApiKey: b.jevApiKey as string | null } : {}),
+        ...(b.simplefinSetupToken !== undefined ? { simplefinSetupToken: b.simplefinSetupToken as string } : {}),
+        ...(b.simplefinDisconnect !== undefined ? { simplefinDisconnect: b.simplefinDisconnect as boolean } : {}),
       }),
     );
   },
@@ -448,7 +452,8 @@ export function createFetchHandler(ctx: ServiceContext): (req: Request) => Promi
       return await r.handler(req, auth.identity, ctx, r.params);
     } catch (e) {
       if (e instanceof ServiceError) return Response.json({ error: e.message }, { status: e.status });
-      if (e instanceof YnabApiError || e instanceof SimplefinError) return Response.json({ error: e.message }, { status: 502 });
+      if (e instanceof YnabApiError) return Response.json({ error: e.message }, { status: 502 });
+      if (e instanceof SimplefinError) return Response.json({ error: e.message }, { status: e.status >= 400 && e.status <= 599 ? e.status : 502 });
       console.error(e);
       return Response.json({ error: "internal error" }, { status: 500 });
     }

@@ -12,7 +12,7 @@ export class SecretsError extends Error {
   override name = "SecretsError";
 }
 
-export const SECRET_NAMES = ["jev_api_key"] as const;
+export const SECRET_NAMES = ["jev_api_key", "simplefin_access_url"] as const;
 export type SecretName = (typeof SECRET_NAMES)[number];
 
 export class SecretStore {

@@ -68,13 +68,14 @@ async function serve(): Promise<void> {
   });
 
   let stopCron = () => {};
-  if (config.simplefinAccessUrl) {
-    stopCron = schedule(config.simplefinSyncCron, config.tz, async () => {
+  stopCron = schedule(config.simplefinSyncCron, config.tz, async () => {
+    const simplefinUrl = config.simplefinAccessUrl ?? (await secrets.get("simplefin_access_url"));
+    if (simplefinUrl) {
       const r = await syncSimplefin(ctx, "system:scheduler");
       console.log(`SimpleFIN sync: +${r.added} new, ${r.merged} merged, ${r.skippedDuplicates} duplicates, ${r.needsReview} to review`);
-    });
-    console.log(`SimpleFIN sync scheduled: "${config.simplefinSyncCron}" (${config.tz})`);
-  }
+    }
+  });
+  console.log(`SimpleFIN sync schedule ready: "${config.simplefinSyncCron}" (${config.tz})`);
   console.log(`WMMA listening on http://${server.hostname}:${server.port} (data: ${config.dataDir})`);
 
   const shutdown = async (sig: string) => {

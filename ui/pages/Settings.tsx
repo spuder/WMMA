@@ -6,6 +6,8 @@ export function Settings() {
   const s = useApi<any>("/settings");
   const me = useApi<any>("/status");
   const [key, setKey] = useState("");
+  const [simplefinToken, setSimplefinToken] = useState("");
+  const [simplefinBusy, setSimplefinBusy] = useState(false);
   const [theme, setTheme] = useState(store.get("theme") ?? "system");
 
   const applyTheme = (t: string) => {
@@ -23,6 +25,31 @@ export function Settings() {
       toast(value ? "Jev key saved (encrypted)" : "Jev key removed");
     } catch (e) {
       toast((e as Error).message);
+    }
+  };
+  const connectSimplefin = async () => {
+    setSimplefinBusy(true);
+    try {
+      await api("/settings", { method: "PUT", body: { simplefinSetupToken: simplefinToken.trim() } });
+      setSimplefinToken("");
+      s.reload();
+      toast("SimpleFIN connected. Sync accounts from Imports.");
+    } catch (e) {
+      toast((e as Error).message);
+    } finally {
+      setSimplefinBusy(false);
+    }
+  };
+  const disconnectSimplefin = async () => {
+    setSimplefinBusy(true);
+    try {
+      await api("/settings", { method: "PUT", body: { simplefinDisconnect: true } });
+      s.reload();
+      toast("SimpleFIN disconnected");
+    } catch (e) {
+      toast((e as Error).message);
+    } finally {
+      setSimplefinBusy(false);
     }
   };
 
@@ -70,6 +97,48 @@ export function Settings() {
                 </>
               ) : (
                 <div class="muted small">To save a key here, set WMMA_SECRET_KEY on the server (16+ characters), or set JEV_API_KEY.</div>
+              )}
+            </>
+          )}
+        </div>
+
+        <div class="card span-6 stack">
+          <div>
+            <h2>SimpleFIN bank sync</h2>
+            <div class="sub">Connect your bank accounts through SimpleFIN Bridge.</div>
+          </div>
+          {s.loading ? (
+            <Loading h={80} />
+          ) : (
+            <>
+              <div class="spread">
+                <span>Status</span>
+                <span class={`pill ${s.data.simplefin.configured ? "ok" : "zero"}`}>
+                  {s.data.simplefin.configured ? `Connected · ${s.data.simplefin.source === "env" ? "from environment" : "set here"}` : "Not configured"}
+                </span>
+              </div>
+              {s.data.simplefin.source === "env" ? (
+                <div class="muted small">The access URL comes from SIMPLEFIN_ACCESS_URL on the server. Change it in the server environment.</div>
+              ) : s.data.simplefin.canStoreInUi ? (
+                <>
+                  <div class="small">1. <a href="https://bridge.simplefin.org/simplefin/create" target="_blank" rel="noreferrer">Connect your bank and create a Setup Token in SimpleFIN Bridge</a>.</div>
+                  <div class="small">2. Paste the one-time Setup Token below. WMMA exchanges it for an Access URL and stores that URL encrypted.</div>
+                  <div class="field">
+                    <label>SimpleFIN Setup Token</label>
+                    <input class="input" type="password" autoComplete="off" placeholder="Paste the one-time token" value={simplefinToken} onInput={(e) => setSimplefinToken((e.target as HTMLInputElement).value)} />
+                  </div>
+                  <div class="row">
+                    <button class="btn primary" disabled={!simplefinToken.trim() || simplefinBusy} onClick={connectSimplefin}>
+                      {simplefinBusy ? "Connecting…" : "Connect SimpleFIN"}
+                    </button>
+                    {s.data.simplefin.configured && (
+                      <button class="btn ghost danger" disabled={simplefinBusy} onClick={disconnectSimplefin}>Disconnect</button>
+                    )}
+                  </div>
+                  <div class="muted tiny">Setup Tokens can only be claimed once. WMMA never displays or logs the saved Access URL.</div>
+                </>
+              ) : (
+                <div class="muted small">Set WMMA_SECRET_KEY on the server (16+ characters) to store the Access URL encrypted here, or configure SIMPLEFIN_ACCESS_URL in the server environment.</div>
               )}
             </>
           )}
