@@ -15,6 +15,7 @@ import type { Money } from "../money";
 import { accountType, UNCATEGORIZED_EXPENSE, UNCATEGORIZED_INCOME } from "../naming";
 import { ulid } from "../ulid";
 import { getEntity } from "./accounts";
+import { templateAccounts } from "../templates";
 import { ServiceError, type ServiceContext } from "./context";
 
 export const JEV_APPLY_THRESHOLD = 0.9;
@@ -159,11 +160,11 @@ export function describeAccount(a: string): string {
 }
 
 /**
- * Categories Jev may pick for an entity: Income/Expenses accounts that entity
- * already uses (all of them if it uses fewer than two), most-used first,
- * capped at Jev's option limit.
+ * Categories Jev may pick for an entity: its template's Income/Expenses
+ * accounts plus those it already uses (all accounts if that's fewer than
+ * two), most-used first, capped at Jev's option limit.
  */
-export function allowedCategories(txns: HledgerTransaction[], declared: string[], entity: string | null, inflow: boolean): string[] {
+export function allowedCategories(txns: HledgerTransaction[], declared: string[], entity: string | null, inflow: boolean, template: string[] = []): string[] {
   const isCat = (a: string) => (a.startsWith("Expenses:") || (inflow && a.startsWith("Income:"))) && !UNCATEGORIZED.has(a);
   const usage = new Map<string, number>();
   const entityUsage = new Map<string, number>();
@@ -177,7 +178,9 @@ export function allowedCategories(txns: HledgerTransaction[], declared: string[]
       if (entity && pEntity === entity) entityUsage.set(p.paccount, (entityUsage.get(p.paccount) ?? 0) + 1);
     }
   }
-  const pool = entityUsage.size >= 2 ? entityUsage : usage;
+  const pool = new Map(entityUsage.size >= 2 ? entityUsage : usage);
+  // The entity's template categories are always on offer.
+  for (const a of template) if (isCat(a) && !pool.has(a)) pool.set(a, 0);
   return [...pool.entries()]
     .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
     .slice(0, JEV_MAX_OPTIONS)
@@ -270,7 +273,8 @@ export async function categorize(ctx: ServiceContext, actor: string, opts: { wmm
       const before = jev.calls;
       let consecutiveFailures = 0;
       for (const u of toJev) {
-        const options = allowedCategories(txns, declared, u.entity, !M.isNegative(u.amount));
+        const type = u.entity ? getEntity(ctx, u.entity)?.type : undefined;
+        const options = allowedCategories(txns, declared, u.entity, !M.isNegative(u.amount), type ? templateAccounts(type) : []);
         if (options.length === 0) {
           queue(u, [], "no categories to choose from");
           continue;

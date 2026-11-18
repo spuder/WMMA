@@ -202,3 +202,30 @@ export function parseYnabRegisterCsv(text: string, opts: { dateFormat?: DateForm
 
   return { accounts, transactions };
 }
+
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+
+/** "Jan 2026" | "January 2026" | "2026-01" | "01/2026" -> "2026-01" */
+export function parsePlanMonth(s: string): string {
+  const t = s.trim();
+  let m = /^(\d{4})-(\d{2})/.exec(t);
+  if (m) return `${m[1]}-${m[2]}`;
+  m = /^([A-Za-z]{3})[A-Za-z]*\.?\s+(\d{4})$/.exec(t);
+  if (m && MONTHS.includes(m[1]!.toLowerCase())) return `${m[2]}-${String(MONTHS.indexOf(m[1]!.toLowerCase()) + 1).padStart(2, "0")}`;
+  m = /^(\d{1,2})\/(\d{4})$/.exec(t);
+  if (m) return `${m[2]}-${m[1]!.padStart(2, "0")}`;
+  throw new YnabCsvError(`invalid plan month ${JSON.stringify(s)}`);
+}
+
+/** YNAB plan (budget) CSV export -> monthly assigned amounts per category. */
+export function parseYnabPlanCsv(text: string): Array<{ month: string; group: string; name: string; amount: Money }> {
+  const records = parseCsvRecords(text);
+  if (records.length === 0) return [];
+  const first = records[0]!;
+  const assignedCol = "Assigned" in first ? "Assigned" : "Budgeted" in first ? "Budgeted" : null;
+  if (!("Month" in first) || !assignedCol) throw new YnabCsvError("not a YNAB plan export: needs Month and Assigned (or Budgeted) columns");
+  return records.map((r) => {
+    const c = rowCategory(r) ?? { group: "Ungrouped", name: "Uncategorized" };
+    return { month: parsePlanMonth(field(r, "Month")), group: c.group, name: c.name, amount: M.parse(field(r, assignedCol) || "0") };
+  });
+}

@@ -12,10 +12,13 @@ import { formatTransaction } from "../journal/format";
 import * as M from "../money";
 import { accountType, slugify } from "../naming";
 import { ulid } from "../ulid";
-import { YnabApi, normaliseApiExport, type YnabApiOptions } from "../importers/ynab/api";
-import { convert, type ResolvedAccount } from "../importers/ynab/convert";
-import { parseYnabRegisterCsv, type DateFormat } from "../importers/ynab/csv";
-import type { YnabAccount, YnabAccountType, YnabDataset } from "../importers/ynab/model";
+import { YnabApi, normaliseApiExport, normaliseBudgetMonths, type YnabApiOptions } from "../importers/ynab/api";
+import { convert, defaultCategoryAccount, type ResolvedAccount } from "../importers/ynab/convert";
+import { parseYnabPlanCsv, parseYnabRegisterCsv, type DateFormat } from "../importers/ynab/csv";
+import { categoryLabel, isReadyToAssign, isUncategorized, type YnabAccount, type YnabAccountType, type YnabDataset } from "../importers/ynab/model";
+import { cleanText } from "../journal/format";
+import type { BudgetChange } from "../journal/budgets";
+import type { Money } from "../money";
 import {
   balancesFrom,
   createAccount,
@@ -33,6 +36,8 @@ export interface AccountAssignment {
 }
 
 export interface YnabImportOptions {
+  /** Also import past monthly budget (assigned) amounts, for `defaultEntity`. */
+  includeBudgets?: boolean;
   /** Entity for accounts seen for the first time with no explicit assignment. Default "personal". */
   defaultEntity?: string;
   /** First-import assignments keyed by YNAB account name. Ignored for accounts already known. */
@@ -59,6 +64,7 @@ export interface ImportResult {
   newMappings: number;
   balances: BalanceCheck[];
   categorization: CategorizeSummary | { error: string };
+  budgets?: { months: number; amounts: number };
 }
 
 export function ynabKind(t: YnabAccountType | null): AccountKind | null {
@@ -270,6 +276,42 @@ async function importDataset(
   }
 }
 
+/** Write YNAB monthly assigned amounts as budgets for one entity. */
+async function importYnabBudgets(
+  ctx: ServiceContext,
+  actor: string,
+  entity: string,
+  amounts: Array<{ month: string; group: string; name: string; amount: Money }>,
+): Promise<{ months: number; amounts: number }> {
+  ensureEntity(ctx, entity);
+  const mappingQuery = ctx.db.query("SELECT target_account FROM mappings WHERE source = 'ynab' AND source_category = ?");
+  const changes: BudgetChange[] = [];
+  for (const a of amounts) {
+    const c = { group: a.group, name: a.name };
+    if (isReadyToAssign(c) || isUncategorized(c) || /internal master category|credit card payments/i.test(a.group)) continue;
+    const label = cleanText(categoryLabel(c));
+    const target = (mappingQuery.get(label) as { target_account: string } | null)?.target_account ?? defaultCategoryAccount(c);
+    if (!target.startsWith("Expenses:") || M.isNegative(a.amount)) continue;
+    changes.push({ entity, account: target, month: a.month, amount: a.amount });
+  }
+  // Several YNAB categories can map to one account: add them up per month.
+  const merged = new Map<string, BudgetChange>();
+  for (const c of changes) {
+    const k = `${c.account}|${c.month}`;
+    const prev = merged.get(k);
+    merged.set(k, prev ? { ...prev, amount: M.add(prev.amount, c.amount) } : c);
+  }
+  const list = [...merged.values()];
+  if (list.length === 0) return { months: 0, amounts: 0 };
+  await ctx.store.declareAccounts([...new Set(list.map((c) => c.account))].map((name) => ({ name, type: accountType(name) })));
+  // Every month YNAB reported replaces what was there, so re-importing is idempotent.
+  const months = new Set(list.map((c) => c.month));
+  const accounts = new Set(list.map((c) => c.account));
+  await ctx.store.updateBudgets((cur) => [...cur.filter((c) => !(c.entity === entity && months.has(c.month) && accounts.has(c.account))), ...list]);
+  await ctx.audit.append({ actor, operation: "budget.import.ynab", inputs: { entity, months: months.size }, before: null, after: { amounts: list.length } });
+  return { months: months.size, amounts: list.length };
+}
+
 export function importYnabApi(
   ctx: ServiceContext,
   actor: string,
@@ -282,23 +324,37 @@ export function importYnabApi(
     const json = JSON.stringify(raw, null, 1);
     const file = await storeRaw(ctx, "ynab", `api-${raw.planId}-${raw.fetchedAt.slice(0, 10)}.json`, json);
     const dataset = normaliseApiExport(raw);
-    return importDataset(ctx, actor, {
+    const result = await importDataset(ctx, actor, {
       runSource: "ynab-api",
       accountSource: "ynab",
       file,
       dataset,
       options: opts,
-      inputs: { planId: opts.planId ?? "last-used", defaultEntity: opts.defaultEntity, accounts: opts.accounts, file },
+      inputs: { planId: opts.planId ?? "last-used", defaultEntity: opts.defaultEntity, accounts: opts.accounts, includeBudgets: opts.includeBudgets, file },
     });
+    if (opts.includeBudgets) {
+      const months = await new YnabApi(token, opts.api).fetchBudgetMonths(opts.planId ?? "last-used");
+      await storeRaw(ctx, "ynab", `api-${raw.planId}-${raw.fetchedAt.slice(0, 10)}-months.json`, JSON.stringify(months, null, 1));
+      result.budgets = await importYnabBudgets(ctx, actor, opts.defaultEntity ?? "personal", normaliseBudgetMonths(months));
+    }
+    return result;
   });
 }
 
 export function importYnabCsv(
   ctx: ServiceContext,
   actor: string,
-  input: { filename: string; content: string; dateFormat?: DateFormat } & YnabImportOptions,
+  input: { filename: string; content: string; dateFormat?: DateFormat; plan?: { filename: string; content: string } } & YnabImportOptions,
 ): Promise<ImportResult> {
   return serial(async () => {
+    let planAmounts: ReturnType<typeof parseYnabPlanCsv> | null = null;
+    if (input.plan) {
+      try {
+        planAmounts = parseYnabPlanCsv(input.plan.content);
+      } catch (e) {
+        throw new ServiceError(`could not parse YNAB plan CSV: ${e instanceof Error ? e.message : String(e)}`, 422);
+      }
+    }
     let dataset: YnabDataset;
     try {
       dataset = parseYnabRegisterCsv(input.content, input.dateFormat ? { dateFormat: input.dateFormat } : {});
@@ -306,14 +362,19 @@ export function importYnabCsv(
       throw new ServiceError(`could not parse YNAB CSV: ${e instanceof Error ? e.message : String(e)}`, 422);
     }
     const file = await storeRaw(ctx, "ynab", slugify(input.filename.replace(/\.csv$/i, ""), "register") + ".csv", input.content);
-    return importDataset(ctx, actor, {
+    const result = await importDataset(ctx, actor, {
       runSource: "ynab-csv",
       accountSource: "ynab-csv",
       file,
       dataset,
       options: input,
-      inputs: { filename: input.filename, dateFormat: input.dateFormat, defaultEntity: input.defaultEntity, accounts: input.accounts, file },
+      inputs: { filename: input.filename, dateFormat: input.dateFormat, defaultEntity: input.defaultEntity, accounts: input.accounts, plan: input.plan?.filename, file },
     });
+    if (input.plan && planAmounts) {
+      await storeRaw(ctx, "ynab", slugify(input.plan.filename.replace(/\.csv$/i, ""), "plan") + ".csv", input.plan.content);
+      result.budgets = await importYnabBudgets(ctx, actor, input.defaultEntity ?? "personal", planAmounts);
+    }
+    return result;
   });
 }
 

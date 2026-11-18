@@ -111,10 +111,15 @@ describe("convert", () => {
     expect(t.postings[1]!.tags).toEqual({ orig_category: "Immediate Obligations: Groceries" });
   });
 
-  test("inter-entity transfer carries posting-level entity", () => {
+  test("inter-entity transfer goes through due-to / due-from with posting-level entities", () => {
     const t = byId("t12a")!.txn;
     expect(t.tags["entity"]).toBe("acme");
-    expect(t.postings[1]).toMatchObject({ account: "Assets:Checking:Checking", tags: { entity: "personal" } });
+    expect(t.postings.map((p) => [p.account, toCents(p.amount), p.tags?.["entity"]])).toEqual([
+      ["Assets:Checking:AcmeChecking", -100000, undefined],
+      ["Assets:DueFrom:Personal", 100000, "acme"],
+      ["Assets:Checking:Checking", 100000, "personal"],
+      ["Liabilities:DueTo:Acme", -100000, "personal"],
+    ]);
   });
 
   test("special categories", () => {

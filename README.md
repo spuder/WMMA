@@ -10,6 +10,7 @@ See [SPEC.md](SPEC.md) for the full design and milestones.
 
 - **M1 skeleton:** Bun/TypeScript service, `Money` module, journal writer, Tailscale identity auth, hledger-web (read-only, localhost), Docker image and Compose file.
 - **M2 YNAB import:** API and register-CSV importers. Re-running adds nothing; the result reports per-account balances against YNAB.
+- **M5 entities, budgets, transfers, assets, REI Hub:** tax-form category templates per entity, archive with history kept, budgets with rollover, inter-entity transfers via due-to/due-from, asset valuations, REI Hub CSV, YNAB past budgets; P&L and budget reports.
 - **M4 categorization:** rules → Jev (applied at ≥ 0.90 confidence) → review queue; 3 accepts of a payee create a rule. Runs after every import.
 - **M3 bank imports:** QFX/OFX, generic CSV (per-bank column profiles), SimpleFIN (daily + on demand). Overlapping imports from different sources merge instead of duplicating.
 
@@ -54,6 +55,22 @@ wmma duplicate <id> merge --wmma-id <ID>   # or: import | discard
 ```
 
 Profile fields: `columns.{date,payee,memo,amount | debit+credit,id}`, `dateFormat`, `invertAmount`, `delimiter`, `skipRows`.
+
+## Entities, budgets, transfers, assets
+
+```sh
+wmma entity add "Acme LLC" schedule_c          # personal | schedule_c | s_corp_1120s | partnership_1065 | schedule_e
+wmma entity archive acme-llc 2026-12-31          # closes its accounts; history stays in reports
+wmma budget set household Expenses:Food:Groceries 2026-03 400.00
+wmma report budget --entity household --month 2026-03
+wmma report pnl --entity acme-llc --from 2026-01-01 --to 2026-12-31
+wmma transfer acme-checking personal-checking 1000.00 2026-03-15 owner draw
+wmma valuation house 2026-06-30 410000.00
+wmma import reihub /data/reihub.csv --account rental-checking
+wmma import ynab-api --include-budgets           # or: import ynab-csv register.csv --plan-file plan.csv
+```
+
+REST: `GET|POST /entities`, `PATCH /entities/:slug`, `POST /accounts`, `PATCH /accounts/:slug`, `GET|PUT /budgets`, `POST /transfers`, `POST /valuations`, `GET /reports/pnl`, `GET /reports/budget`; REI Hub via `POST /imports` with `type=reihub` (options: `account`, `accountMap`, `properties`, `defaultEntity`, `columns`, `invertAmount`).
 
 ## Categorization
 

@@ -9,8 +9,8 @@ import { parseAllowedUsers } from "./config";
 const USAGE = `usage:
   wmma serve
   wmma healthcheck
-  wmma import ynab-api  [--plan ID] [options]
-  wmma import ynab-csv  <register.csv> [--date-format MM/DD/YYYY|DD/MM/YYYY|YYYY-MM-DD] [options]
+  wmma import ynab-api  [--plan ID] [--include-budgets] [options]
+  wmma import ynab-csv  <register.csv> [--plan-file plan.csv] [--date-format ...] [options]
   wmma import qfx       <file.qfx> [--account SLUG] [options]
   wmma import csv       <file.csv> --profile NAME --account SLUG
   wmma sync simplefin   [--start-date YYYY-MM-DD] [options]
@@ -18,6 +18,15 @@ const USAGE = `usage:
   wmma csv-profiles
   wmma duplicates
   wmma duplicate <id> import|discard|merge [--wmma-id ID]
+  wmma import reihub    <file.csv> [--account SLUG] [--default-entity SLUG]
+  wmma entities
+  wmma entity add <name> <type>        type: personal schedule_c s_corp_1120s partnership_1065 schedule_e
+  wmma entity archive <slug> <YYYY-MM-DD>
+  wmma budget set <entity> <Expenses:...> <YYYY-MM> <amount>
+  wmma transfer <from-slug> <to-slug> <amount> <YYYY-MM-DD> [memo]
+  wmma valuation <account-slug> <YYYY-MM-DD> <value>
+  wmma report pnl [--entity SLUG] --from YYYY-MM-DD --to YYYY-MM-DD
+  wmma report budget --entity SLUG --month YYYY-MM
   wmma import-runs
   wmma accounts
 
@@ -55,6 +64,12 @@ export async function runCli(cmd: string, argv: string[]): Promise<number> {
         profile: { type: "string" },
         "start-date": { type: "string" },
         "wmma-id": { type: "string" },
+        "include-budgets": { type: "boolean" },
+        "plan-file": { type: "string" },
+        entity: { type: "string" },
+        from: { type: "string" },
+        to: { type: "string" },
+        month: { type: "string" },
         help: { type: "boolean", short: "h" },
       },
     });
@@ -72,6 +87,7 @@ export async function runCli(cmd: string, argv: string[]): Promise<number> {
       ...(values["date-format"] ? { dateFormat: values["date-format"] } : {}),
       ...(values.profile ? { profile: values.profile } : {}),
       ...(values["start-date"] ? { startDate: values["start-date"] } : {}),
+      ...(values["include-budgets"] ? { includeBudgets: true } : {}),
     };
     const single = values.account?.length === 1 && !values.account[0]!.includes("=") ? values.account[0] : undefined;
     const withAccounts = single
@@ -82,13 +98,14 @@ export async function runCli(cmd: string, argv: string[]): Promise<number> {
     const sub = cmd === "import" ? positionals.shift() : undefined;
     if (cmd === "import" && sub === "ynab-api") {
       res = await fetch(`${base}/imports/ynab-api`, { method: "POST", headers, body: JSON.stringify(withAccounts) });
-    } else if (cmd === "import" && (sub === "ynab-csv" || sub === "qfx" || sub === "csv")) {
+    } else if (cmd === "import" && (sub === "ynab-csv" || sub === "qfx" || sub === "csv" || sub === "reihub")) {
       const path = positionals.shift();
       if (!path) throw new Error("missing file path");
       const form = new FormData();
       form.set("type", sub);
       form.set("file", Bun.file(path), path.split("/").pop());
       form.set("options", JSON.stringify(withAccounts));
+      if (values["plan-file"]) form.set("plan", Bun.file(values["plan-file"]), values["plan-file"].split("/").pop());
       res = await fetch(`${base}/imports`, { method: "POST", headers, body: form });
     } else if (cmd === "sync" && positionals[0] === "simplefin") {
       res = await fetch(`${base}/sync/simplefin`, { method: "POST", headers, body: JSON.stringify(withAccounts) });
@@ -101,6 +118,26 @@ export async function runCli(cmd: string, argv: string[]): Promise<number> {
     } else if (cmd === "duplicate" && positionals[0] && positionals[1]) {
       const body = { action: positionals[1], ...(values["wmma-id"] ? { wmmaId: values["wmma-id"] } : {}) };
       res = await fetch(`${base}/duplicates/${encodeURIComponent(positionals[0])}`, { method: "POST", headers, body: JSON.stringify(body) });
+    } else if (cmd === "entities") {
+      res = await fetch(`${base}/entities?status=all`, { headers });
+    } else if (cmd === "entity" && positionals[0] === "add" && positionals[1] && positionals[2]) {
+      res = await fetch(`${base}/entities`, { method: "POST", headers, body: JSON.stringify({ name: positionals[1], type: positionals[2] }) });
+    } else if (cmd === "entity" && positionals[0] === "archive" && positionals[1] && positionals[2]) {
+      res = await fetch(`${base}/entities/${encodeURIComponent(positionals[1])}`, { method: "PATCH", headers, body: JSON.stringify({ archive: { date: positionals[2] } }) });
+    } else if (cmd === "budget" && positionals[0] === "set" && positionals.length === 5) {
+      const [, entity, account, month, amount] = positionals;
+      res = await fetch(`${base}/budgets`, { method: "PUT", headers, body: JSON.stringify([{ entity, account, month, amount }]) });
+    } else if (cmd === "transfer" && positionals.length >= 4) {
+      const [from, to, amount, date, ...memo] = positionals;
+      res = await fetch(`${base}/transfers`, { method: "POST", headers, body: JSON.stringify({ from, to, amount, date, memo: memo.join(" ") }) });
+    } else if (cmd === "valuation" && positionals.length === 3) {
+      const [account, date, value] = positionals;
+      res = await fetch(`${base}/valuations`, { method: "POST", headers, body: JSON.stringify({ account, date, value }) });
+    } else if (cmd === "report" && positionals[0] === "pnl") {
+      const q = new URLSearchParams({ from: values.from ?? "", to: values.to ?? "", ...(values.entity ? { entity: values.entity } : {}) });
+      res = await fetch(`${base}/reports/pnl?${q}`, { headers });
+    } else if (cmd === "report" && positionals[0] === "budget") {
+      res = await fetch(`${base}/reports/budget?${new URLSearchParams({ entity: values.entity ?? "", month: values.month ?? "" })}`, { headers });
     } else if (cmd === "import-runs") {
       res = await fetch(`${base}/import-runs`, { headers });
     } else if (cmd === "accounts") {

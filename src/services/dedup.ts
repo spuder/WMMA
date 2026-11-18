@@ -14,7 +14,7 @@ import type { Money } from "../money";
 
 export const DEDUP_WINDOW_DAYS = 3;
 
-export const PRECEDENCE: Readonly<Record<string, number>> = { simplefin: 3, qfx: 2, csv: 1, ynab: 0 };
+export const PRECEDENCE: Readonly<Record<string, number>> = { simplefin: 3, qfx: 2, csv: 1, reihub: 1, ynab: 0 };
 const rank = (source: string) => PRECEDENCE[source] ?? -1;
 
 export interface SourceRef {

@@ -12,6 +12,9 @@ import { ulid } from "../ulid";
 import { safeId, type BankAccountData, type BankRecord } from "../importers/bank";
 import { parseBankCsv, validateProfile, CsvProfileError, type CsvProfile } from "../importers/bankcsv";
 import { OfxError, parseOfx } from "../importers/ofx";
+import { defaultReiHubAccount, parseReiHubCsv, type ReiHubColumns, type ReiHubRecord } from "../importers/reihub/csv";
+import type { DateFormat } from "../importers/ynab/csv";
+import { addEntity } from "./entities";
 import { fetchAccounts, normaliseSimplefin, simplefinErrors } from "../importers/simplefin";
 import {
   balancesFrom,
@@ -19,6 +22,7 @@ import {
   ensureEntity,
   findAccountBySource,
   getAccount,
+  getEntity,
   linkAccountSource,
   type AccountRow,
 } from "./accounts";
@@ -27,7 +31,7 @@ import { allRefs, applyMatch, parseAltIds, planMatches, refKey, type ExistingEnt
 import { runCategorization, serial, storeRaw } from "./imports";
 import type { CategorizeSummary } from "./categorize";
 
-export type BankSource = "qfx" | "csv" | "simplefin";
+export type BankSource = "qfx" | "csv" | "simplefin" | "reihub";
 
 export interface BankAccountAssignment {
   /** Link to this existing WMMA account instead of creating one. */
@@ -127,15 +131,23 @@ function toTransaction(rec: BankRecord, account: AccountRow, source: BankSource,
     payee,
     ...(note && note !== payee ? { note } : {}),
     status: "*",
-    tags: { wmma_id: ulid(), source, source_id: sourceId, entity: account.default_entity },
+    tags: {
+      wmma_id: ulid(),
+      source,
+      source_id: sourceId,
+      entity: rec.entity ?? account.default_entity,
+      ...(rec.origCategory ? { orig_category: cleanText(rec.origCategory) } : {}),
+      ...(rec.category ? { cat_by: "mapping" } : {}),
+      ...(rec.tags ?? {}),
+    },
     postings: [
       { account: account.hledger_account, amount: rec.amount },
-      { account: M.isNegative(rec.amount) ? UNCATEGORIZED_EXPENSE : UNCATEGORIZED_INCOME, amount: M.neg(rec.amount) },
+      { account: rec.category ?? (M.isNegative(rec.amount) ? UNCATEGORIZED_EXPENSE : UNCATEGORIZED_INCOME), amount: M.neg(rec.amount) },
     ],
   };
 }
 
-async function ingest(
+export async function ingest(
   ctx: ServiceContext,
   actor: string,
   p: { source: BankSource; file: string | null; datas: BankAccountData[]; options: BankImportOptions; inputs: unknown; upstreamErrors?: string[] },
@@ -170,7 +182,7 @@ async function ingest(
     const decisions = planMatches(incoming, entries, known);
 
     const fresh: Array<{ slug: string; txn: Transaction; sourceId: string }> = [];
-    const merges: Array<{ entry: ExistingEntry; update: { date?: string; setTags: Record<string, string> }; sourceId: string }> = [];
+    const merges: Array<{ entry: ExistingEntry; update: { date?: string; setTags: Record<string, string>; replaceAccount?: { from: string; to: string } }; sourceId: string }> = [];
     const review: Array<{ sourceId: string; account: AccountRow; rec: BankRecord; candidates: string[] }> = [];
     let skippedDuplicates = 0;
     decisions.forEach((d, n) => {
@@ -178,7 +190,25 @@ async function ingest(
       const account = inc.account;
       if (d.kind === "duplicate") skippedDuplicates++;
       else if (d.kind === "new") fresh.push({ slug: account.slug, txn: toTransaction(inc.rec, account, p.source, inc.sourceId), sourceId: inc.sourceId });
-      else if (d.kind === "match") merges.push({ entry: d.entry, update: d.update, sourceId: inc.sourceId });
+      else if (d.kind === "match") {
+        // A categorised record (REI Hub) also categorises an uncategorised match.
+        const uncat = inc.rec.category ? d.entry.postings.find((x) => x.account === UNCATEGORIZED_EXPENSE || x.account === UNCATEGORIZED_INCOME) : undefined;
+        const update = uncat
+          ? {
+              ...d.update,
+              setTags: {
+                ...d.update.setTags,
+                cat_by: "mapping",
+                ...(inc.rec.origCategory ? { orig_category: cleanText(inc.rec.origCategory) } : {}),
+                ...(inc.rec.entity ? { entity: inc.rec.entity } : {}),
+                ...(inc.rec.tags ?? {}),
+              },
+              replaceAccount: { from: uncat.account, to: inc.rec.category! },
+            }
+          : d.update;
+        if (uncat) uncat.account = inc.rec.category!;
+        merges.push({ entry: d.entry, update, sourceId: inc.sourceId });
+      }
       else review.push({ sourceId: inc.sourceId, account, rec: inc.rec, candidates: d.candidates.map((c) => c.wmmaId) });
     });
 
@@ -186,12 +216,13 @@ async function ingest(
 
     const used = new Set<string>(resolved.map((r) => r.account.hledger_account));
     for (const f of fresh) for (const pst of f.txn.postings) used.add(pst.account);
+    for (const m of merges) if (m.update.replaceAccount) used.add(m.update.replaceAccount.to);
     await ctx.store.declareAccounts([...used].sort().map((name) => ({ name, type: accountType(name) })));
 
     const bySlug = new Map<string, Transaction[]>();
     for (const f of fresh) bySlug.set(f.slug, [...(bySlug.get(f.slug) ?? []), f.txn]);
     for (const [slug, list] of bySlug) await ctx.store.appendTransactions(slug, list);
-    for (const m of merges) await ctx.store.updateTransactionHeader(m.entry.file, m.entry.wmmaId, m.update);
+    for (const m of merges) await ctx.store.updateTransaction(m.entry.file, m.entry.wmmaId, m.update);
 
     const insertReview = ctx.db.query(
       "INSERT OR IGNORE INTO duplicate_candidates (id, run_id, source, source_id, account_slug, record, candidates, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -424,3 +455,95 @@ export async function resolveDuplicate(
 }
 
 export { OfxError };
+
+// ---- REI Hub ------------------------------------------------------------
+
+export interface ReiHubImportInput {
+  filename: string;
+  content: string;
+  /** WMMA account for rows with no (or an unknown) account column. */
+  account?: string;
+  /** REI Hub account name -> WMMA account slug. */
+  accountMap?: Record<string, string>;
+  /** Property name -> entity slug; others use defaultEntity. */
+  properties?: Record<string, string>;
+  /** Entity for rental activity (created as schedule_e if missing). Default "rentals". */
+  defaultEntity?: string;
+  columns?: Partial<ReiHubColumns>;
+  dateFormat?: DateFormat;
+  invertAmount?: boolean;
+}
+
+export function importReiHub(ctx: ServiceContext, actor: string, input: ReiHubImportInput): Promise<BankImportResult> {
+  return serial(async () => {
+    let rows: ReiHubRecord[];
+    try {
+      rows = parseReiHubCsv(input.content, {
+        ...(input.columns ? { columns: input.columns } : {}),
+        ...(input.dateFormat ? { dateFormat: input.dateFormat } : {}),
+        ...(input.invertAmount ? { invertAmount: true } : {}),
+      });
+    } catch (e) {
+      throw new ServiceError(`could not parse REI Hub CSV: ${e instanceof Error ? e.message : String(e)}`, 422);
+    }
+    const defaultEntity = input.defaultEntity ?? "rentals";
+    const entities = new Set([defaultEntity, ...Object.values(input.properties ?? {})]);
+    for (const e of entities) if (!getEntity(ctx, e)) await addEntity(ctx, actor, { name: e, type: "schedule_e", slug: e });
+
+    // Resolve each row's WMMA account.
+    const resolveAccount = (name: string | null): AccountRow => {
+      const slug =
+        (name && input.accountMap?.[name]) ??
+        (name ? (findAccountBySource(ctx, "reihub", name)?.slug ?? (ctx.db.query("SELECT slug FROM accounts WHERE name = ?").get(name) as { slug: string } | null)?.slug) : undefined) ??
+        input.account;
+      if (!slug) throw new ServiceError(`no WMMA account for REI Hub account ${JSON.stringify(name ?? "(none)")}; pass account or accountMap`, 422);
+      const a = getAccount(ctx, slug);
+      if (!a) throw new ServiceError(`unknown account ${JSON.stringify(slug)}`, 404);
+      if (name) linkAccountSource(ctx, "reihub", name, a.slug);
+      return a;
+    };
+
+    const mappingQuery = ctx.db.query("SELECT target_account FROM mappings WHERE source = 'reihub' AND source_category = ?");
+    const insertMapping = ctx.db.query("INSERT OR IGNORE INTO mappings (source, source_category, target_account) VALUES ('reihub', ?, ?)");
+    const byAccount = new Map<string, { account: AccountRow; records: BankRecord[] }>();
+    for (const r of rows) {
+      const account = resolveAccount(r.account);
+      const label = cleanText(r.category);
+      let target = (mappingQuery.get(label) as { target_account: string } | null)?.target_account;
+      if (!target) {
+        target = defaultReiHubAccount(r.category, !M.isNegative(r.amount));
+        insertMapping.run(label, target);
+      }
+      const entity = (r.property && input.properties?.[r.property]) || defaultEntity;
+      const rec: BankRecord = {
+        externalId: r.externalId,
+        date: r.date,
+        amount: r.amount,
+        payee: r.payee,
+        memo: r.memo,
+        category: target,
+        origCategory: r.category,
+        entity,
+        ...(r.property ? { tags: { property: cleanText(r.property).replace(/:/g, " ") } } : {}),
+      };
+      const bucket = byAccount.get(account.slug) ?? { account, records: [] };
+      bucket.records.push(rec);
+      byAccount.set(account.slug, bucket);
+    }
+    const file = await storeRaw(ctx, "reihub", input.filename, input.content);
+    const datas: BankAccountData[] = [...byAccount.values()].map(({ account, records }) => ({
+      externalKey: `account:${account.slug}`,
+      name: account.name,
+      kindHint: null,
+      balance: null,
+      records,
+    }));
+    return ingest(ctx, actor, {
+      source: "reihub",
+      file,
+      datas,
+      options: { accounts: Object.fromEntries(datas.map((d) => [d.externalKey, { slug: d.externalKey.slice("account:".length) }])) },
+      inputs: { filename: input.filename, account: input.account, accountMap: input.accountMap, properties: input.properties, defaultEntity, file },
+    });
+  });
+}

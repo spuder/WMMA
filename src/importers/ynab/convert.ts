@@ -19,6 +19,7 @@ import {
   UNREALIZED,
 } from "../../naming";
 import type { AccountKind } from "../../db";
+import { transferPostings } from "../../journal/transfers";
 import { categoryLabel, isReadyToAssign, isUncategorized, type YnabCategory, type YnabDataset, type YnabLine, type YnabTransaction } from "./model";
 
 export interface ResolvedAccount {
@@ -118,8 +119,17 @@ export function convert(ds: YnabDataset, ctx: ConvertContext): ConvertResult {
       if (line.transferAccountKey) {
         const other = account(line.transferAccountKey);
         const splitToSplit = t.subs.length > 0 && line.transferPeerKey !== null && subKeys.has(line.transferPeerKey);
+        if (!splitToSplit && other.entity !== owner.entity) {
+          // Between entities: route through due-to / due-from so neither P&L sees it.
+          // The owner's own posting is added below (as the line total), so drop it here.
+          const me = { hledgerAccount: owner.hledgerAccount, entity: owner.entity };
+          const them = { hledgerAccount: other.hledgerAccount, entity: other.entity };
+          const outflow = M.isNegative(line.amount);
+          const legs = outflow ? transferPostings(me, them, M.neg(line.amount)) : transferPostings(them, me, line.amount);
+          postings.push(...legs.filter((p) => p.account !== owner.hledgerAccount));
+          continue;
+        }
         target = splitToSplit ? TRANSFER_CLEARING : other.hledgerAccount;
-        if (!splitToSplit && other.entity !== owner.entity) tags["entity"] = other.entity;
       } else {
         const ct = categoryTarget(line, owner, t);
         target = ct.account;

@@ -31,7 +31,7 @@ export class JournalFormatError extends Error {
 }
 
 /** Known WMMA tags are written first, in this order; others follow alphabetically. */
-export const TAG_ORDER = ["wmma_id", "source", "source_id", "entity", "orig_category", "cat_by", "jev_conf"] as const;
+export const TAG_ORDER = ["type", "wmma_id", "source", "source_id", "entity", "orig_category", "cat_by", "jev_conf"] as const;
 
 const TAG_NAME_RE = /^[A-Za-z][A-Za-z0-9_-]*$/;
 const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;

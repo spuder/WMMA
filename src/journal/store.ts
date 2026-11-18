@@ -5,6 +5,7 @@
  */
 import { mkdir, open, readdir, readFile, rename, rm, stat } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
+import { parseBudgets, renderBudgets, validateChange, type BudgetChange } from "./budgets";
 import { formatAccountDirective, formatTags, formatTransaction, parseTagComment, validateAccount, validateDate, validateTags, type AccountType, type Tags, type Transaction } from "./format";
 
 export const IMPORT_SOURCES = ["ynab", "qfx", "csv", "simplefin", "reihub"] as const;
@@ -199,28 +200,58 @@ export class JournalStore {
     return (await this.declareAccounts([{ name, ...opts }])) === 1;
   }
 
-  /** Declare several accounts in one write. Returns how many were newly declared. */
+  async readBudgets(): Promise<BudgetChange[]> {
+    return parseBudgets(await readOrEmpty(this.paths.budgets));
+  }
+
+  /** Read-modify-write budgets.journal under the write lock. */
+  async updateBudgets(fn: (changes: BudgetChange[]) => BudgetChange[]): Promise<BudgetChange[]> {
+    return this.#serial(async () => {
+      const next = fn(parseBudgets(await readOrEmpty(this.paths.budgets)));
+      for (const c of next) validateChange(c);
+      const text = renderBudgets(next, HEADER);
+      await atomicWrite(this.paths.budgets, text);
+      return parseBudgets(text);
+    });
+  }
+
+  /**
+   * Declare several accounts in one write. Tags on an already-declared
+   * account are merged into its directive. Returns how many were newly declared.
+   */
   async declareAccounts(list: ReadonlyArray<{ name: string; type?: AccountType; tags?: Tags }>): Promise<number> {
-    const lines = list.map((a) => ({ name: a.name, line: formatAccountDirective(a.name, a) }));
+    for (const a of list) formatAccountDirective(a.name, a); // validate up front
     return this.#serial(async () => {
       const existing = await readOrEmpty(this.paths.accounts);
-      const declared = new Set<string>();
-      for (const l of existing.split("\n")) {
+      const lines = existing === "" ? [HEADER.trimEnd()] : existing.replace(/\n$/, "").split("\n");
+      const index = new Map<string, number>();
+      lines.forEach((l, i) => {
         const m = /^account (.+?)(?: {2}.*)?$/.exec(l);
-        if (m) declared.add(m[1]!);
+        if (m) index.set(m[1]!, i);
+      });
+      let added = 0;
+      let changed = false;
+      for (const a of list) {
+        const i = index.get(a.name);
+        if (i === undefined) {
+          index.set(a.name, lines.length);
+          lines.push(formatAccountDirective(a.name, a).trimEnd());
+          added++;
+          changed = true;
+          continue;
+        }
+        if (!a.tags || Object.keys(a.tags).length === 0) continue;
+        const line = lines[i]!;
+        const semi = line.indexOf("  ; ");
+        const current = parseTagComment(semi < 0 ? "" : line.slice(semi + 4));
+        const merged = { ...current, ...a.tags };
+        if (Object.entries(a.tags).every(([k, v]) => current[k] === v)) continue;
+        const { type, ...rest } = merged;
+        lines[i] = formatAccountDirective(a.name, { ...(type ? { type: type as AccountType } : {}), tags: rest }).trimEnd();
+        changed = true;
       }
-      let out = "";
-      let n = 0;
-      for (const { name, line } of lines) {
-        if (declared.has(name)) continue;
-        declared.add(name);
-        out += line;
-        n++;
-      }
-      if (n === 0) return 0;
-      const base = existing === "" ? HEADER : existing.endsWith("\n") ? existing : existing + "\n";
-      await atomicWrite(this.paths.accounts, base + out);
-      return n;
+      if (changed) await atomicWrite(this.paths.accounts, lines.join("\n") + "\n");
+      return added;
     });
   }
 }

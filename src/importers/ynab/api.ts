@@ -47,6 +47,32 @@ interface RawTransaction extends RawSub {
   subtransactions?: RawSub[];
 }
 
+export interface RawBudgetMonth {
+  month: string;
+  deleted?: boolean;
+  categories: Array<{ name: string; category_group_name?: string; budgeted: number; deleted?: boolean; hidden?: boolean }>;
+}
+
+export interface YnabBudgetAmount {
+  /** YYYY-MM */
+  month: string;
+  group: string;
+  name: string;
+  amount: M.Money;
+}
+
+export function normaliseBudgetMonths(months: RawBudgetMonth[]): YnabBudgetAmount[] {
+  const out: YnabBudgetAmount[] = [];
+  for (const m of months) {
+    if (m.deleted) continue;
+    for (const c of m.categories) {
+      if (c.deleted || !c.category_group_name) continue;
+      out.push({ month: m.month.slice(0, 7), group: c.category_group_name, name: c.name, amount: M.fromMilliunits(c.budgeted) });
+    }
+  }
+  return out;
+}
+
 export class YnabApiError extends Error {
   override name = "YnabApiError";
   constructor(
@@ -90,6 +116,12 @@ export class YnabApi {
       throw new YnabApiError(`YNAB API ${path.split("?")[0]}: HTTP ${res.status}${detail ? ` (${detail})` : ""}`, res.status);
     }
     return ((await res.json()) as { data: T }).data;
+  }
+
+  /** Monthly budgeted amounts per category, from the full plan export. */
+  async fetchBudgetMonths(planId = "last-used"): Promise<RawBudgetMonth[]> {
+    const data = await this.#get<{ plan: { months?: RawBudgetMonth[] } }>(`/plans/${encodeURIComponent(planId)}`);
+    return data.plan.months ?? [];
   }
 
   async fetchPlan(planId = "last-used"): Promise<YnabRawExport> {

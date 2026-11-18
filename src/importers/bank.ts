@@ -11,6 +11,14 @@ export interface BankRecord {
   amount: Money;
   payee: string;
   memo: string | null;
+  /** Category account, when the source supplies one (REI Hub). */
+  category?: string;
+  /** Source category, verbatim (tag `orig_category`). */
+  origCategory?: string;
+  /** Entity override for this record (e.g. by rental property). */
+  entity?: string;
+  /** Extra transaction tags (e.g. `property`). */
+  tags?: Record<string, string>;
 }
 
 export interface BankAccountData {
