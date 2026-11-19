@@ -8,7 +8,8 @@ RUN bun install --frozen-lockfile
 COPY tsconfig.json ./
 COPY src ./src
 COPY ui ./ui
-RUN bun build src/main.ts --compile --minify --sourcemap=none --target=bun-linux-x64 --outfile /out/wmma
+ARG WMMA_COMMIT=""
+RUN bun build src/main.ts --define "WMMA_COMMIT=\"${WMMA_COMMIT}\"" --compile --minify --sourcemap=none --target=bun-linux-x64 --outfile /out/wmma
 
 FROM --platform=linux/amd64 debian:trixie-slim AS hledger
 ARG HLEDGER_VERSION=1.52.4

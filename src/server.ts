@@ -30,6 +30,7 @@ import { cashflow, categories, netWorth, spending, trend } from "./services/repo
 import { accountHistory, assignRecurring, businesses, overview, recurring, series, statement } from "./services/insights";
 import { getSettings, putSettings } from "./services/settings";
 import { logoCoverage, logoImage, payeeLogosWithStatus, prefetchLogos, retryLogo, setPayeeLogo } from "./services/logos";
+import { buildCommit } from "./build-info";
 import { getTransaction, listMappings, patchTransaction, searchTransactions, splitTransaction, updateMapping } from "./services/transactions";
 import { ACCOUNT_KINDS as KINDS, ENTITY_TYPES, type EntityType } from "./db";
 
@@ -153,7 +154,7 @@ const routes: Record<string, Handler> = {
     } catch {
       // reported as null
     }
-    return Response.json({ user: identity.login, name: identity.name, hledgerWeb: hledgerVersion, timezone: config.tz });
+    return Response.json({ user: identity.login, name: identity.name, hledgerWeb: hledgerVersion, timezone: config.tz, commit: buildCommit });
   },
 
   "GET /api/v1/accounts": async (_req, _id, ctx) => Response.json({ accounts: await listAccountsWithBalances(ctx) }),

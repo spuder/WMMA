@@ -9,7 +9,7 @@
     "start": "bun src/main.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "build": "bun build src/main.ts --compile --minify --sourcemap=none --outfile dist/wmma",
+    "build": "bun build src/main.ts --define \"WMMA_COMMIT=\\\"$(git rev-parse HEAD)\\\"\" --compile --minify --sourcemap=none --outfile dist/wmma",
     "dev:proxy": "bun scripts/dev-proxy.ts",
     "demo:seed": "bun scripts/demo-seed.ts"
   },

@@ -182,6 +182,16 @@ export function Settings() {
             <span>{me.data?.timezone ?? "…"}</span>
           </div>
           <div class="spread small">
+            <span class="muted">Version</span>
+            {me.data?.commit ? (
+              <a href={`https://github.com/spuder/WMMA/commit/${me.data.commit}`} target="_blank" rel="noopener noreferrer" title={me.data.commit}>
+                <code class="small">{me.data.commit.slice(0, 7)}</code>
+              </a>
+            ) : (
+              <span class="muted">{me.data ? "unknown" : "…"}</span>
+            )}
+          </div>
+          <div class="spread small">
             <span class="muted">AI access</span>
             <code class="small">claude mcp add --transport http wmma {location.origin}/mcp</code>
           </div>
