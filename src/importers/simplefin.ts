@@ -8,12 +8,12 @@ import type { BankAccountData } from "./bank";
 export interface SimplefinAccountSet {
   errlist?: Array<{ code: string; msg: string; account_id?: string }>;
   errors?: string[];
-  connections?: Array<{ conn_id: string; name: string }>;
+  connections?: Array<{ conn_id: string; name: string; org_url?: string }>;
   accounts: Array<{
     id: string;
     name: string;
     conn_id?: string;
-    org?: { name?: string; domain?: string };
+    org?: { name?: string; domain?: string; url?: string };
     currency: string;
     balance: string;
     "balance-date": number;
@@ -113,11 +113,23 @@ export function simplefinErrors(set: SimplefinAccountSet): string[] {
   return [...(set.errlist ?? []).map((e) => `${e.code}: ${e.msg}`), ...(set.errors ?? [])];
 }
 
+/** "www.examplebank.com" or "https://www.examplebank.com/" -> "examplebank.com". */
+function institutionDomain(v: string | undefined): string | null {
+  if (!v) return null;
+  try {
+    const host = new URL(/^https?:\/\//i.test(v) ? v : `https://${v}`).hostname.toLowerCase().replace(/^www\./, "");
+    return /^([a-z0-9-]+\.)+[a-z]{2,}$/.test(host) && !/(^|\.)simplefin\.org$/.test(host) ? host : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Drop U+FFFD left by banks that send non-UTF-8 names (e.g. "Way2Save®" → "Way2Save��"). */
 const displayName = (s: string) => s.replace(/\uFFFD/g, "").replace(/\s+/g, " ").trim();
 
 export function normaliseSimplefin(set: SimplefinAccountSet, tz: string): BankAccountData[] {
   const connName = new Map((set.connections ?? []).map((c) => [c.conn_id, c.name]));
+  const connUrl = new Map((set.connections ?? []).map((c) => [c.conn_id, c.org_url]));
   return set.accounts
     .filter((a) => a.currency.toUpperCase() === "USD")
     .map((a) => {
@@ -126,6 +138,7 @@ export function normaliseSimplefin(set: SimplefinAccountSet, tz: string): BankAc
       return {
         externalKey: a.id,
         name: org && !name.toLowerCase().includes(org.toLowerCase()) ? `${displayName(org)} ${name}` : name,
+        domain: institutionDomain(a.org?.domain ?? a.org?.url ?? (a.conn_id ? connUrl.get(a.conn_id) : undefined)),
         kindHint: /credit|card|visa|mastercard|amex/i.test(a.name) ? "credit" : /brokerage|ira|401k|invest|roth/i.test(a.name) ? "investment" : null,
         balance: { amount: M.parse(a.balance), asOf: epochToDate(a["balance-date"], tz) },
         records: (a.transactions ?? [])

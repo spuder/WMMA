@@ -4,6 +4,7 @@ import type { Config } from "../config";
 import type { HledgerWebClient } from "../hledger/web";
 import type { JournalStore } from "../journal/store";
 import type { JevClient } from "../jev";
+import type { LogoFetcher } from "../logos/fetch";
 import type { SecretStore } from "../secrets";
 
 /** Everything the service layer needs. REST and MCP both call services with this. */
@@ -16,6 +17,8 @@ export interface ServiceContext {
   /** null/undefined when no Jev key is configured. */
   jev?: JevClient | null;
   secrets?: SecretStore;
+  /** Outbound fetch for merchant logos; tests replace it. Defaults to a public-hosts-only fetch. */
+  logoFetcher?: LogoFetcher;
 }
 
 export class ServiceError extends Error {

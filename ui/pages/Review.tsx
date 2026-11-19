@@ -7,7 +7,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { api, catLabel, dayLabel, leaf, money } from "../api";
-import { CategoryPicker, CatName, ErrorBox, Icon, Loading, Sheet, toast } from "../components/ui";
+import { Avatar, CategoryPicker, CatName, ErrorBox, Icon, Loading, Sheet, toast } from "../components/ui";
 import { businessStyle, EntitySwitcher, go, useApp } from "../app";
 
 interface Item {
@@ -493,7 +493,10 @@ function CardBody({
         {inflow ? "+" : ""}
         {money(item.amount_cents)}
       </div>
-      <div class="payee">{item.payee}</div>
+      <div class="payee review-payee">
+        <Avatar name={item.payee} />
+        <span>{item.payee}</span>
+      </div>
       <dl class="facts">
         <dt>Account</dt>
         <dd>{leaf(item.account)}</dd>

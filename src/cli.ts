@@ -29,6 +29,8 @@ const USAGE = `usage:
   wmma report budget --entity SLUG --month YYYY-MM
   wmma import-runs
   wmma accounts
+  wmma logos [fetch]                   logo coverage; fetch downloads missing logos
+  wmma logos import <file.json>        set logo websites: {"payees": {"<payee>": "<domain>"}, "accounts": {"<slug>": "<domain>"}}
 
 options:
   --default-entity SLUG          entity for new accounts (default: personal)
@@ -37,6 +39,28 @@ options:
                                  KIND: bank credit investment vehicle real_estate other_asset loan
   --user LOGIN                   act as this Tailscale user (default: first of WMMA_ALLOWED_USERS)
 `;
+
+/** Per-install logo websites (local shops, regional banks) go into the database, never into the code. */
+async function importLogos(base: string, headers: Record<string, string>, doc: unknown): Promise<number> {
+  const { payees = {}, accounts = {} } = (doc ?? {}) as { payees?: Record<string, unknown>; accounts?: Record<string, unknown> };
+  const failed: string[] = [];
+  let done = 0;
+  const send = async (label: string, url: string, method: string, body: unknown) => {
+    const r = await fetch(url, { method, headers, body: JSON.stringify(body) });
+    if (r.ok) done++;
+    else failed.push(`${label}: ${(await r.text()).slice(0, 200)}`);
+  };
+  for (const [payee, domain] of Object.entries(payees)) {
+    if (domain !== null && typeof domain !== "string") failed.push(`payee ${payee}: domain must be a string or null`);
+    else await send(`payee ${payee}`, `${base}/logos/payees/${encodeURIComponent(payee)}`, "PUT", { domain });
+  }
+  for (const [slug, domain] of Object.entries(accounts)) {
+    if (domain !== null && typeof domain !== "string") failed.push(`account ${slug}: domain must be a string or null`);
+    else await send(`account ${slug}`, `${base}/accounts/${encodeURIComponent(slug)}`, "PATCH", { logoDomain: domain });
+  }
+  console.log(JSON.stringify({ imported: done, failed }, null, 2));
+  return failed.length ? 1 : 0;
+}
 
 function accountsOption(values: string[] | undefined): Record<string, { kind?: string; entity?: string }> | undefined {
   if (!values?.length) return undefined;
@@ -142,6 +166,12 @@ export async function runCli(cmd: string, argv: string[]): Promise<number> {
       res = await fetch(`${base}/import-runs`, { headers });
     } else if (cmd === "accounts") {
       res = await fetch(`${base}/accounts`, { headers });
+    } else if (cmd === "logos" && positionals[0] === "import") {
+      const path = positionals[1];
+      if (!path) throw new Error("missing file path");
+      return await importLogos(base, headers, JSON.parse(await Bun.file(path).text()));
+    } else if (cmd === "logos") {
+      res = positionals[0] === "fetch" ? await fetch(`${base}/logos/prefetch`, { method: "POST", headers }) : await fetch(`${base}/logos/coverage`, { headers });
     } else {
       console.error(USAGE);
       return 2;

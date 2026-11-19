@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { api, catLabel, dayLabel, leaf, money } from "../api";
 import { Avatar, CategoryPicker, CatName, CellMenu, ErrorBox, Icon, Loading, MenuOption, Sheet, toast } from "../components/ui";
 import { businessStyle, EntitySwitcher, go, transactionEntity, useApp, type Entity } from "../app";
+import { loadLogos, retryLogo, usePayeeLogo } from "../logos";
 
 export interface Txn {
   wmma_id: string;
@@ -460,8 +461,16 @@ function TxnSheet({ id, account, onClose, onChanged }: { id: string; account: Ac
   const [mode, setMode] = useState<"view" | "split">("view");
   const [expanded, setExpanded] = useState<"category" | "business" | null>(null);
   const [memo, setMemo] = useState("");
+  const [logoOpen, setLogoOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Opening a transaction whose site had no logo is the one time we look again.
+  const logo = usePayeeLogo(t?.payee ?? null);
+  const missingDomain = logo && "domain" in logo && logo.missing ? logo.domain : null;
   useEffect(() => {
+    if (missingDomain) retryLogo(missingDomain).catch(() => {});
+  }, [id, missingDomain]);
+  useEffect(() => {
+    setLogoOpen(false);
     api<Txn>(`/transactions/${encodeURIComponent(id)}`)
       .then((found) => {
         setT(found);
@@ -493,7 +502,7 @@ function TxnSheet({ id, account, onClose, onChanged }: { id: string; account: Ac
       {t && s && mode === "view" && (
         <div class="stack">
           <div class="row">
-            <Avatar name={t.payee} />
+            <Avatar name={t.payee} onClick={() => setLogoOpen((o) => !o)} label={logoOpen ? "Hide logo options" : "Logo options"} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 700, fontSize: 17 }}>{t.payee}</div>
               <div class="muted small">
@@ -506,6 +515,7 @@ function TxnSheet({ id, account, onClose, onChanged }: { id: string; account: Ac
               {money(s.amount)}
             </div>
           </div>
+          {logoOpen && <LogoPanel payee={t.payee} />}
           {catPostings.length === 1 && (
             <button class={`card flat spread choice-row${expanded === "category" ? " open" : ""}`} onClick={() => setExpanded((current) => current === "category" ? null : "category")}>
               <span>
@@ -585,6 +595,70 @@ function TxnSheet({ id, account, onClose, onChanged }: { id: string; account: Ac
       )}
       {t && mode === "split" && catPostings[0] && <SplitForm t={t} from={catPostings[0]} onDone={(n) => (setT(n), onChanged(n), setMode("view"))} />}
     </Sheet>
+  );
+}
+
+/** Opened by tapping the logo: visit the payee's website, or pick which site its logo comes from. */
+function LogoPanel({ payee }: { payee: string }) {
+  const logo = usePayeeLogo(payee);
+  const site = logo && "domain" in logo ? logo : null;
+  return (
+    <div class="card flat stack logo-panel" style={{ gap: 10 }}>
+      {site ? (
+        <div class="row">
+          <Avatar name={payee} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div class="upper">Website</div>
+            <div class="domain">{site.domain}</div>
+            {site.missing && <div class="muted tiny">No logo found on this site</div>}
+          </div>
+          <a class="btn" href={`https://${site.domain}`} target="_blank" rel="noopener noreferrer">
+            Visit ↗
+          </a>
+        </div>
+      ) : (
+        <div class="muted small">{logo === undefined ? "Loading…" : `No website for “${payee}” yet. Add one below to show its logo.`}</div>
+      )}
+      <PayeeLogoField payee={payee} />
+    </div>
+  );
+}
+
+/** Pick the website whose logo shows for every transaction from this payee. */
+function PayeeLogoField({ payee }: { payee: string }) {
+  const logo = usePayeeLogo(payee);
+  const current = logo && "domain" in logo ? logo.domain : "";
+  const [draft, setDraft] = useState<string | null>(null);
+  const value = draft ?? current;
+  const save = async (body: { domain: string | null } | null, msg: string) => {
+    try {
+      await api(`/logos/payees/${encodeURIComponent(payee)}`, body ? { method: "PUT", body } : { method: "DELETE" });
+      await loadLogos(true);
+      setDraft(null);
+      toast(msg);
+    } catch (e) {
+      toast((e as Error).message);
+    }
+  };
+  return (
+    <div class="field">
+      <label>Logo website</label>
+      <div class="row">
+        <input class="input" value={value} onInput={(e) => setDraft((e.target as HTMLInputElement).value)} placeholder="example.com" inputMode="url" />
+        <button class="btn" disabled={!value.trim() || value.trim() === current} onClick={() => save({ domain: value.trim() }, "Logo updated")}>
+          Save
+        </button>
+      </div>
+      <div class="row" style={{ gap: 4 }}>
+        <button class="btn ghost" style={{ height: 30, padding: "0 8px" }} onClick={() => save({ domain: null }, "Showing initials")}>
+          Use initials
+        </button>
+        <button class="btn ghost" style={{ height: 30, padding: "0 8px" }} onClick={() => save(null, "Logo set automatically")}>
+          Automatic
+        </button>
+        <span class="muted tiny">Applies to every “{payee}” transaction.</span>
+      </div>
+    </div>
   );
 }
 

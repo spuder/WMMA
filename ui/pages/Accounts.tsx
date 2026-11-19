@@ -1,6 +1,6 @@
 import { useState } from "preact/hooks";
 import { api, money, today, useApi } from "../api";
-import { ErrorBox, Icon, Loading, Sheet, toast } from "../components/ui";
+import { Avatar, ErrorBox, Icon, Loading, Sheet, toast } from "../components/ui";
 import { BUSINESS_PALETTE, businessStyle, useApp } from "../app";
 
 const KIND_LABEL: Record<string, string> = {
@@ -240,6 +240,7 @@ export function Accounts() {
               <div class="list">
                 {xs.map((a) => (
                   <div class="item">
+                    <Avatar name={a.name} logo={a.logo ?? null} />
                     <div class="body">
                       <div class="title">
                         {a.name} {a.status === "closed" && <span class="pill zero">closed</span>}

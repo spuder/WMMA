@@ -2,6 +2,7 @@ import type { ComponentChildren } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { CATEGORY_GROUPS, catLabel, categoryMeta, hue, initials } from "../api";
 import { fuzzyMatch } from "../fuzzy";
+import { GLYPH_EMOJI, logoUrl, usePayeeLogo, type Logo } from "../logos";
 
 const P = { fill: "none", stroke: "currentColor", "stroke-width": 1.9, "stroke-linecap": "round", "stroke-linejoin": "round" } as const;
 export const Icon = {
@@ -38,12 +39,45 @@ export const Icon = {
   ),
 };
 
-export function Avatar({ name }: { name: string }) {
-  const h = hue(name);
+/**
+ * A payee's or account's logo, falling back to coloured initials. Without `logo`, the
+ * payee's logo is looked up by name; pass `logo` (or null) for accounts.
+ */
+export function Avatar({ name, logo, onClick, label }: { name: string; logo?: Logo; onClick?: () => void; label?: string }) {
+  const byPayee = usePayeeLogo(logo === undefined ? name : null);
+  const l = logo === undefined ? byPayee : logo;
+  // A site known to have no icon keeps its website but shows initials.
+  const domain = l && "domain" in l && !l.missing ? l.domain : null;
+  // Icons under 48px are shown at their own size rather than blown up and blurry.
+  const src = domain && l && "domain" in l ? logoUrl(domain, l.v) : null;
+  const [img, setImg] = useState<{ src: string; state: "ok" | "small" | "error" } | null>(null);
+  const state = img && img.src === src ? img.state : "loading";
+  // Clickable avatars are buttons; plain ones are decoration.
+  const Tag = onClick ? "button" : "div";
+  const a11y = onClick ? { type: "button" as const, onClick, "aria-label": label ?? name, title: label } : { "aria-hidden": true };
+  if (l && "glyph" in l && GLYPH_EMOJI[l.glyph]) {
+    return (
+      <Tag class={`avatar glyph${onClick ? " clickable" : ""}`} {...a11y}>
+        {GLYPH_EMOJI[l.glyph]}
+      </Tag>
+    );
+  }
+  const shown = src !== null && (state === "ok" || state === "small");
   return (
-    <div class="avatar hued" style={{ "--h": String(h) }} aria-hidden>
-      {initials(name)}
-    </div>
+    <Tag class={`${shown ? `avatar logo${state === "small" ? " small" : ""}` : "avatar hued"}${onClick ? " clickable" : ""}`} style={shown ? undefined : { "--h": String(hue(name)) }} {...a11y}>
+      {!shown && initials(name)}
+      {src && state !== "error" && (
+        <img
+          src={src}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          class={shown ? undefined : "pending"}
+          onLoad={(e) => setImg({ src, state: (e.currentTarget as HTMLImageElement).naturalWidth < 48 ? "small" : "ok" })}
+          onError={() => setImg({ src, state: "error" })}
+        />
+      )}
+    </Tag>
   );
 }
 

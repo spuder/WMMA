@@ -177,8 +177,8 @@ WMMA serves MCP (Streamable HTTP) at `/mcp`, behind the same Tailscale auth. Fro
 claude mcp add --transport http wmma https://wmma.<your-tailnet>.ts.net/mcp
 ```
 
-Read tools: `list_entities`, `list_accounts`, `search_transactions`, `get_pnl`, `get_cashflow`, `get_budget_vs_actual`, `get_net_worth`, `get_spending_by_category`, `get_review_queue`.
-Write tools: `categorize_transaction`, `set_entity`, `split_transaction`, `create_rule`, `update_mapping`, `set_budget`, `record_valuation`, `record_transfer`, `run_simplefin_sync`. Every call is recorded in `audit.log`.
+Read tools: `list_entities`, `list_accounts`, `search_transactions`, `get_pnl`, `get_cashflow`, `get_budget_vs_actual`, `get_net_worth`, `get_spending_by_category`, `get_review_queue`, `list_payees_missing_logos`.
+Write tools: `categorize_transaction`, `set_entity`, `split_transaction`, `create_rule`, `update_mapping`, `set_budget`, `record_valuation`, `record_transfer`, `run_simplefin_sync`, `set_payee_logo`, `fetch_logos`. Every call is recorded in `audit.log`.
 
 ## REST API (`/api/v1`)
 
@@ -193,6 +193,20 @@ Write tools: `categorize_transaction`, `set_entity`, `split_transaction`, `creat
 | Reports | `GET /reports/pnl`, `/reports/cashflow`, `/reports/budget`, `/reports/networth`, `/reports/spending`, `/reports/trend` |
 | Report pages | `GET /reports/overview?entity&from&to` (totals, categories, merchants, stats; all time without dates), `/reports/series?entity&from&to&interval&stack&top` (income/expenses per day/week/month/quarter/year), `/reports/balances?entity&from&to&interval` (account balances, flows and valuations over time), `/reports/recurring?entity`, `/reports/businesses?from&to`, `/reports/statement?entity&from&to&interval` (P&L with tax-form lines). Report endpoints also take `entities=slug,slug` to show only those businesses, `exclude=slug,slug` to leave businesses out, and `exclude_categories=Expenses:Taxes,...` to hide categories (with their subcategories) |
 | Settings | `GET/PUT /settings` (`settings: {"ui.*": ...}`, `jevApiKey`) |
+| Logos | `GET /logos` (payee → logo map), `GET /logos/coverage`, `POST /logos/prefetch`, `GET /logos/img/:domain`, `POST /logos/img/:domain/retry`, `PUT/DELETE /logos/payees/:payee` (`domain` or `glyph`; `PATCH /accounts/:slug` takes `logoDomain`) |
+
+## Merchant logos
+
+Transactions, the review card and accounts show the merchant's or bank's logo instead of initials. Each payee resolves to a website domain: a per-payee override (set from the transaction sheet, or by an AI client with `set_payee_logo`), then built-in hints for national brands in `src/logos/seed.ts`, then a payee that names its own `.com`, then the bank memo. Transfers, deposits, payroll, interest and similar get an emoji instead. Bank accounts use the institution domain SimpleFIN reports, or their name.
+
+Local shops and regional banks are per-install data, kept in your database rather than the code. Set them from the transaction sheet, or in bulk from a JSON file (keep it in the git-ignored `data/` directory):
+
+```sh
+wmma logos import data/logo-overrides.json
+# {"payees": {"Maple Street Bakery": "maplestreetbakery.com"}, "accounts": {"joint-checking": "examplecu.org"}}
+```
+
+The server fetches each domain's icon once from the site itself (its Apple touch icon first — the square app-style icon sites make for phone home screens — then `<link rel="icon">` and web manifest icons), falling back to Google's and DuckDuckGo's favicon services, and keeps it in SQLite indefinitely. A site with no logo is looked up again only when you open one of its transactions (at most every 10 minutes). The browser only loads `/api/v1/logos/img/<domain>`; only website names leave the server. Tap the logo in a transaction to visit the merchant's website or pick a different site. Settings → Merchant logos shows coverage and the most frequent payees without one, and can turn fetching off. `wmma logos` prints coverage; `wmma logos fetch` fetches anything missing (also done after each scheduled SimpleFIN sync that adds transactions).
 
 ## Categorization
 

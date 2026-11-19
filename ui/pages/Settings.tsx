@@ -2,6 +2,7 @@ import { useState } from "preact/hooks";
 import { api, store, useApi } from "../api";
 import { ErrorBox, Loading, Sheet, toast } from "../components/ui";
 import { useApp } from "../app";
+import { loadLogos } from "../logos";
 
 type SimplefinAccount = { id: string; name: string; kindHint: string | null; balance: string; asOf: string; linkedAccountSlug: string | null };
 type SimplefinMapping = { skip?: boolean; entity?: string; kind?: string; slug?: string | undefined };
@@ -205,6 +206,8 @@ export function Settings() {
           )}
         </div>
 
+        <LogosCard />
+
         <div class="card span-6 stack">
           <div>
             <h2>Appearance</h2>
@@ -260,6 +263,95 @@ const ACCOUNT_KINDS: Array<[string, string]> = [
   ["investment", "Investment"],
   ["loan", "Loan"],
 ];
+
+type LogoCoverage = {
+  transactions: { total: number; covered: number };
+  payees: { total: number; covered: number };
+  missing: Array<{ key: string; payee: string; count: number; domain: string | null; status: string }>;
+  fetchEnabled: boolean;
+};
+
+const pct = (c: { total: number; covered: number }) => (c.total ? Math.round((1000 * c.covered) / c.total) / 10 : 0);
+const MISSING_LABEL: Record<string, string> = { none: "no website known", not_found: "no logo found", pending: "not fetched yet" };
+
+function LogosCard() {
+  const cov = useApi<LogoCoverage>("/logos/coverage");
+  const [busy, setBusy] = useState(false);
+  const fetchNow = async () => {
+    setBusy(true);
+    try {
+      const r = await api<{ fetched: number; found: number }>("/logos/prefetch", { body: {} });
+      toast(r.fetched ? `Found ${r.found} of ${r.fetched} logos` : "All logos are up to date");
+      cov.reload();
+      void loadLogos(true);
+    } catch (e) {
+      toast((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const toggle = async () => {
+    try {
+      await api("/settings", { method: "PUT", body: { settings: { "ui.logos_fetch": cov.data?.fetchEnabled ? "off" : null } } });
+      cov.reload();
+    } catch (e) {
+      toast((e as Error).message);
+    }
+  };
+  const c = cov.data;
+  return (
+    <div class="card span-6 stack">
+      <div>
+        <h2>Merchant logos</h2>
+        <div class="sub">Fetched by this server from each merchant's own website (Google and DuckDuckGo icon services as fallbacks). Only website names are sent, never transactions.</div>
+      </div>
+      {cov.error && <ErrorBox error={cov.error} />}
+      {!c && !cov.error && <Loading h={80} />}
+      {c && (
+        <>
+          <div class="stack" style={{ gap: 6 }}>
+            <div class="spread small">
+              <span>Transactions with a logo</span>
+              <strong class="num">{pct(c.transactions)}%</strong>
+            </div>
+            <div class={`bar${pct(c.transactions) < 90 ? " warn" : ""}`}>
+              <div style={{ width: `${pct(c.transactions)}%` }} />
+            </div>
+            <div class="muted tiny">
+              {c.payees.covered} of {c.payees.total} payees · {c.transactions.covered} of {c.transactions.total} transactions
+            </div>
+          </div>
+          <div class="row" style={{ gap: 8, flexWrap: "wrap" }}>
+            <button class="btn" disabled={busy || !c.fetchEnabled} onClick={fetchNow}>
+              {busy ? "Fetching…" : "Fetch missing logos"}
+            </button>
+            <button class="btn ghost" onClick={toggle}>
+              {c.fetchEnabled ? "Turn off logo fetching" : "Turn on logo fetching"}
+            </button>
+          </div>
+          {c.missing.length > 0 && (
+            <details>
+              <summary class="small" style={{ cursor: "pointer" }}>
+                Most frequent payees without a logo
+              </summary>
+              <div class="list" style={{ marginTop: 6 }}>
+                {c.missing.slice(0, 15).map((m) => (
+                  <div class="spread small" style={{ padding: "5px 0", borderBottom: "1px solid var(--line)" }}>
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {m.payee} <span class="muted">· {m.count}×</span>
+                    </span>
+                    <span class="muted tiny">{m.domain ? `${m.domain}: ` : ""}{MISSING_LABEL[m.status] ?? m.status}</span>
+                  </div>
+                ))}
+              </div>
+              <div class="muted tiny" style={{ marginTop: 6 }}>Open one of their transactions and set its logo website.</div>
+            </details>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
 
 function SimplefinSetupWizard({
   accounts,
