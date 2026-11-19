@@ -7,6 +7,7 @@ import { createAccount, getAccount, getEntity, listAccounts, type AccountRow, ty
 import { ServiceError, type ServiceContext } from "./context";
 import { checkedAssetDetails, checkedLinkedLoan, isPhysicalAsset, type AssetDetails } from "./assets";
 import { recordValuation } from "./ledger";
+import { normalizeDomain } from "./logos";
 
 export function listEntities(ctx: ServiceContext, status: "active" | "archived" | "all" = "active"): EntityRow[] {
   return status === "all"
@@ -148,11 +149,14 @@ export async function updateAccount(
   ctx: ServiceContext,
   actor: string,
   slug: string,
-  patch: { defaultEntity?: string; websiteUrl?: string | null; close?: { date: string }; details?: unknown; linkedLoan?: string | null },
+  patch: { defaultEntity?: string; websiteUrl?: string | null; logoDomain?: string | null; close?: { date: string }; details?: unknown; linkedLoan?: string | null },
 ): Promise<AccountRow> {
   const before = getAccount(ctx, slug);
   if (!before) throw new ServiceError(`unknown account ${JSON.stringify(slug)}`, 404);
   const websiteUrl = patch.websiteUrl === undefined ? undefined : checkedWebsiteUrl(patch.websiteUrl);
+  const clearLogo = patch.logoDomain === null || patch.logoDomain?.trim() === "";
+  const logoDomain = patch.logoDomain === undefined ? undefined : clearLogo ? null : normalizeDomain(patch.logoDomain!);
+  if (logoDomain === null && !clearLogo) throw new ServiceError(`${JSON.stringify(patch.logoDomain)} is not a website domain`);
   // Validate everything before writing anything.
   if (patch.defaultEntity !== undefined && !getEntity(ctx, patch.defaultEntity)) throw new ServiceError(`unknown entity ${JSON.stringify(patch.defaultEntity)}`, 404);
   const details = patch.details === undefined ? undefined : checkedAssetDetails(before.kind, patch.details);
@@ -165,6 +169,7 @@ export async function updateAccount(
   if (websiteUrl !== undefined) {
     ctx.db.query("UPDATE accounts SET website_url = ? WHERE slug = ?").run(websiteUrl, slug);
   }
+  if (logoDomain !== undefined) ctx.db.query("UPDATE accounts SET logo_domain = ? WHERE slug = ?").run(logoDomain, slug);
   if (patch.close) {
     try {
       validateDate(patch.close.date);

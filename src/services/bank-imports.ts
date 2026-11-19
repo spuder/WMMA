@@ -125,6 +125,10 @@ function resolveBankAccounts(
         account = getAccount(ctx, account.slug)!;
       }
       linkAccountSource(ctx, sourceKey, data.externalKey, account.slug);
+      if (data.domain && !account.logo_domain) {
+        ctx.db.query("UPDATE accounts SET logo_domain = ? WHERE slug = ?").run(data.domain, account.slug);
+        account = getAccount(ctx, account.slug)!;
+      }
       if (source === "simplefin" && !account.simplefin_id) {
         const previous = ctx.db.query("SELECT slug FROM accounts WHERE simplefin_id = ?").get(data.externalKey) as { slug: string } | null;
         if (previous && previous.slug !== account.slug) ctx.db.query("UPDATE accounts SET simplefin_id = NULL WHERE slug = ?").run(previous.slug);

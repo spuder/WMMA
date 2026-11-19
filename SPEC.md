@@ -83,6 +83,8 @@ Rejected: Go, Rust (runner-up), Bend 2, Beancount, n8n for core logic, Supabase.
 | `review_queue` | wmma_id, jev_choices (top 3 with probabilities), status (`pending`, `accepted`, `changed`) |
 | `import_runs` | id, source, file, started, finished, added, skipped_duplicates, errors |
 | `settings` | key, value (non-secret only) |
+| `payee_logos` | payee_key, domain, glyph (both null = initials), source (`manual`, `agent`) |
+| `logo_cache` | domain, status (`ok`, `missing`), content_type, bytes, origin, fetched_at, version (image hash for cache-busting URLs) |
 | `cache_*` | rebuilt from hledger-web JSON for fast reports |
 
 ### Entity types → category templates
@@ -172,11 +174,17 @@ REST and MCP call the same service layer. All writes: journal write → `audit.l
 | GET | `/reports/networth` | over time, per entity and combined |
 | GET | `/reports/spending` | by category |
 | GET/PUT | `/settings` | non-secret settings; Jev key if not in env |
+| GET | `/logos` | payee key → logo: `{domain, v?, missing?, apple?}` or `{glyph}` |
+| GET | `/logos/coverage` | share of transactions/payees with a logo; most frequent misses |
+| POST | `/logos/prefetch` | fetch logos for websites never looked up (`force` refetches all) |
+| GET | `/logos/img/:domain` | cached logo image (first fetch waits up to 8s, then 404 `no-store` while it finishes) |
+| POST | `/logos/img/:domain/retry` | look again for a site that had no logo (the UI calls it when a transaction opens; at most every 10 minutes) |
+| PUT/DELETE | `/logos/payees/:payee` | set / clear a payee's logo override |
 
 ## 8. MCP Server (read + write)
 
-- **Read:** `list_entities`, `list_accounts`, `search_transactions`, `get_pnl`, `get_cashflow`, `get_budget_vs_actual`, `get_net_worth`, `get_spending_by_category`, `get_review_queue`
-- **Write:** `categorize_transaction`, `set_entity`, `split_transaction`, `create_rule`, `update_mapping`, `set_budget`, `record_valuation`, `record_transfer`, `run_simplefin_sync`
+- **Read:** `list_entities`, `list_accounts`, `search_transactions`, `get_pnl`, `get_cashflow`, `get_budget_vs_actual`, `get_net_worth`, `get_spending_by_category`, `get_review_queue`, `list_payees_missing_logos`
+- **Write:** `categorize_transaction`, `set_entity`, `split_transaction`, `create_rule`, `update_mapping`, `set_budget`, `record_valuation`, `record_transfer`, `run_simplefin_sync`, `set_payee_logo`, `fetch_logos`
 - Use the official MCP TypeScript SDK. Same Tailscale auth as REST. Every write audited with before/after.
 
 ## 9. Web UI (last)

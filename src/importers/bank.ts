@@ -26,6 +26,8 @@ export interface BankAccountData {
   externalKey: string;
   name: string;
   kindHint: AccountKind | null;
+  /** The institution's website domain, when the source says (SimpleFIN org.domain). */
+  domain?: string | null;
   balance: { amount: Money; asOf: string } | null;
   records: BankRecord[];
 }

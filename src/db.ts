@@ -131,6 +131,26 @@ const MIGRATIONS: string[] = [
   // Physical assets (vehicles, real estate, other): JSON details and an optional loan/mortgage against them.
   `ALTER TABLE accounts ADD COLUMN details TEXT;
    ALTER TABLE accounts ADD COLUMN linked_loan TEXT REFERENCES accounts(slug);`,
+  // Logos: an institution's website for accounts, per-payee overrides, and fetched images.
+  `ALTER TABLE accounts ADD COLUMN logo_domain TEXT;
+   CREATE TABLE payee_logos (
+     payee_key  TEXT PRIMARY KEY,
+     -- Both NULL means "no logo, show initials".
+     domain     TEXT,
+     glyph      TEXT,
+     source     TEXT NOT NULL CHECK (source IN ('manual', 'agent')),
+     updated_at TEXT NOT NULL
+   );
+   CREATE TABLE logo_cache (
+     domain       TEXT PRIMARY KEY,
+     status       TEXT NOT NULL CHECK (status IN ('ok', 'missing')),
+     content_type TEXT,
+     bytes        BLOB,
+     origin       TEXT,
+     fetched_at   TEXT NOT NULL,
+     -- Changes whenever the image bytes do; the browser URL carries it to bust caches.
+     version      TEXT
+   );`,
 ];
 
 export function openDb(path: string): Database {

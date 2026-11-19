@@ -15,6 +15,8 @@ import { listEntities } from "./services/entities";
 import { recordTransfer, recordValuation, setBudgets } from "./services/ledger";
 import { budgetReport, cashflow, netWorth, pnl, spending } from "./services/reports";
 import { accountHistory, assignRecurring, businesses, overview, recurring, statement } from "./services/insights";
+import { logoCoverage, prefetchLogos, setPayeeLogo } from "./services/logos";
+import { GLYPHS } from "./logos/seed";
 import { patchTransaction, searchTransactions, splitTransaction, updateMapping } from "./services/transactions";
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD");
@@ -167,6 +169,28 @@ export function buildMcpServer(ctx: ServiceContext, actor: string): McpServer {
     async (a) => (await recordTransfer(ctx, actor, { from: a.from, to: a.to, amount: a.amount, date: a.date, ...(a.memo ? { memo: a.memo } : {}) })) as unknown as Json,
   );
   tool("run_simplefin_sync", "Pull new transactions from SimpleFIN now.", {}, true, async () => (await syncSimplefin(ctx, actor)) as unknown as Json);
+
+  // ---- logos
+  tool(
+    "list_payees_missing_logos",
+    "Logo coverage, and payees that still show initials (most frequent first) with a sample bank memo. status: none = no website known; not_found = the website has no usable icon; pending = not fetched yet.",
+    { limit: z.number().int().min(1).max(500).optional() },
+    false,
+    async (a) => (await logoCoverage(ctx, a.limit ?? 50)) as unknown as Json,
+  );
+  tool(
+    "set_payee_logo",
+    "Set the logo for every transaction from a payee: the merchant's own website domain (e.g. \"starbucks.com\"), or a glyph for money movements, or neither to show initials. Only set a domain you have verified belongs to that business.",
+    {
+      payee: z.string().describe("Payee name or key, as listed by list_payees_missing_logos"),
+      domain: z.string().optional().describe("Website domain, e.g. example.com"),
+      glyph: z.enum(GLYPHS).optional(),
+      reset: z.boolean().optional().describe("Remove the override and go back to automatic"),
+    },
+    true,
+    async (a) => (await setPayeeLogo(ctx, actor, a.payee, a.reset ? { reset: true } : { domain: a.domain ?? null, glyph: a.glyph ?? null }, "agent")) as unknown as Json,
+  );
+  tool("fetch_logos", "Fetch logos for payees and accounts that don't have one cached yet.", {}, true, async () => ({ ...(await prefetchLogos(ctx)), coverage: await logoCoverage(ctx, 0) }) as unknown as Json);
 
   return server;
 }

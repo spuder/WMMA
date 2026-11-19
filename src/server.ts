@@ -28,6 +28,7 @@ import { checkedMileage, decodeVin, recordMileage, valuationHistory } from "./se
 import { cashflow, categories, netWorth, spending, trend } from "./services/reports";
 import { accountHistory, assignRecurring, businesses, overview, recurring, series, statement } from "./services/insights";
 import { getSettings, putSettings } from "./services/settings";
+import { logoCoverage, logoImage, payeeLogosWithStatus, prefetchLogos, retryLogo, setPayeeLogo } from "./services/logos";
 import { getTransaction, listMappings, patchTransaction, searchTransactions, splitTransaction, updateMapping } from "./services/transactions";
 import { ACCOUNT_KINDS as KINDS, ENTITY_TYPES, type EntityType } from "./db";
 
@@ -345,6 +346,7 @@ Object.assign(routes, {
       await updateAccount(ctx, identity.login, params["slug"]!, {
         ...(b.defaultEntity !== undefined ? { defaultEntity: str(b.defaultEntity, "defaultEntity") } : {}),
         ...(b.websiteUrl !== undefined ? { websiteUrl: b.websiteUrl === null ? null : str(b.websiteUrl, "websiteUrl") } : {}),
+        ...(b.logoDomain !== undefined ? { logoDomain: b.logoDomain === null ? null : str(b.logoDomain, "logoDomain") } : {}),
         ...(b.close !== undefined ? { close: { date: str((b.close as Record<string, unknown> | null)?.date, "close.date") } } : {}),
         ...(b.details !== undefined ? { details: b.details } : {}),
         ...(b.linkedLoan !== undefined ? { linkedLoan: b.linkedLoan === null ? null : str(b.linkedLoan, "linkedLoan") } : {}),
@@ -508,6 +510,46 @@ Object.assign(routes, {
       }),
     );
   },
+} satisfies Record<string, Handler>);
+
+/** How long an image request waits for a first-time fetch before answering 404 (no-store). */
+const LOGO_WAIT_MS = 8000;
+
+Object.assign(routes, {
+  "GET /api/v1/logos": async (_req, _id, ctx) => Response.json({ payees: await payeeLogosWithStatus(ctx) }),
+  "GET /api/v1/logos/coverage": async (_req, _id, ctx) => Response.json(await logoCoverage(ctx)),
+  "POST /api/v1/logos/prefetch": async (req, _id, ctx) => {
+    const b = ((await jsonBody(req)) ?? {}) as Record<string, unknown>;
+    if (b.force !== undefined && typeof b.force !== "boolean") bad("force must be true or false");
+    return Response.json({ ...(await prefetchLogos(ctx, { force: (b.force as boolean) ?? false })), coverage: await logoCoverage(ctx) });
+  },
+  "GET /api/v1/logos/img/:domain": async (_req, _id, ctx, params) => {
+    // A slow site shouldn't hold the browser's connection: answer "not yet" and let the fetch finish in the background.
+    const fetching = logoImage(ctx, params["domain"]!);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const img = await Promise.race([fetching, new Promise<"slow">((resolve) => (timer = setTimeout(() => resolve("slow"), LOGO_WAIT_MS)))]).finally(() => clearTimeout(timer));
+    if (img === "slow") {
+      fetching.catch(() => {});
+      return new Response("still fetching", { status: 404, headers: { "cache-control": "no-store" } });
+    }
+    if (!img) return new Response("no logo", { status: 404, headers: { "cache-control": "private, max-age=3600" } });
+    return new Response(img.bytes, {
+      headers: {
+        "content-type": img.contentType,
+        "cache-control": "private, max-age=86400",
+        "x-content-type-options": "nosniff",
+        // SVGs are fetched from third-party sites: never let one run script if opened directly.
+        "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+      },
+    });
+  },
+  "POST /api/v1/logos/img/:domain/retry": async (_req, _id, ctx, params) => Response.json(await retryLogo(ctx, params["domain"]!)),
+  "PUT /api/v1/logos/payees/:payee": async (req, identity, ctx, params) => {
+    const b = ((await jsonBody(req)) ?? {}) as Record<string, unknown>;
+    for (const k of ["domain", "glyph"] as const) if (b[k] !== undefined && b[k] !== null && typeof b[k] !== "string") bad(`${k} must be a string or null`);
+    return Response.json(await setPayeeLogo(ctx, identity.login, params["payee"]!, { domain: (b.domain as string | null) ?? null, glyph: (b.glyph as string | null) ?? null }));
+  },
+  "DELETE /api/v1/logos/payees/:payee": async (_req, identity, ctx, params) => Response.json(await setPayeeLogo(ctx, identity.login, params["payee"]!, { reset: true })),
 } satisfies Record<string, Handler>);
 
 const compiled = Object.entries(routes).map(([key, handler]) => {

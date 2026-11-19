@@ -4,6 +4,7 @@ import * as M from "../money";
 import type { Money } from "../money";
 import { accountSegment, KIND_PREFIX, slugify, uniqueSlug } from "../naming";
 import { ServiceError, type ServiceContext } from "./context";
+import { accountLogo, logoStatus } from "./logos";
 
 export interface AccountRow {
   slug: string;
@@ -13,6 +14,8 @@ export interface AccountRow {
   default_entity: string;
   simplefin_id: string | null;
   website_url: string | null;
+  /** Institution website used for the account's logo (from SimpleFIN or set by hand). */
+  logo_domain: string | null;
   /** JSON-encoded AssetDetails for vehicle / real_estate / other_asset accounts. */
   details: string | null;
   /** The loan or mortgage owed against this asset, if any. */
@@ -113,6 +116,7 @@ export async function listAccountsWithBalances(ctx: ServiceContext) {
       }
     }
   }
+  const withStatus = logoStatus(ctx);
   return listAccounts(ctx).map((a) => {
     const b = balances.get(a.hledger_account) ?? M.ZERO;
     const contributed = contributions.get(a.hledger_account) ?? M.ZERO;
@@ -122,6 +126,6 @@ export async function listAccountsWithBalances(ctx: ServiceContext) {
     } catch {
       // unreadable details are reported as none
     }
-    return { ...a, details, balance_cents: M.toCents(b), balance: M.format(b), contributed_cents: M.toCents(contributed) };
+    return { ...a, details, logo: withStatus(accountLogo(a)), balance_cents: M.toCents(b), balance: M.format(b), contributed_cents: M.toCents(contributed) };
   });
 }

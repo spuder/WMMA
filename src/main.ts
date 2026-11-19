@@ -12,6 +12,7 @@ import { createFetchHandler } from "./server";
 import ui from "../ui/index.html";
 import { syncTemplates } from "./services/entities";
 import { syncSimplefin } from "./services/bank-imports";
+import { fetchEnabled, prefetchLogos } from "./services/logos";
 import { parseAccessUrl } from "./importers/simplefin";
 import type { Database } from "bun:sqlite";
 import type { ServiceContext } from "./services/context";
@@ -121,6 +122,11 @@ async function serve(): Promise<void> {
       try {
         const r = await syncSimplefin(ctx, "system:scheduler");
         console.log(`SimpleFIN sync: +${r.added} new, ${r.merged} merged, ${r.skippedDuplicates} duplicates, ${r.needsReview} to review`);
+        if (r.added > 0 && fetchEnabled(ctx)) {
+          prefetchLogos(ctx)
+            .then((l) => l.fetched && console.log(`Logos: found ${l.found} of ${l.fetched} new`))
+            .catch((e) => console.error("Logo fetch failed:", e));
+        }
       } catch (e) {
         console.error("SimpleFIN sync failed:", e);
       }

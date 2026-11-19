@@ -228,7 +228,21 @@ a { color: inherit; text-decoration: none; }
   width: 38px; height: 38px; border-radius: 12px; flex: none;
   display: grid; place-items: center; font-weight: 700; font-size: 14px;
   background: var(--surface-2); color: var(--ink-2);
+  position: relative; overflow: hidden;
 }
+/* Logos sit on white in both themes, like the brands' own app icons. */
+.avatar.logo { background: #fff; box-shadow: inset 0 0 0 1px var(--line); }
+.avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.avatar img.pending { opacity: 0; }
+.avatar.logo.small img { inset: 22%; width: 56%; height: 56%; }
+.avatar.glyph { font-size: 1.2em; font-weight: 400; }
+button.avatar { border: 0; padding: 0; font-family: inherit; }
+.avatar.clickable { cursor: pointer; transition: transform 0.12s, box-shadow 0.12s; }
+.avatar.clickable:hover { box-shadow: inset 0 0 0 1px var(--line), 0 0 0 3px var(--surface-2); }
+.avatar.clickable:active { transform: scale(0.96); }
+.avatar.clickable:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.logo-panel .avatar { width: 56px; height: 56px; border-radius: 16px; font-size: 20px; }
+.logo-panel .domain { font-weight: 650; overflow-wrap: anywhere; }
 
 /* ---------- controls ---------- */
 .btn {
@@ -338,6 +352,9 @@ textarea.input { height: auto; padding: 10px 14px; }
 .swipe-card.behind2 { transform: translateY(26px) scale(0.91); opacity: 0.4; pointer-events: none; }
 .swipe-card .amt { font-family: var(--font-display); font-size: 58px; font-weight: 760; letter-spacing: -0.035em; line-height: 1; margin: 10px 0 10px; }
 .swipe-card .payee { font-size: 28px; font-weight: 700; letter-spacing: -0.015em; }
+.review-payee { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.review-payee > span { min-width: 0; overflow-wrap: anywhere; }
+.review-payee .avatar { width: 44px; height: 44px; font-size: 16px; }
 .swipe-card .facts { display: grid; grid-template-columns: auto 1fr; gap: 12px 18px; margin-top: 22px; font-size: 17px; }
 .swipe-card .facts dt { color: var(--muted); }
 .swipe-card .facts { align-items: center; }
