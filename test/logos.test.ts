@@ -54,6 +54,19 @@ describe("payee -> logo resolution", () => {
     expect(r("target springfield il")).toEqual({ domain: "target.com" });
     expect(r("shell oil")).toEqual({ domain: "shell.us" });
   });
+  test("large banks and credit unions", () => {
+    expect(r("u s bank")).toEqual({ domain: "usbank.com" });
+    expect(r("m t bank mortgage")).toEqual({ domain: "mtb.com" });
+    expect(r("navy federal credit union")).toEqual({ domain: "navyfederal.org" });
+    expect(r("golden credit union")).toEqual({ domain: "golden1.com" });
+    expect(r("america first credit union")).toEqual({ domain: "americafirst.com" });
+    expect(r("mountain america cu")).toEqual({ domain: "macu.com" });
+    expect(r("zions bank")).toEqual({ domain: "zionsbank.com" });
+    expect(r("first citizens bank")).toEqual({ domain: "firstcitizens.com" });
+    expect(r("citizens bank")).toEqual({ domain: "citizensbank.com" });
+    for (const p of ["citi trends", "america first insurance", "zions pizza", "first bank of springfield", "golden corral"]) expect(r(p)).toBeNull();
+    expect(accountLogo({ name: "Navy Federal Credit Union Checking", kind: "bank", logo_domain: null })).toEqual({ domain: "navyfederal.org" });
+  });
   test("a payee naming its own .com", () => {
     expect(r("acme com")).toEqual({ domain: "acme.com" });
     expect(r("maplestreetbakery com springfield il")).toEqual({ domain: "maplestreetbakery.com" });
