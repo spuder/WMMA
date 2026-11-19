@@ -288,7 +288,12 @@ Object.assign(routes, {
       { status: 201 },
     );
   },
-  "POST /api/v1/categorize": async (_req, identity, ctx) => Response.json(await categorize(ctx, identity.login)),
+  /** body: {retry?: true, includeLowConfidence?: true, limit?: n}. retry re-asks Jev about pending review items. */
+  "POST /api/v1/categorize": async (req, identity, ctx) => {
+    const b = ((await jsonBody(req)) ?? {}) as Record<string, unknown>;
+    const limit = typeof b.limit === "number" && b.limit > 0 ? Math.min(Math.floor(b.limit), 1000) : undefined;
+    return Response.json(await categorize(ctx, identity.login, { ...(b.retry ? { retry: { includeLowConfidence: Boolean(b.includeLowConfidence) } } : {}), ...(limit ? { limit } : {}) }));
+  },
 } satisfies Record<string, Handler>);
 
 const str = (v: unknown, what: string): string => {

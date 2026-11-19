@@ -6,7 +6,7 @@
  * clear one after another; accepts feed the 3-swipe rule learning on the server.
  */
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
-import { api, catLabel, dayLabel, leaf, money } from "../api";
+import { api, catLabel, dayLabel, leaf, money, useApi } from "../api";
 import { Avatar, CategoryPicker, CatName, ErrorBox, Icon, Loading, Sheet, toast } from "../components/ui";
 import { businessStyle, EntitySwitcher, go, useApp } from "../app";
 
@@ -22,6 +22,8 @@ interface Item {
 }
 
 const THRESHOLD = 96;
+/** Most transactions sent to Jev per "Ask Jev" tap, so one request stays reasonably short. */
+const JEV_BATCH = 100;
 
 /** Rolling windows, so each milestone contains the one before it. */
 const MILESTONES = [
@@ -81,11 +83,34 @@ export function Review() {
   // The latest drag distance; read on release so a fast flick isn't lost to a pending render.
   const dxRef = useRef(0);
 
-  useEffect(() => {
+  const loadItems = () =>
     api<{ items: Item[] }>("/review?order=newest&limit=2000")
       .then((r) => setItems(r.items))
       .catch((e: Error) => setError(e.message));
+  useEffect(() => {
+    void loadItems();
   }, []);
+  const settings = useApi<{ jev: { configured: boolean } }>("/settings");
+  const [asking, setAsking] = useState(false);
+  /** Items that never got a Jev answer: queued before a key was set, or while Jev was down / out of credits. */
+  const noSuggestion = (items ?? []).filter((i) => i.jev_choices.length === 0).length;
+  const askJev = async () => {
+    setAsking(true);
+    try {
+      const r = await api<{ considered: number; byRule: number; byJev: number; queued: number; errors: string[]; remaining?: number }>("/categorize", {
+        body: { retry: true, limit: JEV_BATCH },
+      });
+      const done = r.byRule + r.byJev;
+      if (r.errors.length) toast(`${r.errors[0]}${done ? ` · ${done} categorized before that` : ""}`);
+      else toast([done ? `${done} categorized` : null, r.queued ? `${r.queued} now have suggestions` : null].filter(Boolean).join(" · ") || "Jev had nothing new to add");
+      await loadItems();
+      refreshReview();
+    } catch (e) {
+      toast((e as Error).message);
+    } finally {
+      setAsking(false);
+    }
+  };
 
   // Newest first; cards set aside for later go to the back, in the order they were set aside.
   const queue = useMemo(() => {
@@ -271,6 +296,27 @@ export function Review() {
       </div>
       {error && <ErrorBox error={error} />}
       {!items && !error && <Loading h={420} />}
+      {items && noSuggestion > 0 && settings.data && (
+        <div class="card flat row" style={{ gap: 12, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <strong>{noSuggestion} without a suggestion</strong>
+            <div class="muted small">
+              {settings.data.jev.configured
+                ? "These were queued before Jev was set up, or while it was unavailable or out of credits."
+                : "Add a Jev API key in Settings to get category suggestions for these."}
+            </div>
+          </div>
+          {settings.data.jev.configured ? (
+            <button class="btn" disabled={asking} onClick={askJev}>
+              {asking ? "Asking Jev…" : noSuggestion > JEV_BATCH ? `Ask Jev (next ${JEV_BATCH})` : "Ask Jev"}
+            </button>
+          ) : (
+            <button class="btn ghost" onClick={() => go("/settings")}>
+              Settings
+            </button>
+          )}
+        </div>
+      )}
       {items && (card || sessionDone > 0) && <Quest tiers={tiers} current={current} streak={streak} sessionDone={sessionDone} later={laterCount} />}
       {items && !card && (
         <div class="card done">
