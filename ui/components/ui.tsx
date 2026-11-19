@@ -1,4 +1,5 @@
 import type { ComponentChildren } from "preact";
+import { createPortal } from "preact/compat";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { CATEGORY_GROUPS, catLabel, categoryMeta, hue, initials } from "../api";
 import { fuzzyMatch } from "../fuzzy";
@@ -90,7 +91,9 @@ export function Sheet({ open, onClose, title, children, side = false }: { open: 
     return () => window.removeEventListener("keydown", k);
   }, [open]);
   if (!open) return null;
-  return (
+  // Portal to <body>: an ancestor with backdrop-filter/transform (e.g. .topbar) would otherwise become the
+  // containing block for the fixed-position sheet, centering and clipping it inside that ancestor.
+  return createPortal(
     <>
       <div class="scrim" onClick={onClose} />
       <div class={`sheet${side ? " side" : ""}`} role="dialog" aria-modal="true" aria-label={title}>
@@ -107,7 +110,8 @@ export function Sheet({ open, onClose, title, children, side = false }: { open: 
         )}
         <div class="sheet-body">{children}</div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }
 
