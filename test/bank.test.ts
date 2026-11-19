@@ -14,7 +14,7 @@ import { cents, toCents } from "../src/money";
 import { cronMatches, parseCron } from "../src/scheduler";
 import { createFetchHandler } from "../src/server";
 import { SecretStore } from "../src/secrets";
-import { existingEntries, importBankCsv, importQfx, putCsvProfile, saveSimplefinAccountMappings, syncSimplefin } from "../src/services/bank-imports";
+import { existingEntries, importBankCsv, importQfx, putCsvProfile, saveSimplefinAccountMappings, simplefinStatus, syncSimplefin } from "../src/services/bank-imports";
 import { createAccount, ensureEntity, getAccount } from "../src/services/accounts";
 import { updateAccount } from "../src/services/entities";
 import type { ServiceContext } from "../src/services/context";
@@ -295,6 +295,16 @@ describe.skipIf(!hledgerWebBin)("overlapping imports from different sources (M3 
     const r = await syncSimplefin(env.ctx, me, { fetch: sfFetch, accounts: { "sf-acct-1": { slug: "main-checking" } } });
     expect(r).toMatchObject({ added: 1, merged: 6, needsReview: 0, errors: [] });
     expect(r.balances).toEqual([{ account: "Main Checking", asOf: "2026-03-31", source: "$413.75", wmma: "$413.75", match: true }]);
+  });
+
+  test("a sync caches SimpleFIN's account list for the status endpoint", async () => {
+    const status = await simplefinStatus(env.ctx);
+    expect(status.configured).toBe(true);
+    expect(status.lastSync).not.toBeNull();
+    expect(status.snapshotAt).not.toBeNull();
+    expect(status.accounts.find((a) => a.id === "sf-acct-1")).toMatchObject({ balance_cents: 41375, asOf: "2026-03-31", linkedAccountSlug: "main-checking" });
+    const settings = (await import("../src/services/settings")).getSettings;
+    expect(Object.keys((await settings(env.ctx)).settings)).not.toContain("simplefin.accounts_snapshot");
   });
 
   test("the journal holds exactly the 7 real transactions", async () => {

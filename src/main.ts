@@ -114,9 +114,15 @@ async function serve(): Promise<void> {
   let stopCron = () => {};
   stopCron = schedule(config.simplefinSyncCron, config.tz, async () => {
     const simplefinUrl = await secrets.get("simplefin_access_url");
-    const accountsConfigured = db.query("SELECT 1 FROM settings WHERE key = ?").get("simplefin.account_mappings");
+    const saved = db.query("SELECT value FROM settings WHERE key = ?").get("simplefin.account_mappings") as { value: string } | null;
+    let accountsConfigured = false;
+    try {
+      accountsConfigured = Object.values(saved ? (JSON.parse(saved.value) as Record<string, { skip?: boolean }>) : {}).some((m) => !m.skip);
+    } catch {
+      // unreadable mappings: treat as none chosen
+    }
     if (simplefinUrl && !accountsConfigured) {
-      console.warn("SimpleFIN sync skipped: no accounts chosen yet. Open Settings → SimpleFIN → Choose accounts.");
+      console.warn("SimpleFIN sync skipped: no accounts switched on. Open Imports → Bank sync and turn on the accounts to sync.");
     }
     if (simplefinUrl && accountsConfigured) {
       try {
