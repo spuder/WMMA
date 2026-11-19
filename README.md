@@ -93,7 +93,7 @@ No server environment variables are needed. WMMA stores the claimed Access URL
 encrypted using a generated key in a separate persistent Docker volume. After
 connecting, open **Imports** and select **Sync SimpleFIN now**. New bank accounts
 are created automatically on the first sync; review them under **Accounts**.
-Back up the `wmma-secret-key` volume along with `./data`; the encrypted
+Back up the `wmma-secret-key` volume along with `wmma-data`; the encrypted
 credentials cannot be recovered without it. `WMMA_SECRET_KEY` remains available
 only to migrate secrets from older deployments.
 
@@ -239,7 +239,17 @@ op run --env-file=.env -- docker compose up -d
 `compose.yaml` pulls the prebuilt image `ghcr.io/spuder/wmma` from GitHub Container Registry, built by [`.github/workflows/docker.yml`](.github/workflows/docker.yml).
 Tags: `latest` (current `main`), `sha-<commit>` for every push to `main`, and `X.Y.Z` / `X.Y` for `vX.Y.Z` release tags. Pin one of those in `compose.yaml` if you'd rather update on your own schedule. To update: `docker compose pull && docker compose up -d`.
 
-Then open `https://wmma.<your-tailnet>.ts.net`. Only Tailscale users in `WMMA_ALLOWED_USERS` get in. Data lives in `./data` (back it up yourself).
+Then open `https://wmma.<your-tailnet>.ts.net`. Only Tailscale users in `WMMA_ALLOWED_USERS` get in. Data lives in the Docker volume `wmma-data` (`wmma_wmma-data` on the host), next to `wmma-secret-key`; back both up yourself, for example:
+
+```sh
+docker run --rm -v wmma_wmma-data:/data -v wmma_wmma-secret-key:/secrets -v "$PWD":/backup alpine \
+  tar czf /backup/wmma-backup.tgz /data /secrets
+```
+
+Upgrading from an older `compose.yaml` that bind-mounted `./data`? Copy it into the volume once before starting the new stack:
+`docker compose up --no-start && docker cp ./data/. wmma:/data/ && docker run --rm -v wmma_wmma-data:/data alpine chown -R 10001:10001 /data`.
+
+The same `compose.yaml` works as a [Dockhand](https://github.com/Finsys/dockhand) git stack: it has no relative bind mounts and no `.env` file requirement, so set the variables on the stack.
 
 | Variable | Purpose |
 | --- | --- |

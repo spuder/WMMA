@@ -355,7 +355,7 @@
             <li><b>Start.</b> Docker Compose pulls the image and <a href="https://github.com/marvinvr/docktail">docktail</a> serves it on your tailnet. No ports are published.</li>
             <li><b>Open.</b> Visit <code>https://wmma.&lt;your-tailnet&gt;.ts.net</code> on your phone or laptop.</li>
           </ol>
-          <p class="muted">Full setup, imports and the CLI are in the <a href="https://github.com/spuder/WMMA#readme">README on GitHub</a>. Data lives in <code>./data</code>. Back it up like any other folder. Secrets can come from 1Password with <code>op run</code>.</p>
+          <p class="muted">Full setup, imports and the CLI are in the <a href="https://github.com/spuder/WMMA#readme">README on GitHub</a>. Data lives in a Docker volume, <code>wmma-data</code>. Back it up like any other volume. Secrets can come from 1Password with <code>op run</code>.</p>
         </div>
         <div class="code reveal">
           <div class="code-head"><span>Terminal</span><button type="button" data-copy="install">Copy</button></div>

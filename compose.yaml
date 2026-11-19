@@ -15,8 +15,15 @@
 # Deployment secrets come from the environment, e.g. via 1Password:
 #   op run --env-file=.env -- docker compose up -d
 #
+# Data lives in the named Docker volumes wmma-data and wmma-secret-key (not a
+# ./data bind mount), so the same file works from Dockhand git stacks, whose
+# compose runs inside the Dockhand container and can't resolve relative host
+# paths.
+#
 # The image comes from GitHub Container Registry. To run a local build instead:
 #   docker build -t ghcr.io/spuder/wmma:latest . && docker compose up -d
+
+name: wmma   # fixes volume names (wmma_wmma-data, wmma_wmma-secret-key) whatever the checkout folder is called
 
 services:
   wmma:
@@ -35,7 +42,7 @@ services:
       SIMPLEFIN_SYNC_CRON: ${SIMPLEFIN_SYNC_CRON:-}
       YNAB_TOKEN: ${YNAB_TOKEN:-}
     volumes:
-      - ./data:/data
+      - wmma-data:/data
       - wmma-secret-key:/var/lib/wmma-secrets
     restart: unless-stopped
     labels:
@@ -45,4 +52,5 @@ services:
       - "docktail.service.service-port=443"
 
 volumes:
+  wmma-data:
   wmma-secret-key:
