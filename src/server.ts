@@ -31,6 +31,7 @@ import { accountHistory, assignRecurring, businesses, overview, recurring, serie
 import { getSettings, putSettings } from "./services/settings";
 import { logoCoverage, logoImage, payeeLogosWithStatus, prefetchLogos, retryLogo, setPayeeLogo } from "./services/logos";
 import { buildCommit } from "./build-info";
+import { applyToSimilar, deleteRule, similarTransactions } from "./services/similar";
 import { getTransaction, listMappings, patchTransaction, searchTransactions, splitTransaction, updateMapping } from "./services/transactions";
 import { ACCOUNT_KINDS as KINDS, ENTITY_TYPES, type EntityType } from "./db";
 
@@ -279,6 +280,24 @@ Object.assign(routes, {
     return Response.json({ entity: body.entity });
   },
   "GET /api/v1/rules": (_req, _id, ctx) => Response.json({ rules: listRules(ctx) }),
+  "DELETE /api/v1/rules/:id": async (_req, identity, ctx, params) => {
+    await deleteRule(ctx, identity.login, params["id"]!);
+    return Response.json({ deleted: params["id"] });
+  },
+  "GET /api/v1/transactions/:id/similar": async (_req, _id, ctx, params) => Response.json(await similarTransactions(ctx, params["id"]!)),
+  /** body: {category, includeCategorized?, createRule?}: give the payee's other transactions this category. */
+  "POST /api/v1/transactions/:id/similar": async (req, identity, ctx, params) => {
+    const b = ((await jsonBody(req)) ?? {}) as Record<string, unknown>;
+    if (typeof b.category !== "string") bad("category is required");
+    return Response.json(
+      await applyToSimilar(ctx, identity.login, {
+        wmmaId: params["id"]!,
+        category: b.category as string,
+        includeCategorized: Boolean(b.includeCategorized),
+        createRule: Boolean(b.createRule),
+      }),
+    );
+  },
   "POST /api/v1/rules": async (req, identity, ctx) => {
     const body = (await jsonBody(req)) as { match?: unknown; target?: unknown; entityOverride?: unknown } | undefined;
     if (typeof body?.target !== "string") bad("target is required");

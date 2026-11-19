@@ -166,6 +166,9 @@ REST and MCP call the same service layer. All writes: journal write → `audit.l
 | GET | `/categorize/jev` | ids of transactions Jev categorized (`cat_by: jev`), newest first (`?entity=` optional) |
 | POST | `/categorize/rerun` | `{wmmaIds}` (≤ 50): re-ask Jev about its own picks; confident answers replace the category, unsure ones keep it; manual / rule / mapping categories are never touched |
 | GET/POST | `/rules` | list / create |
+| DELETE | `/rules/:id` | delete a rule |
+| GET | `/transactions/:id/similar` | the payee's other simple transactions (same payee key) and its rule, if any |
+| POST | `/transactions/:id/similar` | `{category, includeCategorized?, createRule?}`: give them the category (`cat_by: manual`) and optionally create / retarget the payee rule |
 | GET/PUT | `/mappings` | view / edit |
 | POST | `/imports` | upload a file (ynab-csv, qfx, csv, reihub) |
 | POST | `/imports/ynab-api` | pull history (option: include budget amounts) |

@@ -571,13 +571,27 @@ export function Transactions({ query }: { query: URLSearchParams }) {
           account={accounts.find((a) => a.hledger_account === bankPosting(rows?.find((r) => r.wmma_id === openId) ?? ({ postings: [] } as unknown as Txn))?.account) ?? null}
           onClose={() => go(route({ id: null }))}
           onChanged={replaceRow}
+          onSimilarApplied={() => load(0)}
         />
       )}
     </div>
   );
 }
 
-function TxnSheet({ id, account, onClose, onChanged }: { id: string; account: AccountInfo | null; onClose: () => void; onChanged: (t: Txn) => void }) {
+function TxnSheet({
+  id,
+  account,
+  onClose,
+  onChanged,
+  onSimilarApplied,
+}: {
+  id: string;
+  account: AccountInfo | null;
+  onClose: () => void;
+  onChanged: (t: Txn) => void;
+  /** Other transactions changed too: reload the list. */
+  onSimilarApplied?: () => void;
+}) {
   const { entities, categories, refreshReview } = useApp();
   const [t, setT] = useState<Txn | null>(null);
   const [mode, setMode] = useState<"view" | "split">("view");
@@ -651,7 +665,7 @@ function TxnSheet({ id, account, onClose, onChanged }: { id: string; account: Ac
       .catch((e: Error) => setError(e.message));
   }, [id]);
 
-  const patch = async (body: Record<string, unknown>, msg: string) => {
+  const patch = async (body: Record<string, unknown>, msg: string): Promise<boolean> => {
     try {
       const next = await api<Txn>(`/transactions/${id}`, { method: "PATCH", body });
       setT(next);
@@ -660,8 +674,48 @@ function TxnSheet({ id, account, onClose, onChanged }: { id: string; account: Ac
       toast(msg);
       setMode("view");
       setExpanded(null);
+      return true;
     } catch (e) {
       toast((e as Error).message);
+      return false;
+    }
+  };
+
+  /** After a category is set: offer it to the payee's other transactions, and a rule for future ones. */
+  const [similar, setSimilar] = useState<{
+    category: string;
+    data: { transactions: Array<{ wmma_id: string; category: string; cat_by: string | null }>; rule: { target_account: string } | null };
+    includeCategorized: boolean;
+    createRule: boolean;
+    busy: boolean;
+  } | null>(null);
+  useEffect(() => setSimilar(null), [id]);
+  const setCategory = async (to: string, from: string | undefined) => {
+    if (!(await patch({ category: { to, from } }, `Moved to ${leaf(to)}`))) return;
+    try {
+      const data = await api<NonNullable<typeof similar>["data"]>(`/transactions/${encodeURIComponent(id)}/similar`);
+      const others = data.transactions.filter((x) => x.category !== to);
+      const ruleCovers = data.rule?.target_account === to;
+      if (others.length > 0 || !ruleCovers) setSimilar({ category: to, data, includeCategorized: false, createRule: !ruleCovers, busy: false });
+    } catch {
+      // split / transfer or no payee name: nothing to offer
+    }
+  };
+  const applySimilar = async () => {
+    if (!similar) return;
+    setSimilar({ ...similar, busy: true });
+    try {
+      const r = await api<{ updated: string[]; ruleCreated: boolean; rule: unknown }>(`/transactions/${encodeURIComponent(id)}/similar`, {
+        body: { category: similar.category, includeCategorized: similar.includeCategorized, createRule: similar.createRule },
+      });
+      const n = r.updated.length;
+      toast([n ? `${n} more moved to ${leaf(similar.category)}` : null, similar.createRule ? (r.ruleCreated ? "rule created" : "rule updated") : null].filter(Boolean).join(" · ") || "Nothing else to change");
+      setSimilar(null);
+      refreshReview();
+      onSimilarApplied?.();
+    } catch (e) {
+      toast((e as Error).message);
+      setSimilar((s) => s && { ...s, busy: false });
     }
   };
 
@@ -698,6 +752,45 @@ function TxnSheet({ id, account, onClose, onChanged }: { id: string; account: Ac
               <Icon.chevron />
             </button>
           )}
+          {similar && (() => {
+            const others = similar.data.transactions.filter((x) => x.category !== similar.category);
+            const uncat = others.filter((x) => x.category.endsWith(":Uncategorized")).length;
+            const categorized = others.length - uncat;
+            const willChange = uncat + (similar.includeCategorized ? categorized : 0);
+            const ruleCovers = similar.data.rule?.target_account === similar.category;
+            return (
+              <div class="card flat stack similar-prompt" style={{ gap: 10, borderColor: "var(--accent-soft)" }}>
+                <div>
+                  <strong>Apply {leaf(similar.category)} to similar transactions?</strong>
+                  <div class="muted small">
+                    {others.length === 0
+                      ? `No other “${t.payee}” transactions to change.`
+                      : `${others.length} other “${t.payee}” transaction${others.length === 1 ? "" : "s"}: ${[uncat ? `${uncat} need${uncat === 1 ? "s" : ""} a category` : null, categorized ? `${categorized} in other categories` : null].filter(Boolean).join(", ")}.`}
+                  </div>
+                </div>
+                {categorized > 0 && (
+                  <label class="row small" style={{ gap: 8, cursor: "pointer" }}>
+                    <input type="checkbox" checked={similar.includeCategorized} onChange={(e) => setSimilar({ ...similar, includeCategorized: (e.target as HTMLInputElement).checked })} />
+                    Also change the {categorized} already categorized
+                  </label>
+                )}
+                {!ruleCovers && (
+                  <label class="row small" style={{ gap: 8, cursor: "pointer" }}>
+                    <input type="checkbox" checked={similar.createRule} onChange={(e) => setSimilar({ ...similar, createRule: (e.target as HTMLInputElement).checked })} />
+                    {similar.data.rule ? `Update the rule (now ${leaf(similar.data.rule.target_account)}) for future transactions` : "Create a rule for future transactions from this payee"}
+                  </label>
+                )}
+                <div class="row" style={{ gap: 8, justifyContent: "flex-end" }}>
+                  <button class="btn ghost" onClick={() => setSimilar(null)}>
+                    Not now
+                  </button>
+                  <button class="btn primary" disabled={similar.busy || (willChange === 0 && !similar.createRule)} onClick={applySimilar}>
+                    {similar.busy ? "Applying…" : willChange ? `Apply to ${willChange}` : "Create rule"}
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
           {catPostings.length === 1 && !s.uncategorized && t.tags["cat_by"] === "jev" && settings.data?.jev.configured && (
             <button class="btn block" disabled={asking} onClick={rerunOne}>
               {asking ? "Asking Jev…" : "Re-run Jev"}
@@ -710,7 +803,7 @@ function TxnSheet({ id, account, onClose, onChanged }: { id: string; account: Ac
           )}
           {catPostings.length === 1 && expanded === "category" && (
             <div class="choice-options">
-              <CategoryPicker categories={categories} suggested={jevChoices} direction={s.amount < 0 ? "out" : "in"} onPick={(a) => patch({ category: { to: a, from: catPostings[0]?.account } }, `Moved to ${leaf(a)}`)} />
+              <CategoryPicker categories={categories} suggested={jevChoices} direction={s.amount < 0 ? "out" : "in"} onPick={(a) => void setCategory(a, catPostings[0]?.account)} />
             </div>
           )}
           <div class="card flat stack" style={{ gap: 8 }}>

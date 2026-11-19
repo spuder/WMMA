@@ -1,6 +1,6 @@
 import { useEffect, useState } from "preact/hooks";
 import { api, store, useApi } from "../api";
-import { Avatar, ErrorBox, Icon, Loading, toast } from "../components/ui";
+import { Avatar, CatName, ErrorBox, Icon, Loading, toast } from "../components/ui";
 import { refreshSimplefinAccounts } from "../components/simplefin";
 import { loadLogos } from "../logos";
 
@@ -152,6 +152,7 @@ export function Settings() {
         </div>
 
         <LogosCard />
+        <RulesCard />
 
         <div class="card span-6 stack">
           <div>
@@ -375,6 +376,84 @@ function MissingLogoRow({ m, onSaved }: { m: LogoCoverage["missing"][number]; on
             {saving ? "Saving…" : "Save"}
           </button>
         </form>
+      )}
+    </div>
+  );
+}
+
+type RuleRow = {
+  id: string;
+  match: { payeeKey?: string; recurringKey?: string; payeeContains?: string; amountMin?: number; amountMax?: number; account?: string };
+  target_account: string;
+  entity_override: string | null;
+  created_from: "swipe" | "manual";
+  hit_count: number;
+};
+
+const describeMatch = (m: RuleRow["match"]) =>
+  [
+    m.payeeKey ? `payee is “${m.payeeKey}”` : null,
+    m.recurringKey ? `recurring “${m.recurringKey}”` : null,
+    m.payeeContains ? `payee contains “${m.payeeContains}”` : null,
+    m.amountMax !== undefined && m.amountMax < 0 && m.amountMin === undefined ? "money out" : null,
+    m.amountMin !== undefined && m.amountMin > 0 && m.amountMax === undefined ? "money in" : null,
+    m.account ? `account ${m.account.split(":").pop()}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+/** Rules categorize new transactions on import (before Jev). Made from "apply to similar", Review, or recurring series. */
+function RulesCard() {
+  const rules = useApi<{ rules: RuleRow[] }>("/rules");
+  const [shown, setShown] = useState(LOGO_PAGE);
+  const remove = async (r: RuleRow) => {
+    try {
+      await api(`/rules/${encodeURIComponent(r.id)}`, { method: "DELETE" });
+      toast("Rule deleted");
+      rules.reload();
+    } catch (e) {
+      toast((e as Error).message);
+    }
+  };
+  const list = rules.data?.rules ?? [];
+  return (
+    <div class="card span-6 stack">
+      <div>
+        <h2>Rules</h2>
+        <div class="sub">
+          New transactions that match a rule get its category automatically, before Jev is asked. Create one by setting a category on a transaction and choosing “Create a rule”.
+        </div>
+      </div>
+      {rules.error && <ErrorBox error={rules.error} />}
+      {!rules.data && !rules.error && <Loading h={80} />}
+      {rules.data && list.length === 0 && <div class="muted small">No rules yet.</div>}
+      {list.length > 0 && (
+        <div class="list">
+          {list.slice(0, shown).map((r) => (
+            <div class="row" style={{ gap: 10, padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <CatName account={r.target_account} />
+                </div>
+                <div class="muted tiny" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  When {describeMatch(r.match)}
+                  {r.entity_override ? ` · profile ${r.entity_override}` : ""} · used {r.hit_count}× · {r.created_from === "swipe" ? "learned in Review" : "manual"}
+                </div>
+              </div>
+              <button class="btn ghost danger" style={{ height: 30, padding: "0 10px" }} onClick={() => remove(r)} aria-label="Delete rule">
+                Delete
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {shown < list.length && (
+        <button class="btn ghost" style={{ width: "100%", gap: 6 }} onClick={() => setShown((n) => n + LOGO_PAGE)}>
+          Show {Math.min(LOGO_PAGE, list.length - shown)} more
+          <span style={{ display: "inline-flex", transform: "rotate(90deg)" }}>
+            <Icon.chevron />
+          </span>
+        </button>
       )}
     </div>
   );
