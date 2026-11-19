@@ -133,7 +133,7 @@ YNAB specifics:
 
 Learning: when the same payee is accepted into the same category **3 times**, create a rule (`created_from: swipe`).
 
-Jev failures or a missing key → transaction goes to the review queue; the pipeline never blocks an import.
+Jev failures or a missing key → transaction goes to the review queue; the pipeline never blocks an import. A rejected key (401/403) or no credits (402) stops Jev calls for the rest of the run after the first failure. Queued items that never got a Jev answer can be re-run later ("Ask Jev" on the Review screen, `POST /categorize` with `retry: true`); rules apply to them too.
 
 ## 6. Budgets, Transfers, Assets
 
@@ -160,6 +160,7 @@ REST and MCP call the same service layer. All writes: journal write → `audit.l
 | POST | `/transfers` | record a transfer (incl. between entities) |
 | GET | `/review` | review queue with Jev's top choices |
 | POST | `/review/:id` | accept or change (counts as a swipe) |
+| POST | `/categorize` | run rules + Jev over uncategorized transactions not in the queue; `{retry: true}` also re-asks Jev about queued items with no suggestion (`includeLowConfidence`, `limit` optional) |
 | GET/POST | `/rules` | list / create |
 | GET/PUT | `/mappings` | view / edit |
 | POST | `/imports` | upload a file (ynab-csv, qfx, csv, reihub) |

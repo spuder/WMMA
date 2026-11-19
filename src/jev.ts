@@ -24,6 +24,16 @@ export class JevError extends Error {
   }
 }
 
+/** Statuses that will fail the same way for every transaction, so a run should stop asking. */
+export const isJevFatal = (status: number) => status === 401 || status === 402 || status === 403;
+
+function jevHttpMessage(status: number): string {
+  if (status === 401 || status === 403) return "Jev rejected the API key";
+  if (status === 402) return "Jev: out of credits";
+  if (status === 429) return "Jev: rate limited or over quota";
+  return `Jev: HTTP ${status}`;
+}
+
 export interface JevOptions {
   apiKey: string;
   baseUrl?: string;
@@ -65,7 +75,7 @@ export class JevClient {
     } catch (e) {
       throw new JevError(`Jev request failed: ${e instanceof Error ? e.message : String(e)}`);
     }
-    if (!res.ok) throw new JevError(`Jev: HTTP ${res.status}`, res.status);
+    if (!res.ok) throw new JevError(jevHttpMessage(res.status), res.status);
     const body = (await res.json().catch(() => null)) as { answers?: Record<string, unknown> } | null;
     const a = body?.answers?.["category"] as Partial<JevChoice> | undefined;
     if (

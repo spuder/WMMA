@@ -9,7 +9,7 @@
 import { nowIso } from "../db";
 import { validateAccount } from "../journal/format";
 import type { HledgerTransaction } from "../hledger/web";
-import { JEV_MAX_OPTIONS, JevError, type JevClient } from "../jev";
+import { isJevFatal, JEV_MAX_OPTIONS, JevError, type JevClient } from "../jev";
 import * as M from "../money";
 import type { Money } from "../money";
 import { accountType, recurringPayeeKey, UNCATEGORIZED_EXPENSE, UNCATEGORIZED_INCOME } from "../naming";
@@ -230,6 +230,8 @@ export interface CategorizeSummary {
   queued: number;
   jevCalls: number;
   errors: string[];
+  /** Left for another run when `limit` cut the list short. */
+  remaining?: number;
 }
 
 interface Change {
@@ -246,14 +248,37 @@ async function apply(ctx: ServiceContext, u: Uncategorized, to: string, tags: Re
   await ctx.store.updateTransaction(u.file, u.wmmaId, { setTags: tags, replaceAccount: { from: u.uncategorized, to } });
 }
 
+export interface CategorizeOptions {
+  wmmaIds?: ReadonlySet<string>;
+  /**
+   * Also re-run pending review items: by default only those that never got a Jev answer
+   * (no key yet, Jev down, out of credits); with includeLowConfidence, every pending item.
+   */
+  retry?: { includeLowConfidence?: boolean };
+  /** Most transactions to look at in one run (newest first when retrying). */
+  limit?: number;
+}
+
 /** Categorise uncategorised entries (optionally only `wmmaIds`). */
-export async function categorize(ctx: ServiceContext, actor: string, opts: { wmmaIds?: ReadonlySet<string> } = {}): Promise<CategorizeSummary> {
+export async function categorize(ctx: ServiceContext, actor: string, opts: CategorizeOptions = {}): Promise<CategorizeSummary> {
   const summary: CategorizeSummary = { considered: 0, byRule: 0, byJev: 0, queued: 0, jevCalls: 0, errors: [] };
   const txns = await ctx.hledger.transactions();
-  const queued = new Set((ctx.db.query("SELECT wmma_id FROM review_queue").all() as Array<{ wmma_id: string }>).map((r) => r.wmma_id));
-  const todo = findUncategorized(txns).filter((u) => !queued.has(u.wmmaId) && (!opts.wmmaIds || opts.wmmaIds.has(u.wmmaId)));
+  const queueRows = ctx.db.query("SELECT wmma_id, status, jev_choices FROM review_queue").all() as Array<{ wmma_id: string; status: string; jev_choices: string }>;
+  const skip = new Set(
+    queueRows
+      .filter((r) => !opts.retry || r.status !== "pending" || (!opts.retry.includeLowConfidence && r.jev_choices !== "[]"))
+      .map((r) => r.wmma_id),
+  );
+  let todo = findUncategorized(txns).filter((u) => !skip.has(u.wmmaId) && (!opts.wmmaIds || opts.wmmaIds.has(u.wmmaId)));
+  if (opts.limit !== undefined && todo.length > opts.limit) {
+    todo.sort((a, b) => b.date.localeCompare(a.date));
+    summary.remaining = todo.length - opts.limit;
+    todo = todo.slice(0, opts.limit);
+  }
   summary.considered = todo.length;
   if (todo.length === 0) return summary;
+  // A retried item that gets a category leaves the review queue as accepted.
+  const resolveQueued = ctx.db.query("UPDATE review_queue SET status = 'accepted', chosen = ?, reason = ?, resolved_at = ? WHERE wmma_id = ? AND status = 'pending'");
 
   const rules = listRules(ctx);
   // Business first: the first matching rule that sets one wins, even when another
@@ -278,13 +303,15 @@ export async function categorize(ctx: ServiceContext, actor: string, opts: { wmm
     const tags: Record<string, string> = { cat_by: "rule" };
     if (rule.entity_override) tags["entity"] = rule.entity_override;
     await apply(ctx, u, rule.target_account, tags);
+    resolveQueued.run(rule.target_account, "rule", nowIso(), u.wmmaId);
     bumpRule.run(rule.id);
     changes.push({ wmma_id: u.wmmaId, from: u.uncategorized, to: rule.target_account, by: "rule", rule: rule.id });
     summary.byRule++;
   }
 
   const enqueue = ctx.db.query(
-    "INSERT OR IGNORE INTO review_queue (wmma_id, jev_choices, date, payee, amount_cents, account, entity, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO review_queue (wmma_id, jev_choices, date, payee, amount_cents, account, entity, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+      "ON CONFLICT (wmma_id) DO UPDATE SET jev_choices = excluded.jev_choices, reason = excluded.reason, entity = excluded.entity WHERE review_queue.status = 'pending'",
   );
   const queue = (u: Uncategorized, choices: Array<{ account: string; probability: number }>, reason: string) => {
     enqueue.run(u.wmmaId, JSON.stringify(choices), u.date, u.payee, M.toCents(u.amount), u.account, u.entity, reason, nowIso());
@@ -312,7 +339,7 @@ export async function categorize(ctx: ServiceContext, actor: string, opts: { wmm
           continue;
         }
         if (consecutiveFailures >= 3) {
-          queue(u, [], "jev unavailable");
+          queue(u, [], summary.errors.at(-1) ?? "jev unavailable");
           continue;
         }
         try {
@@ -321,6 +348,7 @@ export async function categorize(ctx: ServiceContext, actor: string, opts: { wmm
           consecutiveFailures = 0;
           if (ans.confidence >= JEV_APPLY_THRESHOLD) {
             await apply(ctx, u, ans.choice, { cat_by: "jev", jev_conf: ans.confidence.toFixed(2) });
+            resolveQueued.run(ans.choice, "jev", nowIso(), u.wmmaId);
             changes.push({ wmma_id: u.wmmaId, from: u.uncategorized, to: ans.choice, by: "jev", jev_conf: ans.confidence });
             summary.byJev++;
           } else {
@@ -331,7 +359,8 @@ export async function categorize(ctx: ServiceContext, actor: string, opts: { wmm
             queue(u, top.length ? top : [{ account: ans.choice, probability: ans.confidence }], "low confidence");
           }
         } catch (e) {
-          consecutiveFailures++;
+          // A bad key or no credits fails every call the same way: stop asking after the first.
+          consecutiveFailures = e instanceof JevError && isJevFatal(e.status) ? 3 : consecutiveFailures + 1;
           const msg = e instanceof JevError ? e.message : `Jev: ${e instanceof Error ? e.message : String(e)}`;
           if (!summary.errors.includes(msg)) summary.errors.push(msg);
           queue(u, [], msg);

@@ -237,6 +237,54 @@ describe.skipIf(!hledgerWebBin)("categorization pipeline (M4 done-when)", () => 
     expect(left).toEqual(["NEW PLACE"]);
   });
 
+  test("retry re-runs queued items that never got a Jev answer (rules included)", async () => {
+    const handler = createFetchHandler(ctx);
+    const post = async (body: unknown) =>
+      (await (await handler(new Request("http://x/api/v1/categorize", { method: "POST", headers: auth, body: JSON.stringify(body) }))).json()) as any;
+    // NEW PLACE was queued with "jev not configured"; the payeeContains rule now catches it.
+    const run = await post({ retry: true });
+    expect(run).toMatchObject({ considered: 1, byRule: 1, jevCalls: 0 });
+    expect(listReview(ctx, "accepted").find((i) => i.payee === "NEW PLACE")).toMatchObject({ chosen: "Expenses:Shopping", reason: "rule" });
+    expect(findUncategorized(await ctx.hledger.transactions())).toEqual([]);
+  });
+
+  test("running out of Jev credits stops after one call; retry fills them in later", async () => {
+    const saved = ctx.jev;
+    let paid = 0;
+    ctx.jev = new JevClient({ apiKey: "k", fetch: (async () => (paid++, new Response("no credits", { status: 402 }))) as unknown as typeof fetch });
+    try {
+      const r = await importQfx(ctx, me, {
+        filename: "july.qfx",
+        content: qfx("1001", [
+          ["K1", "2026-07-01", "-8.00", "SHOP ONE"],
+          ["K2", "2026-07-02", "-9.00", "SHOP TWO"],
+          ["K3", "2026-07-03", "-4.00", "COFFEE CORNER"],
+        ]),
+      });
+      expect(r.categorization).toMatchObject({ considered: 3, queued: 3, jevCalls: 1, errors: ["Jev: out of credits"] });
+      expect(paid).toBe(1);
+      const shops = listReview(ctx).filter((i) => i.date >= "2026-07-01");
+      expect(shops.map((i) => i.reason)).toEqual(["Jev: out of credits", "Jev: out of credits", "Jev: out of credits"]);
+    } finally {
+      ctx.jev = saved ?? null;
+    }
+    const handler = createFetchHandler(ctx);
+    const post = async (body: unknown) =>
+      (await (await handler(new Request("http://x/api/v1/categorize", { method: "POST", headers: auth, body: JSON.stringify(body) }))).json()) as any;
+    const run = await post({ retry: true });
+    expect(run).toMatchObject({ considered: 3, byJev: 1, queued: 2, jevCalls: 3, errors: [] });
+    expect(listReview(ctx, "accepted").find((i) => i.payee === "COFFEE CORNER" && i.date === "2026-07-03")).toMatchObject({ chosen: "Expenses:Food:Coffee", reason: "jev" });
+    const shops = listReview(ctx).filter((i) => i.date >= "2026-07-01");
+    expect(shops.length).toBe(2);
+    for (const s of shops) {
+      expect(s.reason).toBe("low confidence");
+      expect(s.jev_choices.length).toBeGreaterThan(0);
+    }
+    // Items with real suggestions are left alone unless asked.
+    expect((await post({ retry: true })).considered).toBe(0);
+    expect(await post({ retry: true, includeLowConfidence: true, limit: 1 })).toMatchObject({ considered: 1, remaining: 1 });
+  });
+
   test.skipIf(!hledgerBin)("journals pass hledger check --strict after rewrites", () => {
     const r = Bun.spawnSync([hledgerBin!, "-f", ctx.store.paths.main, "check", "--strict"], { env: { ...process.env, LANG: "C.UTF-8" } });
     expect(r.stderr.toString()).toBe("");
