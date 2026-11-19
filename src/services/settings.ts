@@ -50,7 +50,7 @@ function checkedSettings(settings: unknown): Record<string, string | null> {
 }
 
 export function jevFromConfig(ctx: ServiceContext, key: string | null): JevClient | null {
-  return key ? new JevClient({ apiKey: key, baseUrl: ctx.config.jev.baseUrl, model: ctx.config.jev.model }) : null;
+  return key ? new JevClient({ apiKey: key, baseUrl: ctx.config.jev.baseUrl, model: ctx.config.jev.model, timeoutMs: ctx.config.jev.timeoutMs }) : null;
 }
 
 export async function putSettings(

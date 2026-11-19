@@ -92,7 +92,7 @@ async function serve(): Promise<void> {
     }
   }
   await migrateLegacySimplefin(db, secrets);
-  const jev = jevKey ? new JevClient({ apiKey: jevKey, baseUrl: config.jev.baseUrl, model: config.jev.model }) : null;
+  const jev = jevKey ? new JevClient({ apiKey: jevKey, baseUrl: config.jev.baseUrl, model: config.jev.model, timeoutMs: config.jev.timeoutMs }) : null;
   if (!jev) console.log("No Jev key (JEV_API_KEY or set in the UI): uncategorised transactions go straight to the review queue");
   const ctx: ServiceContext = { config, db, store, audit, hledger: hledger.client, jev, secrets };
   try {

@@ -9,7 +9,7 @@ export interface Config {
   hledgerWebBin: string;
   hledgerWebPort: number;
   simplefinSyncCron: string;
-  jev: { apiKey: string | null; baseUrl: string; model: string };
+  jev: { apiKey: string | null; baseUrl: string; model: string; timeoutMs: number };
   secretKey: string | null;
 }
 
@@ -42,6 +42,11 @@ export function parseAllowedUsers(raw: string | undefined): Set<string> {
   );
 }
 
+const positiveInt = (v: string | undefined) => {
+  const n = Number(v);
+  return v && Number.isInteger(n) && n > 0 ? n : undefined;
+};
+
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
   const allowedUsers = parseAllowedUsers(env.WMMA_ALLOWED_USERS);
   if (env.WMMA_SECRET_KEY && env.WMMA_SECRET_KEY.length < 16) throw new ConfigError("WMMA_SECRET_KEY must be at least 16 characters");
@@ -62,6 +67,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       apiKey: env.JEV_API_KEY || null,
       baseUrl: env.JEV_BASE_URL || "https://api.typesafe.ai",
       model: env.JEV_MODEL || "jev-latest",
+      timeoutMs: positiveInt(env.JEV_TIMEOUT_MS) ?? 30_000,
     },
     secretKey: env.WMMA_SECRET_KEY || null,
   };

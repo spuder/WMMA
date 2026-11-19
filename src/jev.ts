@@ -55,7 +55,7 @@ export class JevClient {
     this.#key = opts.apiKey;
     this.#base = (opts.baseUrl ?? "https://api.typesafe.ai").replace(/\/$/, "");
     this.#model = opts.model ?? "jev-latest";
-    this.#timeout = opts.timeoutMs ?? 15_000;
+    this.#timeout = opts.timeoutMs ?? 30_000;
     this.#fetch = opts.fetch ?? fetch;
   }
 

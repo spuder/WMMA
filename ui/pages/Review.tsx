@@ -22,8 +22,8 @@ interface Item {
 }
 
 const THRESHOLD = 96;
-/** Most transactions sent to Jev per "Ask Jev" tap, so one request stays reasonably short. */
-const JEV_BATCH = 100;
+/** Transactions per /categorize request during "Ask Jev"; the button loops through all of them. */
+const JEV_BATCH = 3;
 
 /** Rolling windows, so each milestone contains the one before it. */
 const MILESTONES = [
@@ -91,25 +91,44 @@ export function Review() {
     void loadItems();
   }, []);
   const settings = useApi<{ jev: { configured: boolean } }>("/settings");
-  const [asking, setAsking] = useState(false);
+  /** Progress of an "Ask Jev" run: how many were sent so far; null when idle. */
+  const [asking, setAsking] = useState<{ done: number; stop: boolean } | null>(null);
+  const stopRef = useRef(false);
   /** Items that never got a Jev answer: queued before a key was set, or while Jev was down / out of credits. */
   const noSuggestion = (items ?? []).filter((i) => i.jev_choices.length === 0).length;
+  // Small batches keep each request short (a proxy can cut off a long one); loop until done or Jev errors.
   const askJev = async () => {
-    setAsking(true);
+    stopRef.current = false;
+    setAsking({ done: 0, stop: false });
+    let done = 0;
+    let categorized = 0;
+    let suggested = 0;
+    let error: string | null = null;
+    // Bounded: an item Jev can't be asked about (no categories to offer) stays without a suggestion.
+    let batches = Math.ceil(noSuggestion / JEV_BATCH) + 1;
     try {
-      const r = await api<{ considered: number; byRule: number; byJev: number; queued: number; errors: string[]; remaining?: number }>("/categorize", {
-        body: { retry: true, limit: JEV_BATCH },
-      });
-      const done = r.byRule + r.byJev;
-      if (r.errors.length) toast(`${r.errors[0]}${done ? ` · ${done} categorized before that` : ""}`);
-      else toast([done ? `${done} categorized` : null, r.queued ? `${r.queued} now have suggestions` : null].filter(Boolean).join(" · ") || "Jev had nothing new to add");
-      await loadItems();
-      refreshReview();
+      while (!stopRef.current && batches-- > 0) {
+        const r = await api<{ considered: number; byRule: number; byJev: number; queued: number; errors: string[]; remaining?: number }>("/categorize", {
+          body: { retry: true, limit: JEV_BATCH },
+        });
+        done += r.considered;
+        categorized += r.byRule + r.byJev;
+        suggested += r.errors.length ? 0 : r.queued;
+        setAsking({ done, stop: false });
+        if (r.errors.length) {
+          error = r.errors[0]!;
+          break;
+        }
+        if (!r.remaining || r.considered === 0) break;
+      }
     } catch (e) {
-      toast((e as Error).message);
-    } finally {
-      setAsking(false);
+      error = (e as Error).message;
     }
+    const summary = [categorized ? `${categorized} categorized` : null, suggested ? `${suggested} now have suggestions` : null].filter(Boolean).join(" · ");
+    toast(error ? `${error}${summary ? ` · ${summary} before that` : ""}` : summary || "Jev had nothing new to add");
+    setAsking(null);
+    await loadItems();
+    refreshReview();
   };
 
   // Newest first; cards set aside for later go to the back, in the order they were set aside.
@@ -307,9 +326,20 @@ export function Review() {
             </div>
           </div>
           {settings.data.jev.configured ? (
-            <button class="btn" disabled={asking} onClick={askJev}>
-              {asking ? "Asking Jev…" : noSuggestion > JEV_BATCH ? `Ask Jev (next ${JEV_BATCH})` : "Ask Jev"}
-            </button>
+            asking ? (
+              <div class="row" style={{ gap: 8 }}>
+                <span class="muted small">
+                  Asking Jev… {asking.done} of {noSuggestion}
+                </span>
+                <button class="btn ghost" disabled={asking.stop} onClick={() => ((stopRef.current = true), setAsking((a) => a && { ...a, stop: true }))}>
+                  {asking.stop ? "Stopping…" : "Stop"}
+                </button>
+              </div>
+            ) : (
+              <button class="btn" onClick={askJev}>
+                Ask Jev
+              </button>
+            )
           ) : (
             <button class="btn ghost" onClick={() => go("/settings")}>
               Settings
