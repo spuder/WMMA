@@ -519,7 +519,10 @@ const LOGO_WAIT_MS = 8000;
 
 Object.assign(routes, {
   "GET /api/v1/logos": async (_req, _id, ctx) => Response.json({ payees: await payeeLogosWithStatus(ctx) }),
-  "GET /api/v1/logos/coverage": async (_req, _id, ctx) => Response.json(await logoCoverage(ctx)),
+  "GET /api/v1/logos/coverage": async (req, _id, ctx) => {
+    const limit = Number(new URL(req.url, "http://localhost").searchParams.get("limit") ?? 50);
+    return Response.json(await logoCoverage(ctx, Number.isFinite(limit) ? Math.max(0, Math.min(Math.floor(limit), 5000)) : 50));
+  },
   "POST /api/v1/logos/prefetch": async (req, _id, ctx) => {
     const b = ((await jsonBody(req)) ?? {}) as Record<string, unknown>;
     if (b.force !== undefined && typeof b.force !== "boolean") bad("force must be true or false");

@@ -1,6 +1,6 @@
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { api, store, useApi } from "../api";
-import { ErrorBox, Loading, toast } from "../components/ui";
+import { Avatar, ErrorBox, Icon, Loading, toast } from "../components/ui";
 import { refreshSimplefinAccounts } from "../components/simplefin";
 import { loadLogos } from "../logos";
 
@@ -199,10 +199,17 @@ type LogoCoverage = {
 };
 
 const pct = (c: { total: number; covered: number }) => (c.total ? Math.round((1000 * c.covered) / c.total) / 10 : 0);
-const MISSING_LABEL: Record<string, string> = { none: "no website known", not_found: "no logo found", pending: "not fetched yet" };
+const MISSING_LABEL: Record<string, string> = { none: "no website known", not_found: "no logo found", pending: "not fetched yet", logo: "logo found ✓", glyph: "icon set ✓" };
+const LOGO_PAGE = 20;
 
 function LogosCard() {
-  const cov = useApi<LogoCoverage>("/logos/coverage");
+  const cov = useApi<LogoCoverage>("/logos/coverage?limit=5000");
+  // The first list seen stays put: fixed payees keep their row (now showing the logo) until the page is reloaded.
+  const [snapshot, setSnapshot] = useState<LogoCoverage["missing"] | null>(null);
+  const [shown, setShown] = useState(LOGO_PAGE);
+  useEffect(() => {
+    if (cov.data && !snapshot) setSnapshot(cov.data.missing);
+  }, [cov.data]);
   const [busy, setBusy] = useState(false);
   const fetchNow = async () => {
     setBusy(true);
@@ -256,25 +263,108 @@ function LogosCard() {
               {c.fetchEnabled ? "Turn off logo fetching" : "Turn on logo fetching"}
             </button>
           </div>
-          {c.missing.length > 0 && (
+          {snapshot && snapshot.length > 0 && (
             <details>
               <summary class="small" style={{ cursor: "pointer" }}>
-                Most frequent payees without a logo
+                Most frequent payees without a logo <span class="muted">· {snapshot.length}</span>
               </summary>
-              <div class="list" style={{ marginTop: 6 }}>
-                {c.missing.slice(0, 15).map((m) => (
-                  <div class="spread small" style={{ padding: "5px 0", borderBottom: "1px solid var(--line)" }}>
-                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {m.payee} <span class="muted">· {m.count}×</span>
-                    </span>
-                    <span class="muted tiny">{m.domain ? `${m.domain}: ` : ""}{MISSING_LABEL[m.status] ?? m.status}</span>
-                  </div>
+              <div class="muted tiny" style={{ margin: "6px 0 2px" }}>Tap a payee to set the website its logo comes from.</div>
+              <div class="list">
+                {snapshot.slice(0, shown).map((m) => (
+                  <MissingLogoRow key={m.key} m={c.missing.find((x) => x.key === m.key) ?? { ...m, status: "logo" }} onSaved={cov.reload} />
                 ))}
               </div>
-              <div class="muted tiny" style={{ marginTop: 6 }}>Open one of their transactions and set its logo website.</div>
+              {shown < snapshot.length && (
+                <button class="btn ghost" style={{ width: "100%", marginTop: 6, gap: 6 }} onClick={() => setShown((n) => n + LOGO_PAGE)}>
+                  Show {Math.min(LOGO_PAGE, snapshot.length - shown)} more
+                  <span style={{ display: "inline-flex", transform: "rotate(90deg)" }}>
+                    <Icon.chevron />
+                  </span>
+                </button>
+              )}
             </details>
           )}
         </>
+      )}
+    </div>
+  );
+}
+
+/** One payee without a logo: tap to type the website its logo should come from. */
+function MissingLogoRow({ m, onSaved }: { m: LogoCoverage["missing"][number]; onSaved: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(m.domain ?? "");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
+  const domainShown = saved ?? m.domain;
+  const done = m.status === "logo" || m.status === "glyph";
+  const save = async () => {
+    const domain = draft.trim().replace(/^https?:\/\//i, "").replace(/\/.*$/, "");
+    if (!domain) return;
+    setSaving(true);
+    try {
+      await api(`/logos/payees/${encodeURIComponent(m.payee)}`, { method: "PUT", body: { domain } });
+      // Look the new site up right away so the row shows whether it has a usable icon.
+      const r = await api<{ found: boolean; retried: boolean }>(`/logos/img/${encodeURIComponent(domain)}/retry`, { method: "POST" }).catch(() => null);
+      toast(r?.found ? `Logo found for ${m.payee}` : r?.retried ? `No logo found on ${domain}` : `Website saved for ${m.payee}`);
+      setSaved(domain);
+      setEditing(false);
+      onSaved();
+      void loadLogos(true);
+    } catch (e) {
+      toast((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+  const cancel = () => (setEditing(false), setDraft(domainShown ?? ""));
+  return (
+    <div style={{ padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
+      <button
+        type="button"
+        class="row"
+        style={{ width: "100%", background: "none", border: 0, padding: 0, color: "inherit", font: "inherit", textAlign: "left", cursor: "pointer", gap: 12 }}
+        onClick={() => (editing ? cancel() : setEditing(true))}
+        aria-expanded={editing}
+        title="Set logo website"
+      >
+        <Avatar name={m.payee} />
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {m.payee} <span class="muted">· {m.count}×</span>
+          </span>
+          <span class="muted small" style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: done ? "var(--accent-text)" : undefined }}>
+            {domainShown ? `${domainShown} · ` : ""}
+            {MISSING_LABEL[m.status] ?? m.status}
+          </span>
+        </span>
+        <span class="muted" style={{ flexShrink: 0, fontSize: 18, padding: "0 4px" }} aria-hidden>
+          {editing ? "✕" : "✎"}
+        </span>
+      </button>
+      {editing && (
+        <form
+          class="row"
+          style={{ gap: 8, marginTop: 10 }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            void save();
+          }}
+        >
+          <input
+            class="input"
+            style={{ flex: 1, minWidth: 0 }}
+            value={draft}
+            onInput={(e) => setDraft((e.target as HTMLInputElement).value)}
+            onKeyDown={(e) => e.key === "Escape" && cancel()}
+            placeholder="example.com"
+            inputMode="url"
+            autoFocus
+          />
+          <button class="btn" type="submit" disabled={saving || !draft.trim() || draft.trim() === domainShown}>
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </form>
       )}
     </div>
   );
