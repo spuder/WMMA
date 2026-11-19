@@ -232,6 +232,18 @@ export interface CategorizeSummary {
   errors: string[];
   /** Left for another run when `limit` cut the list short. */
   remaining?: number;
+  /** Per transaction, when asked for (`outcomes: true`): the category applied, or Jev's suggestions. */
+  outcomes?: Record<string, CategorizeOutcome>;
+}
+
+export interface CategorizeOutcome {
+  /** Category applied (by a rule or a confident Jev pick). */
+  category?: string;
+  by?: "rule" | "jev";
+  /** Jev's top choices when it wasn't confident enough to apply. */
+  choices?: Array<{ account: string; probability: number }>;
+  /** Why it was left uncategorized. */
+  reason?: string;
 }
 
 interface Change {
@@ -257,6 +269,8 @@ export interface CategorizeOptions {
   retry?: { includeLowConfidence?: boolean };
   /** Most transactions to look at in one run (newest first when retrying). */
   limit?: number;
+  /** Report what happened to each transaction in `summary.outcomes`. */
+  outcomes?: boolean;
 }
 
 /** Categorise uncategorised entries (optionally only `wmmaIds`). */
@@ -276,6 +290,10 @@ export async function categorize(ctx: ServiceContext, actor: string, opts: Categ
     todo = todo.slice(0, opts.limit);
   }
   summary.considered = todo.length;
+  if (opts.outcomes) summary.outcomes = {};
+  const outcome = (id: string, o: CategorizeOutcome) => {
+    if (summary.outcomes) summary.outcomes[id] = o;
+  };
   if (todo.length === 0) return summary;
   // A retried item that gets a category leaves the review queue as accepted.
   const resolveQueued = ctx.db.query("UPDATE review_queue SET status = 'accepted', chosen = ?, reason = ?, resolved_at = ? WHERE wmma_id = ? AND status = 'pending'");
@@ -304,6 +322,7 @@ export async function categorize(ctx: ServiceContext, actor: string, opts: Categ
     if (rule.entity_override) tags["entity"] = rule.entity_override;
     await apply(ctx, u, rule.target_account, tags);
     resolveQueued.run(rule.target_account, "rule", nowIso(), u.wmmaId);
+    outcome(u.wmmaId, { category: rule.target_account, by: "rule" });
     bumpRule.run(rule.id);
     changes.push({ wmma_id: u.wmmaId, from: u.uncategorized, to: rule.target_account, by: "rule", rule: rule.id });
     summary.byRule++;
@@ -315,6 +334,7 @@ export async function categorize(ctx: ServiceContext, actor: string, opts: Categ
   );
   const queue = (u: Uncategorized, choices: Array<{ account: string; probability: number }>, reason: string) => {
     enqueue.run(u.wmmaId, JSON.stringify(choices), u.date, u.payee, M.toCents(u.amount), u.account, u.entity, reason, nowIso());
+    outcome(u.wmmaId, { choices, reason });
     summary.queued++;
   };
 
@@ -349,6 +369,7 @@ export async function categorize(ctx: ServiceContext, actor: string, opts: Categ
           if (ans.confidence >= JEV_APPLY_THRESHOLD) {
             await apply(ctx, u, ans.choice, { cat_by: "jev", jev_conf: ans.confidence.toFixed(2) });
             resolveQueued.run(ans.choice, "jev", nowIso(), u.wmmaId);
+            outcome(u.wmmaId, { category: ans.choice, by: "jev" });
             changes.push({ wmma_id: u.wmmaId, from: u.uncategorized, to: ans.choice, by: "jev", jev_conf: ans.confidence });
             summary.byJev++;
           } else {
@@ -374,6 +395,14 @@ export async function categorize(ctx: ServiceContext, actor: string, opts: Categ
     await ctx.audit.append({ actor, operation: "categorize", inputs: { wmmaIds: opts.wmmaIds ? [...opts.wmmaIds] : "all" }, before: null, after: { changes, summary } });
   }
   return summary;
+}
+
+/** Uncategorized transactions (optionally one entity's), newest first: the ids "Send all to Jev" walks through. */
+export async function uncategorizedIds(ctx: ServiceContext, entity?: string | null): Promise<string[]> {
+  return findUncategorized(await ctx.hledger.transactions())
+    .filter((u) => !entity || u.entity === entity)
+    .sort((a, b) => b.date.localeCompare(a.date) || b.wmmaId.localeCompare(a.wmmaId))
+    .map((u) => u.wmmaId);
 }
 
 // ---- Review queue -------------------------------------------------------

@@ -285,6 +285,22 @@ describe.skipIf(!hledgerWebBin)("categorization pipeline (M4 done-when)", () => 
     expect(await post({ retry: true, includeLowConfidence: true, limit: 1 })).toMatchObject({ considered: 1, remaining: 1 });
   });
 
+  test("wmmaIds re-asks Jev about chosen transactions, even low-confidence ones, and reports outcomes", async () => {
+    const handler = createFetchHandler(ctx);
+    const get = await handler(new Request("http://x/api/v1/categorize/uncategorized", { headers: auth }));
+    const { ids } = (await get.json()) as { ids: string[] };
+    const shop = listReview(ctx).find((i) => i.payee === "SHOP ONE")!;
+    expect(ids).toContain(shop.wmma_id);
+    const before = calls.length;
+    const res = await handler(new Request("http://x/api/v1/categorize", { method: "POST", headers: auth, body: JSON.stringify({ wmmaIds: [shop.wmma_id] }) }));
+    const r = (await res.json()) as any;
+    expect(r).toMatchObject({ considered: 1, jevCalls: 1 });
+    expect(calls.length).toBe(before + 1);
+    expect(r.outcomes[shop.wmma_id].choices.length).toBeGreaterThan(0);
+    const bad = await handler(new Request("http://x/api/v1/categorize", { method: "POST", headers: auth, body: JSON.stringify({ wmmaIds: "nope" }) }));
+    expect(bad.status).toBe(400);
+  });
+
   test.skipIf(!hledgerBin)("journals pass hledger check --strict after rewrites", () => {
     const r = Bun.spawnSync([hledgerBin!, "-f", ctx.store.paths.main, "check", "--strict"], { env: { ...process.env, LANG: "C.UTF-8" } });
     expect(r.stderr.toString()).toBe("");
