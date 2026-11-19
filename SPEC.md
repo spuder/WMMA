@@ -163,6 +163,8 @@ REST and MCP call the same service layer. All writes: journal write → `audit.l
 | POST | `/categorize` | run rules + Jev over uncategorized transactions not in the queue; `{retry: true}` also re-asks Jev about queued items with no suggestion (`includeLowConfidence`, `limit` optional) |
 | | | `{wmmaIds: [...]}` (≤ 50) runs just those transactions, re-asking Jev even where it was unsure, and returns per-transaction `outcomes` |
 | GET | `/categorize/uncategorized` | ids of uncategorized transactions, newest first (`?entity=` optional) |
+| GET | `/categorize/jev` | ids of transactions Jev categorized (`cat_by: jev`), newest first (`?entity=` optional) |
+| POST | `/categorize/rerun` | `{wmmaIds}` (≤ 50): re-ask Jev about its own picks; confident answers replace the category, unsure ones keep it; manual / rule / mapping categories are never touched |
 | GET/POST | `/rules` | list / create |
 | GET/PUT | `/mappings` | view / edit |
 | POST | `/imports` | upload a file (ynab-csv, qfx, csv, reihub) |

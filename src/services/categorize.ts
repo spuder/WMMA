@@ -89,6 +89,35 @@ export function findUncategorized(txns: HledgerTransaction[]): Uncategorized[] {
   return out;
 }
 
+/**
+ * Transactions Jev categorized (cat_by: jev), shaped like Uncategorized with the current category in
+ * `uncategorized`, so apply() can move them. Anything a person, a rule or an import mapping set is left out.
+ */
+export function findJevCategorized(txns: HledgerTransaction[]): Uncategorized[] {
+  const out: Uncategorized[] = [];
+  for (const t of txns) {
+    const tags = new Map(t.ttags);
+    const wmmaId = tags.get("wmma_id");
+    if (!wmmaId || tags.get("cat_by") !== "jev" || t.tpostings.length !== 2) continue;
+    const cat = t.tpostings.find((p) => /^(Income|Expenses):/.test(p.paccount) && !UNCATEGORIZED.has(p.paccount));
+    const bank = t.tpostings.find((p) => p !== cat);
+    if (!cat || !bank || !/^(Assets|Liabilities):/.test(bank.paccount) || bank.pamount.length !== 1 || bank.pamount[0]!.acommodity !== "$") continue;
+    const [payee, ...memo] = t.tdescription.split(" | ");
+    out.push({
+      wmmaId,
+      file: t.tsourcepos[0]?.sourceName ?? "",
+      date: t.tdate,
+      payee: payee!.trim(),
+      memo: memo.length ? memo.join(" | ").trim() : null,
+      amount: M.fromHledgerQuantity(bank.pamount[0]!.aquantity),
+      account: bank.paccount,
+      entity: tags.get("entity") ?? null,
+      uncategorized: cat.paccount,
+    });
+  }
+  return out;
+}
+
 export function ruleMatches(rule: RuleMatch, u: Pick<Uncategorized, "payee" | "amount" | "account">): boolean {
   if (rule.payeeKey !== undefined && payeeKey(u.payee) !== rule.payeeKey) return false;
   if (rule.recurringKey !== undefined && recurringPayeeKey(u.payee) !== rule.recurringKey) return false;
@@ -403,6 +432,81 @@ export async function uncategorizedIds(ctx: ServiceContext, entity?: string | nu
     .filter((u) => !entity || u.entity === entity)
     .sort((a, b) => b.date.localeCompare(a.date) || b.wmmaId.localeCompare(a.wmmaId))
     .map((u) => u.wmmaId);
+}
+
+/** Transactions Jev categorized (optionally one entity's), newest first: what "Re-run Jev" walks through. */
+export async function jevCategorizedIds(ctx: ServiceContext, entity?: string | null): Promise<string[]> {
+  return findJevCategorized(await ctx.hledger.transactions())
+    .filter((u) => !entity || u.entity === entity)
+    .sort((a, b) => b.date.localeCompare(a.date) || b.wmmaId.localeCompare(a.wmmaId))
+    .map((u) => u.wmmaId);
+}
+
+export interface RerunSummary {
+  considered: number;
+  /** Moved to a different category Jev is now confident about. */
+  changed: number;
+  /** Jev confidently picked the same category again. */
+  confirmed: number;
+  /** Jev wasn't confident: the existing category stays. */
+  kept: number;
+  jevCalls: number;
+  errors: string[];
+  outcomes: Record<string, { from: string; to?: string; confidence?: number }>;
+}
+
+/**
+ * Ask Jev again about transactions it categorized earlier (e.g. after new categories were added).
+ * A confident answer replaces the category; an unsure one never removes it.
+ */
+export async function rerunJev(ctx: ServiceContext, actor: string, wmmaIds: ReadonlySet<string>): Promise<RerunSummary> {
+  const jev = ctx.jev;
+  if (!jev) throw new ServiceError("Jev isn't configured: add a key in Settings", 409);
+  const summary: RerunSummary = { considered: 0, changed: 0, confirmed: 0, kept: 0, jevCalls: 0, errors: [], outcomes: {} };
+  const txns = await ctx.hledger.transactions();
+  const todo = findJevCategorized(txns).filter((u) => wmmaIds.has(u.wmmaId));
+  summary.considered = todo.length;
+  if (todo.length === 0) return summary;
+  let declared: string[] = [];
+  try {
+    declared = await ctx.hledger.accountNames();
+  } catch {
+    // fall back to accounts seen in transactions
+  }
+  const before = jev.calls;
+  const changes: Change[] = [];
+  for (const u of todo) {
+    const type = u.entity ? getEntity(ctx, u.entity)?.type : undefined;
+    const options = allowedCategories(txns, declared, u.entity, !M.isNegative(u.amount), type ? templateAccounts(type) : []);
+    if (!options.includes(u.uncategorized) && options.length < JEV_MAX_OPTIONS) options.push(u.uncategorized);
+    try {
+      const criteria = Object.fromEntries(options.map((a) => [a, describeAccount(a)]));
+      const ans = await jev.choose(jevState(u), "Pick the bookkeeping category for this bank transaction.", criteria);
+      const conf = ans.confidence.toFixed(2);
+      if (ans.confidence < JEV_APPLY_THRESHOLD) {
+        summary.kept++;
+        summary.outcomes[u.wmmaId] = { from: u.uncategorized, confidence: ans.confidence };
+      } else if (ans.choice === u.uncategorized) {
+        await ctx.store.updateTransaction(u.file, u.wmmaId, { setTags: { jev_conf: conf } });
+        summary.confirmed++;
+        summary.outcomes[u.wmmaId] = { from: u.uncategorized, to: ans.choice, confidence: ans.confidence };
+      } else {
+        await apply(ctx, u, ans.choice, { cat_by: "jev", jev_conf: conf });
+        changes.push({ wmma_id: u.wmmaId, from: u.uncategorized, to: ans.choice, by: "jev", jev_conf: ans.confidence });
+        summary.changed++;
+        summary.outcomes[u.wmmaId] = { from: u.uncategorized, to: ans.choice, confidence: ans.confidence };
+      }
+    } catch (e) {
+      const msg = e instanceof JevError ? e.message : `Jev: ${e instanceof Error ? e.message : String(e)}`;
+      if (!summary.errors.includes(msg)) summary.errors.push(msg);
+      summary.outcomes[u.wmmaId] = { from: u.uncategorized };
+      // Every later call would fail the same way (bad key, no credits, Jev down): stop here.
+      break;
+    }
+  }
+  summary.jevCalls = jev.calls - before;
+  if (changes.length > 0) await ctx.audit.append({ actor, operation: "categorize.rerun", inputs: { wmmaIds: [...wmmaIds] }, before: null, after: { changes, summary: { ...summary, outcomes: undefined } } });
+  return summary;
 }
 
 // ---- Review queue -------------------------------------------------------

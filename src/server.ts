@@ -19,7 +19,7 @@ import {
   type BankAccountAssignment,
 } from "./services/bank-imports";
 import { SimplefinError } from "./importers/simplefin";
-import { categorize, createRule, listReview, listRules, resolveReview, uncategorizedIds } from "./services/categorize";
+import { categorize, createRule, jevCategorizedIds, listReview, listRules, rerunJev, resolveReview, uncategorizedIds } from "./services/categorize";
 import { addAccount, addEntity, listEntities, updateAccount, updateEntity } from "./services/entities";
 import { listBudgets, recordTransfer, recordValuation, setBudgets } from "./services/ledger";
 import { budgetReport, pnl } from "./services/reports";
@@ -306,6 +306,17 @@ Object.assign(routes, {
     return Response.json(
       await categorize(ctx, identity.login, { ...(retry ? { retry } : {}), ...(limit ? { limit } : {}), ...(ids ? { wmmaIds: ids, outcomes: true } : {}) }),
     );
+  },
+  "GET /api/v1/categorize/jev": async (req, _id, ctx) => {
+    const entity = new URL(req.url, "http://localhost").searchParams.get("entity");
+    return Response.json({ ids: await jevCategorizedIds(ctx, entity) });
+  },
+  /** body: {wmmaIds: [...]} (≤ 50). Re-asks Jev about transactions it categorized; never touches manual ones. */
+  "POST /api/v1/categorize/rerun": async (req, identity, ctx) => {
+    const b = ((await jsonBody(req)) ?? {}) as Record<string, unknown>;
+    if (!Array.isArray(b.wmmaIds) || b.wmmaIds.some((x) => typeof x !== "string")) bad("wmmaIds must be an array of strings");
+    if ((b.wmmaIds as string[]).length > 50) bad("at most 50 wmmaIds per request");
+    return Response.json(await rerunJev(ctx, identity.login, new Set(b.wmmaIds as string[])));
   },
   "GET /api/v1/categorize/uncategorized": async (req, _id, ctx) => {
     const entity = new URL(req.url, "http://localhost").searchParams.get("entity");
