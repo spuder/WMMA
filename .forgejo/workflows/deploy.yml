@@ -1,0 +1,33 @@
+name: Deploy to Dockhand
+
+# Forgejo Actions only (the GitHub copy of this repo ignores .forgejo/).
+# A push to main tells Dockhand to pull the repo and redeploy the `wmma` git
+# stack. Dockhand builds the image itself from compose.dockhand.yaml, so there
+# is no registry push.
+#
+# Repository variable : DOCKHAND_STACK_ID         (Dockhand git stack id)
+# Repository secret   : DOCKHAND_WEBHOOK_SECRET   (that stack's webhook secret)
+
+on:
+  push:
+    branches:
+    - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: docker
+
+    steps:
+    - name: Deploy via Dockhand
+      run: |
+        if [ -z "${{ vars.DOCKHAND_STACK_ID }}" ]; then
+          echo "DOCKHAND_STACK_ID repository variable is not set" >&2
+          exit 1
+        fi
+        PAYLOAD=""
+        SIG=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "${{ secrets.DOCKHAND_WEBHOOK_SECRET }}" | cut -d' ' -f2)
+        curl -f -X POST "https://dockhand.snowy-vibes.ts.net/api/git/stacks/${{ vars.DOCKHAND_STACK_ID }}/webhook" \
+          -H "X-Hub-Signature-256: sha256=$SIG" \
+          -H "Content-Type: application/json" \
+          -d "$PAYLOAD"
