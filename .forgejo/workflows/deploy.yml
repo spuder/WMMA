@@ -2,8 +2,10 @@ name: Deploy to Dockhand
 
 # Forgejo Actions only (the GitHub copy of this repo ignores .forgejo/).
 # A push to main tells Dockhand to pull the repo and redeploy the `wmma` git
-# stack. Dockhand builds the image itself from compose.dockhand.yaml, so there
-# is no registry push.
+# stack, which pulls ghcr.io/spuder/wmma:latest (built by the GitHub Docker
+# workflow from the same commit). Push to GitHub first or together with
+# Forgejo: the first step waits up to 4 min for that commit's image tag, then
+# deploys whatever :latest is.
 #
 # Repository variable : DOCKHAND_STACK_ID         (Dockhand git stack id)
 # Repository secret   : DOCKHAND_WEBHOOK_SECRET   (that stack's webhook secret)
@@ -19,6 +21,19 @@ jobs:
     runs-on: docker
 
     steps:
+    - name: Wait for the GHCR image of this commit
+      run: |
+        TAG="sha-$(echo "${{ github.sha }}" | cut -c1-7)"
+        for i in $(seq 1 24); do
+          TOKEN=$(curl -fsS "https://ghcr.io/token?scope=repository:spuder/wmma:pull" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.oci.image.index.v1+json" \
+            "https://ghcr.io/v2/spuder/wmma/manifests/$TAG")
+          if [ "$CODE" = 200 ]; then echo "image $TAG is published"; exit 0; fi
+          sleep 10
+        done
+        echo "warning: image $TAG not found after 4 min, deploying the current :latest" >&2
+
     - name: Deploy via Dockhand
       run: |
         if [ -z "${{ vars.DOCKHAND_STACK_ID }}" ]; then

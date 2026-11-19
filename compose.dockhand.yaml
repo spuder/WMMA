@@ -12,18 +12,20 @@
 # a `ports:` mapping or put other containers on this network: the identity
 # header is trusted as-is on those paths.
 #
-# Dockhand runs compose from inside its own container, so there are no
-# relative bind mounts; data lives in named volumes. Variables are set on the
-# Dockhand stack and substituted into ${...} below.
+# Same service as compose.yaml (image from GHCR, docktail labels) with one
+# difference: Dockhand runs compose from inside its own container, so
+# compose.yaml's relative `./data` bind mount would not resolve on the Docker
+# host. Data lives in the named volume wmma-data instead (wmma_wmma-data on
+# the host). Variables are set on the Dockhand stack and substituted into
+# ${...} below.
 #
-# Pushes to main on Forgejo redeploy this via .forgejo/workflows/deploy.yml.
+# Pushes to main on Forgejo redeploy this via .forgejo/workflows/deploy.yml,
+# which waits for the matching ghcr.io image tag; the stack re-pulls images
+# on every deploy.
 
 services:
   wmma:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: wmma:local
+    image: ghcr.io/spuder/wmma:latest   # built by .github/workflows/docker.yml
     container_name: wmma
     init: true
     environment:
