@@ -1022,6 +1022,8 @@ mark.fz { background: transparent; color: var(--accent-text); font-weight: 700; 
 .sf-row.off .avatar, .sf-row.off .sf-name, .sf-row.off .sf-bal { opacity: 0.5; }
 .sf-name { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .sf-name strong { font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sf-name.editable { cursor: pointer; border-radius: 6px; }
+.sf-name.editable:hover strong, .sf-name.editable:focus-visible strong { text-decoration: underline; text-underline-offset: 3px; }
 .sf-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; color: var(--muted); font-size: 12.5px; }
 .sf-meta .business-tag { margin: 0; }
 .sf-new { color: var(--accent-text); font-weight: 550; }

@@ -2,7 +2,7 @@ import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
 import { api, money, useApi } from "../api";
 import { businessStyle, useApp, type Entity } from "../app";
-import { useSimplefinWizard, type SimplefinMapping } from "../components/simplefin";
+import { refreshSimplefinAccounts, SimplefinLinkSheet, type SimplefinMapping } from "../components/simplefin";
 import { Avatar, ErrorBox, Icon, Loading, toast } from "../components/ui";
 
 type Kind = "qfx" | "csv" | "ynab-csv" | "reihub";
@@ -75,7 +75,6 @@ export function Imports() {
     sf.reload();
     refreshReview();
   };
-  const wizard = useSimplefinWizard((r) => after(r, "SimpleFIN"));
 
   const upload = async () => {
     if (!file) return;
@@ -130,7 +129,6 @@ export function Imports() {
           status={sf}
           accounts={accts.data?.accounts ?? []}
           busy={busy}
-          wizard={wizard}
           onSync={() => action("sf", "/sync/simplefin", {}, "SimpleFIN")}
         />
 
@@ -350,7 +348,6 @@ export function Imports() {
           )}
         </div>
       </div>
-      {wizard.element}
     </div>
   );
 }
@@ -369,49 +366,56 @@ function BankSync({
   status,
   accounts,
   busy,
-  wizard,
   onSync,
 }: {
   status: { data: SfStatus | null; error: string | null; loading: boolean; reload: () => void };
   accounts: any[];
   busy: string | null;
-  wizard: { start: () => void; busy: boolean };
   onSync: () => void;
 }) {
   const { entities } = useApp();
   const [saving, setSaving] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [linking, setLinking] = useState<{ account: SfAccount; editing: boolean } | null>(null);
   const s = status.data;
-  const mapped = s ? Object.keys(s.mappings).length > 0 : false;
   const syncing = (a: SfAccount) => Boolean(s?.mappings[a.id]) && !s?.mappings[a.id]?.skip;
   const rows = s ? [...s.accounts].sort((a, b) => Number(syncing(b)) - Number(syncing(a)) || a.name.localeCompare(b.name)) : [];
   const on = rows.filter(syncing);
   const total = on.reduce((sum, a) => sum + (a.balance_cents ?? 0), 0);
 
-  const toggle = async (a: SfAccount, next: boolean) => {
+  const saveMapping = async (a: SfAccount, mapping: SimplefinMapping) => {
     if (!s) return;
-    const linked = accounts.find((x) => x.slug === a.linkedAccountSlug);
-    const active = entities.filter((e) => e.status === "active");
-    const current = s.mappings[a.id] ?? {};
-    const entity = current.entity || linked?.default_entity || active.find((e) => e.type === "personal")?.slug || active[0]?.slug;
-    if (next && !entity) {
-      toast("Add a business or personal profile first (Accounts page)");
-      return;
-    }
-    const mappings = {
-      ...s.mappings,
-      [a.id]: { ...current, ...(a.linkedAccountSlug && !current.slug ? { slug: a.linkedAccountSlug } : {}), entity, kind: current.kind ?? a.kindHint ?? "bank", skip: !next },
-    };
+    await api("/simplefin/accounts", { method: "POST", body: { accounts: { ...s.mappings, [a.id]: mapping } } });
+    status.reload();
+  };
+  const turnOff = async (a: SfAccount) => {
     setSaving(a.id);
     try {
-      await api("/simplefin/accounts", { method: "POST", body: { accounts: mappings } });
-      toast(next ? `${a.name} will sync` : `${a.name} won't sync`);
-      status.reload();
+      await saveMapping(a, { ...s?.mappings[a.id], skip: true });
+      toast(`${a.name} won't sync`);
     } catch (e) {
       toast((e as Error).message);
     } finally {
       setSaving(null);
     }
   };
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      const n = await refreshSimplefinAccounts();
+      toast(`SimpleFIN returned ${n} account${n === 1 ? "" : "s"}`);
+      status.reload();
+    } catch (e) {
+      toast((e as Error).message);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+  // WMMA accounts already fed by some other SimpleFIN account can't be picked again.
+  const takenSlugs = (except: string) =>
+    new Set(
+      (s?.accounts ?? []).flatMap((o) => (o.id === except ? [] : [o.linkedAccountSlug, s?.mappings[o.id]?.skip ? null : s?.mappings[o.id]?.slug])).filter((x): x is string => Boolean(x)),
+    );
 
   let body: ComponentChildren;
   if (status.loading && !s) body = <div style={{ padding: 18 }}><Loading h={140} /></div>;
@@ -434,13 +438,13 @@ function BankSync({
         <a class="btn primary" href="#/settings">Connect SimpleFIN</a>
       </div>
     );
-  else if (!mapped || rows.length === 0)
+  else if (rows.length === 0)
     body = (
       <div class="sf-empty">
-        <h3>Choose the accounts to sync</h3>
-        <p class="muted">SimpleFIN is connected. Pick which bank accounts to bring in and which business or personal profile each belongs to.</p>
-        <button class="btn primary" disabled={wizard.busy} onClick={wizard.start}>
-          {wizard.busy ? "Loading accounts…" : "Choose accounts"}
+        <h3>Load your bank accounts</h3>
+        <p class="muted">SimpleFIN is connected. Load the account list, then switch on the ones to sync.</p>
+        <button class="btn primary" disabled={refreshing} onClick={refresh}>
+          {refreshing ? "Loading accounts…" : "Load accounts from SimpleFIN"}
         </button>
       </div>
     );
@@ -475,11 +479,14 @@ function BankSync({
             return (
               <div class={`sf-row${isOn ? "" : " off"}`} key={a.id}>
                 <Avatar name={a.name} logo={linked?.logo ?? (a.domain ? { domain: a.domain } : null)} />
-                <div class="sf-name">
+                <div
+                  class={`sf-name${isOn ? " editable" : ""}`}
+                  {...(isOn ? { role: "button", tabIndex: 0, title: "Change profile or linked account", onClick: () => setLinking({ account: a, editing: true }), onKeyDown: (e: KeyboardEvent) => e.key === "Enter" && setLinking({ account: a, editing: true }) } : {})}
+                >
                   <strong>{a.name}</strong>
                   <span class="sf-meta">
                     <span>{KIND_LABEL[kind] ?? kind}</span>
-                    {ent && <BizTag entity={ent} />}
+                    {isOn && ent && <BizTag entity={ent} />}
                     {isOn && !linked && <span class="sf-new">New account on next sync</span>}
                     {linked && linked.name !== a.name && <span class="muted">→ {linked.name}</span>}
                   </span>
@@ -489,15 +496,40 @@ function BankSync({
                   {a.asOf && <span class="muted tiny">as of {new Date(`${a.asOf}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>}
                 </div>
                 <label class="sf-switch" title={isOn ? "Syncing — click to stop" : "Not syncing — click to sync"}>
-                  <input type="checkbox" checked={isOn} disabled={saving !== null} onChange={(e) => toggle(a, (e.target as HTMLInputElement).checked)} aria-label={`Sync ${a.name}`} />
+                  <input type="checkbox" checked={isOn} disabled={saving !== null} onChange={(e) => {
+                      const el = e.target as HTMLInputElement;
+                      if (el.checked) {
+                        el.checked = false; // stays off until the dialog is confirmed
+                        setLinking({ account: a, editing: false });
+                      } else turnOff(a);
+                    }} aria-label={`Sync ${a.name}`} />
                 </label>
               </div>
             );
           })}
         </div>
         <div class="sf-foot muted small">
-          {s.snapshotAt ? `Account list from SimpleFIN, ${ago(s.snapshotAt)}.` : "Showing linked WMMA accounts; sync once to load balances from SimpleFIN."} New accounts at your bank appear after <button class="linkbtn small" disabled={wizard.busy} onClick={wizard.start}>checking SimpleFIN</button>.
+          {s.snapshotAt ? `Account list from SimpleFIN, ${ago(s.snapshotAt)}.` : "Showing linked WMMA accounts; sync once to load balances from SimpleFIN."} New accounts at your bank appear after <button class="linkbtn small" disabled={refreshing} onClick={refresh}>{refreshing ? "checking…" : "checking SimpleFIN"}</button>.
         </div>
+        {linking && (
+          <SimplefinLinkSheet
+            account={linking.account}
+            mapping={s.mappings[linking.account.id]}
+            existingAccounts={accounts.filter((x) => x.status === "open")}
+            takenSlugs={takenSlugs(linking.account.id)}
+            editing={linking.editing}
+            onClose={() => setLinking(null)}
+            onSave={async (mapping) => {
+              try {
+                await saveMapping(linking.account, mapping);
+                toast(linking.editing ? "Saved" : `${linking.account.name} will sync — use Sync now to import it`);
+                setLinking(null);
+              } catch (e) {
+                toast((e as Error).message);
+              }
+            }}
+          />
+        )}
       </>
     );
 
@@ -511,17 +543,14 @@ function BankSync({
             <div class="muted small">via SimpleFIN Bridge</div>
           </div>
           {s && (
-            <span class={`status-chip${s.configured ? (mapped ? " ok" : " warn") : ""}`}>
+            <span class={`status-chip${s.configured ? (on.length ? " ok" : " warn") : ""}`}>
               <span class="dot" />
-              {s.configured ? (mapped ? "Connected" : "Needs setup") : "Not connected"}
+              {s.configured ? (on.length ? "Connected" : "No accounts on") : "Not connected"}
             </span>
           )}
         </div>
-        {s?.configured && mapped && (
+        {s?.configured && rows.length > 0 && (
           <div class="row" style={{ gap: 8 }}>
-            <button class="btn sm" disabled={wizard.busy || busy !== null} onClick={wizard.start}>
-              {wizard.busy ? "Loading…" : "Manage accounts"}
-            </button>
             <button class="btn primary sm" disabled={busy !== null || on.length === 0} onClick={onSync}>
               <span class={`tiny-ico${busy === "sf" ? " spin" : ""}`}><Icon.refresh /></span>
               {busy === "sf" ? "Syncing…" : "Sync now"}

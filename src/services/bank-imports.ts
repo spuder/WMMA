@@ -501,7 +501,7 @@ export async function simplefinStatus(ctx: ServiceContext): Promise<SimplefinSta
 
 export async function saveSimplefinAccountMappings(ctx: ServiceContext, actor: string, mappings: Record<string, BankAccountAssignment>): Promise<void> {
   const entries = Object.entries(mappings);
-  if (entries.length === 0 || entries.every(([, a]) => a.skip)) throw new ServiceError("Choose at least one SimpleFIN account to connect");
+  // Accounts are switched on and off one at a time, so every account being off is a valid state.
   const targets = new Set<string>();
   for (const [id, assignment] of entries) {
     if (!id || id.length > 256) throw new ServiceError("invalid SimpleFIN account id");

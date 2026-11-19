@@ -1,7 +1,7 @@
 import { useState } from "preact/hooks";
 import { api, store, useApi } from "../api";
 import { ErrorBox, Loading, toast } from "../components/ui";
-import { useSimplefinWizard } from "../components/simplefin";
+import { refreshSimplefinAccounts } from "../components/simplefin";
 import { loadLogos } from "../logos";
 
 export function Settings() {
@@ -10,7 +10,6 @@ export function Settings() {
   const [key, setKey] = useState("");
   const [simplefinToken, setSimplefinToken] = useState("");
   const [simplefinBusy, setSimplefinBusy] = useState(false);
-  const wizard = useSimplefinWizard(() => s.reload());
   const [theme, setTheme] = useState(store.get("theme") ?? "system");
 
   const applyTheme = (t: string) => {
@@ -36,8 +35,9 @@ export function Settings() {
       await api("/settings", { method: "PUT", body: { simplefinSetupToken: simplefinToken.trim() } });
       setSimplefinToken("");
       s.reload();
-      toast("SimpleFIN connected. Choose which accounts to add.");
-      await wizard.start();
+      await refreshSimplefinAccounts().catch(() => 0); // prime the account list; Imports can retry
+      toast("SimpleFIN connected. Switch on the accounts to sync on the Imports page.");
+      location.hash = "#/imports";
     } catch (e) {
       toast((e as Error).message);
     } finally {
@@ -139,9 +139,9 @@ export function Settings() {
                   </div>
                   <div class="muted tiny">Setup Tokens can only be claimed once. WMMA never displays or logs the saved Access URL.</div>
                   {s.data.simplefin.configured && <div class="card flat stack" style={{ gap: 6, background: "var(--surface-2)" }}>
-                    <div class="spread small"><strong>Account setup</strong><span class="muted">{s.data.simplefin.accountsConfigured ? "Ready" : "Needs setup"}</span></div>
-                    <div class="muted small">Choose the SimpleFIN accounts to add and which business or personal profile each belongs to.</div>
-                    <button class="btn" disabled={simplefinBusy || wizard.busy} onClick={wizard.start}>{wizard.busy ? "Loading accounts…" : s.data.simplefin.accountsConfigured ? "Manage account mappings" : "Set up accounts"}</button>
+                    <strong class="small">Accounts</strong>
+                    <div class="muted small">Switch accounts on and off, and pick the business or personal profile each belongs to, on the Imports page.</div>
+                    <a class="btn" href="#/imports">Manage synced accounts</a>
                   </div>}
                 </>
               ) : (
@@ -187,7 +187,6 @@ export function Settings() {
           </div>
         </div>
       </div>
-      {wizard.element}
     </div>
   );
 }
