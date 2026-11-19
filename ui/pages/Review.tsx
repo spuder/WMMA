@@ -337,7 +337,7 @@ export function Review() {
           <div class="deck">
             {queue.slice(1, 3).reverse().map((it, i, arr) => (
               <div class={`swipe-card ${i === arr.length - 1 ? "behind" : "behind2"}`} key={it.wmma_id} aria-hidden>
-                <CardBody item={it} entityName={entityName} entities={entities} />
+                <CardBody item={it} entityName={entityName} entities={entities} jevConfigured={settings.data?.jev.configured} />
               </div>
             ))}
             <div
@@ -359,6 +359,7 @@ export function Review() {
               </div>
               {later.includes(card.wmma_id) && <div class="later-tag">⏳ Saved for later</div>}
               <CardBody
+                jevConfigured={settings.data?.jev.configured}
                 item={card}
                 entityName={entityName}
                 entities={entities}
@@ -507,6 +508,14 @@ function Celebration({ title, badge, next }: { title: string; badge: string; nex
 const JEV_COLORS = ["#16a874", "#3b82f6", "#a855f7", "#f59e0b", "#ec4899", "#14b8a6"];
 const jevColor = (rank: number) => JEV_COLORS[rank % JEV_COLORS.length]!;
 
+/** Why a card has no suggestion, judged by whether Jev is set up now, not when the item was queued. */
+function noSuggestionHint(reason: string | null, jevConfigured: boolean | undefined): string {
+  if (jevConfigured === false) return "Add a Jev key in Settings for suggestions.";
+  if (reason === "low confidence") return "Jev couldn't decide.";
+  if (jevConfigured) return "Jev hasn't looked at this one yet: tap Ask Jev above.";
+  return "No suggestion yet.";
+}
+
 function CardBody({
   item,
   entityName,
@@ -518,7 +527,9 @@ function CardBody({
   busy = false,
   note,
   onSaveNote,
+  jevConfigured,
 }: {
+  jevConfigured?: boolean | undefined;
   item: Item;
   entityName: (s: string | null) => string;
   entities?: Array<{ slug: string; name: string; type: string; color?: string | null }>;
@@ -607,7 +618,7 @@ function CardBody({
         <div class="suggestion none">
           <div class="upper">No suggestion</div>
           <div class="small muted" style={{ marginTop: 4 }}>
-            {item.reason === "jev not configured" ? "Add a Jev key in Settings for suggestions." : "Jev couldn't decide."} Tap Other to choose one.
+            {noSuggestionHint(item.reason, jevConfigured)} Tap Other to choose one.
           </div>
         </div>
       )}
