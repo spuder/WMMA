@@ -30,6 +30,7 @@ export const Icon = {
   compass: () => <svg viewBox="0 0 24 24" {...P}><circle cx="12" cy="12" r="9" /><path d="m15.5 8.5-2 5-5 2 2-5z" /></svg>,
   download: () => <svg viewBox="0 0 24 24" {...P}><path d="M12 4v11M7 10l5 5 5-5M4 20h16" /></svg>,
   filter: () => <svg viewBox="0 0 24 24" {...P}><path d="M4 6h16M7 12h10M10 18h4" /></svg>,
+  refresh: () => <svg viewBox="0 0 24 24" {...P}><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4" /></svg>,
   plus: () => <svg viewBox="0 0 24 24" {...P} stroke-width="2.2"><path d="M12 5v14M5 12h14" /></svg>,
   logo: () => (
     <svg viewBox="0 0 32 32" width="28" height="28">

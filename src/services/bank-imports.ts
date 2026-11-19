@@ -375,6 +375,7 @@ export function syncSimplefin(
     const syncedAt = nowIso();
     const set = await fetchAccounts(url, { startDate: start, ...(opts.fetch ? { fetch: opts.fetch } : {}) });
     const all = normaliseSimplefin(set, ctx.config.tz);
+    saveSimplefinSnapshot(ctx, all, syncedAt);
     const assignments = mergeSimplefinAssignments(all, savedSimplefinMappings(ctx), opts.accounts);
     const datas = all.filter((data) => (assignments ? Boolean(assignments[data.externalKey]) && assignments[data.externalKey]?.skip !== true : true));
     if (datas.length === 0) throw new ServiceError("Select at least one SimpleFIN account to sync", 422);
@@ -420,10 +421,82 @@ export async function previewSimplefinAccounts(ctx: ServiceContext): Promise<Arr
   if (!url) throw new ServiceError("Connect SimpleFIN in Settings before choosing accounts", 422);
   const startDate = new Date();
   const set = await fetchAccounts(url, { startDate });
-  return normaliseSimplefin(set, ctx.config.tz).map((a) => {
+  const all = normaliseSimplefin(set, ctx.config.tz);
+  saveSimplefinSnapshot(ctx, all, nowIso());
+  return all.map((a) => {
     const linked = ctx.db.query("SELECT slug FROM accounts WHERE simplefin_id = ?").get(a.externalKey) as { slug: string } | null;
     return { id: a.externalKey, name: a.name, kindHint: a.kindHint, balance: M.format(a.balance?.amount ?? M.ZERO), asOf: a.balance?.asOf ?? "", linkedAccountSlug: linked?.slug ?? null };
   });
+}
+
+const SIMPLEFIN_SNAPSHOT = "simplefin.accounts_snapshot";
+
+export interface SimplefinSnapshotAccount {
+  id: string;
+  name: string;
+  domain: string | null;
+  kindHint: AccountKind | null;
+  balance_cents: number | null;
+  asOf: string | null;
+}
+
+/**
+ * Remember the accounts SimpleFIN last returned (names and balances only, no
+ * transactions) so the UI can list them without spending SimpleFIN's daily
+ * request quota on every page view.
+ */
+function saveSimplefinSnapshot(ctx: ServiceContext, datas: BankAccountData[], at: string): void {
+  const accounts: SimplefinSnapshotAccount[] = datas.map((a) => ({
+    id: a.externalKey,
+    name: a.name,
+    domain: a.domain ?? null,
+    kindHint: a.kindHint,
+    balance_cents: a.balance ? M.toCents(a.balance.amount) : null,
+    asOf: a.balance?.asOf ?? null,
+  }));
+  ctx.db.query("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(SIMPLEFIN_SNAPSHOT, JSON.stringify({ at, accounts }));
+}
+
+export interface SimplefinStatus {
+  configured: boolean;
+  lastSync: string | null;
+  schedule: { cron: string; tz: string };
+  /** When the account list below was fetched from SimpleFIN (null: never; accounts come from WMMA's links). */
+  snapshotAt: string | null;
+  accounts: Array<SimplefinSnapshotAccount & { linkedAccountSlug: string | null }>;
+  mappings: Record<string, BankAccountAssignment>;
+}
+
+/** Everything the Imports page shows about SimpleFIN, read locally (no request to SimpleFIN). */
+export async function simplefinStatus(ctx: ServiceContext): Promise<SimplefinStatus> {
+  let configured = false;
+  try {
+    configured = Boolean(await ctx.secrets?.get("simplefin_access_url"));
+  } catch {
+    // unreadable secrets file: report as not connected
+  }
+  const setting = (key: string) => (ctx.db.query("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | null)?.value ?? null;
+  const linked = ctx.db.query("SELECT slug, name, kind, simplefin_id FROM accounts WHERE simplefin_id IS NOT NULL").all() as Array<{ slug: string; name: string; kind: AccountKind; simplefin_id: string }>;
+  const slugFor = new Map(linked.map((a) => [a.simplefin_id, a.slug]));
+  let snapshot: { at: string; accounts: SimplefinSnapshotAccount[] } | null = null;
+  try {
+    const raw = setting(SIMPLEFIN_SNAPSHOT);
+    snapshot = raw ? JSON.parse(raw) : null;
+  } catch {
+    snapshot = null;
+  }
+  // Before the first snapshot, fall back to the WMMA accounts already linked to SimpleFIN.
+  const accounts = snapshot
+    ? snapshot.accounts
+    : linked.map((a) => ({ id: a.simplefin_id, name: a.name, domain: null, kindHint: a.kind, balance_cents: null, asOf: null }));
+  return {
+    configured,
+    lastSync: setting(SIMPLEFIN_LAST_SYNC),
+    schedule: { cron: ctx.config.simplefinSyncCron, tz: ctx.config.tz },
+    snapshotAt: snapshot?.at ?? null,
+    accounts: accounts.map((a) => ({ ...a, linkedAccountSlug: slugFor.get(a.id) ?? null })),
+    mappings: savedSimplefinMappings(ctx) ?? {},
+  };
 }
 
 export async function saveSimplefinAccountMappings(ctx: ServiceContext, actor: string, mappings: Record<string, BankAccountAssignment>): Promise<void> {
