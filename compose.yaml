@@ -28,6 +28,9 @@ name: wmma   # fixes volume names (wmma_wmma-data, wmma_wmma-secret-key) whateve
 services:
   wmma:
     image: ghcr.io/spuder/wmma:latest   # or pin a release / sha-<commit> tag
+    # Re-pull on every `up`, so a redeploy (e.g. a Dockhand webhook) picks up a new :latest
+    # instead of restarting the image already on the host.
+    pull_policy: always
     container_name: wmma
     init: true
     environment:
