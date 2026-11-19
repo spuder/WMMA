@@ -23,27 +23,73 @@ export const FORM_TAG: Record<EntityType, string | null> = {
 };
 
 export const TEMPLATES: Record<EntityType, TemplateLine[]> = {
+  // Monarch's default categories (display names in ui/api.ts DISPLAY_NAMES). Account names are
+  // never renamed once released: journals reference them.
   personal: pairs("", [
+    // Income
     ["Income:Salary"],
     ["Income:Interest"],
     ["Income:Dividends"],
     ["Income:BusinessIncome"],
     ["Income:Other"],
+    // Gifts & Donations
+    ["Expenses:Charity"],
+    ["Expenses:Gifts"],
+    // Auto & Transport
+    ["Expenses:Auto:Payment"],
+    ["Expenses:Auto:PublicTransit"],
+    ["Expenses:Auto:Gas"],
+    ["Expenses:Auto:Maintenance"],
+    ["Expenses:Auto:ParkingTolls"],
+    ["Expenses:Auto:RideShare"],
+    ["Expenses:Transportation"],
+    // Housing
+    ["Expenses:Housing:Mortgage"],
     ["Expenses:Housing:Rent"],
+    ["Expenses:Housing:HomeImprovement"],
+    // Bills & Utilities
+    ["Expenses:Bills:Garbage"],
+    ["Expenses:Bills:Water"],
+    ["Expenses:Bills:GasElectric"],
+    ["Expenses:Bills:InternetCable"],
+    ["Expenses:Bills:Phone"],
     ["Expenses:Housing:Utilities"],
+    ["Expenses:Subscriptions"],
+    // Food & Dining
     ["Expenses:Food:Groceries"],
     ["Expenses:Food:Dining"],
-    ["Expenses:Transportation"],
-    ["Expenses:Insurance:Personal"],
-    ["Expenses:Healthcare"],
-    ["Expenses:Entertainment"],
-    ["Expenses:Shopping"],
+    ["Expenses:Food:Coffee"],
+    // Travel & Lifestyle
     ["Expenses:Travel"],
-    ["Expenses:Gifts"],
+    ["Expenses:Entertainment"],
+    ["Expenses:Personal"],
+    ["Expenses:Pets"],
+    ["Expenses:FunMoney"],
+    // Shopping
+    ["Expenses:Shopping"],
+    ["Expenses:Clothing"],
+    ["Expenses:FurnitureHousewares"],
+    ["Expenses:Electronics"],
+    // Children
+    ["Expenses:Children:ChildCare"],
+    ["Expenses:Children:Activities"],
+    // Education
+    ["Expenses:StudentLoans"],
     ["Expenses:Education"],
-    ["Expenses:Subscriptions"],
-    ["Expenses:Taxes:Personal"],
+    // Health & Wellness
+    ["Expenses:Healthcare"],
+    ["Expenses:Dentist"],
+    ["Expenses:Fitness"],
+    // Financial
+    ["Expenses:LoanRepayment"],
+    ["Expenses:FinancialLegal"],
     ["Expenses:Fees"],
+    ["Expenses:CashAtm"],
+    ["Expenses:Insurance:Personal"],
+    ["Expenses:Taxes:Personal"],
+    // Other
+    ["Expenses:Check"],
+    ["Expenses:Miscellaneous"],
   ]),
   // Schedule C (Form 1040), Part I-II
   schedule_c: pairs("sch_c", [

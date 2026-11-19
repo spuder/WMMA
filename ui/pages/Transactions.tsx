@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
-import { api, catLabel, dayLabel, leaf, money } from "../api";
+import { api, catLabel, dayLabel, leaf, money, useApi } from "../api";
 import { Avatar, CategoryPicker, CatName, CellMenu, ErrorBox, Icon, Loading, MenuOption, Sheet, toast } from "../components/ui";
 import { businessStyle, EntitySwitcher, go, transactionEntity, useApp, type Entity } from "../app";
 import { loadLogos, retryLogo, usePayeeLogo } from "../logos";
@@ -341,6 +341,9 @@ function TxnLine({
   );
 }
 
+/** Transactions per /categorize request when sending many to Jev (keeps each request short). */
+const JEV_BATCH = 3;
+
 export function Transactions({ query }: { query: URLSearchParams }) {
   const { entity } = useApp();
   const accountFilter = query.get("account");
@@ -352,6 +355,40 @@ export function Transactions({ query }: { query: URLSearchParams }) {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "uncat" | "in" | "out">("all");
   const openId = query.get("id");
+  const { refreshReview } = useApp();
+  const settings = useApi<{ jev: { configured: boolean } }>("/settings");
+  const [jevRun, setJevRun] = useState<{ done: number; total: number; stop: boolean } | null>(null);
+  const jevStop = useRef(false);
+  /** Re-ask Jev about every uncategorized transaction (this profile's, if one is picked), a few per request. */
+  const sendAllToJev = async () => {
+    jevStop.current = false;
+    let categorized = 0;
+    let suggested = 0;
+    let error: string | null = null;
+    try {
+      const { ids } = await api<{ ids: string[] }>(`/categorize/uncategorized${entity ? `?entity=${encodeURIComponent(entity)}` : ""}`);
+      setJevRun({ done: 0, total: ids.length, stop: false });
+      for (let i = 0; i < ids.length && !jevStop.current; i += JEV_BATCH) {
+        const r = await api<{ errors: string[]; outcomes?: Record<string, { category?: string; choices?: unknown[] }> }>("/categorize", {
+          body: { wmmaIds: ids.slice(i, i + JEV_BATCH) },
+        });
+        for (const o of Object.values(r.outcomes ?? {})) o.category ? categorized++ : o.choices?.length ? suggested++ : null;
+        setJevRun((a) => ({ done: Math.min(i + JEV_BATCH, ids.length), total: ids.length, stop: a?.stop ?? false }));
+        if (categorized) load(0);
+        if (r.errors.length) {
+          error = r.errors[0]!;
+          break;
+        }
+      }
+    } catch (e) {
+      error = (e as Error).message;
+    }
+    const summary = [categorized ? `${categorized} categorized` : null, suggested ? `${suggested} have suggestions in Review` : null].filter(Boolean).join(" · ");
+    toast(error ? `${error}${summary ? ` · ${summary} before that` : ""}` : summary || "Jev had nothing new to add");
+    setJevRun(null);
+    load(0);
+    refreshReview();
+  };
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(text), 250);
@@ -425,6 +462,27 @@ export function Transactions({ query }: { query: URLSearchParams }) {
         )}
       </div>
       {error && <ErrorBox error={error} />}
+      {filter === "uncat" && settings.data?.jev.configured && (shown.length > 0 || jevRun) && (
+        <div class="card flat row" style={{ gap: 12, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <strong>{jevRun ? "Asking Jev" : "Send to Jev"}</strong>
+            <div class="muted small">
+              {jevRun
+                ? `${jevRun.done} of ${jevRun.total} sent`
+                : "Re-asks Jev about every transaction that still needs a category, including ones it wasn't sure about before."}
+            </div>
+          </div>
+          {jevRun ? (
+            <button class="btn ghost" disabled={jevRun.stop} onClick={() => ((jevStop.current = true), setJevRun((a) => a && { ...a, stop: true }))}>
+              {jevRun.stop ? "Stopping…" : "Stop"}
+            </button>
+          ) : (
+            <button class="btn" onClick={sendAllToJev}>
+              Send all to Jev
+            </button>
+          )}
+        </div>
+      )}
       {!rows && !error && <Loading h={360} />}
       {rows && (
         <div class="card flush">
@@ -463,6 +521,37 @@ function TxnSheet({ id, account, onClose, onChanged }: { id: string; account: Ac
   const [memo, setMemo] = useState("");
   const [logoOpen, setLogoOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const settings = useApi<{ jev: { configured: boolean } }>("/settings");
+  const [jevChoices, setJevChoices] = useState<Array<{ account: string; probability: number }>>([]);
+  const [asking, setAsking] = useState(false);
+  useEffect(() => setJevChoices([]), [id]);
+  const askJev = async () => {
+    setAsking(true);
+    try {
+      const r = await api<{ errors: string[]; outcomes?: Record<string, { category?: string; choices?: Array<{ account: string; probability: number }>; reason?: string }> }>(
+        "/categorize",
+        { body: { wmmaIds: [id] } },
+      );
+      const o = r.outcomes?.[id];
+      if (o?.category) {
+        const next = await api<Txn>(`/transactions/${encodeURIComponent(id)}`);
+        setT(next);
+        onChanged(next);
+        toast(`Jev picked ${leaf(o.category)}`);
+      } else if (o?.choices?.length) {
+        setJevChoices(o.choices);
+        setExpanded("category");
+        toast("Jev isn't sure: its best guesses are at the top");
+      } else {
+        toast(r.errors[0] ?? o?.reason ?? "Jev had no suggestion");
+      }
+      refreshReview();
+    } catch (e) {
+      toast((e as Error).message);
+    } finally {
+      setAsking(false);
+    }
+  };
   // Opening a transaction whose site had no logo is the one time we look again.
   const logo = usePayeeLogo(t?.payee ?? null);
   const missingDomain = logo && "domain" in logo && logo.missing ? logo.domain : null;
@@ -526,9 +615,14 @@ function TxnSheet({ id, account, onClose, onChanged }: { id: string; account: Ac
               <Icon.chevron />
             </button>
           )}
+          {catPostings.length === 1 && s.uncategorized && settings.data?.jev.configured && (
+            <button class="btn block" disabled={asking} onClick={askJev}>
+              {asking ? "Asking Jev…" : jevChoices.length ? "Ask Jev again" : "Ask Jev"}
+            </button>
+          )}
           {catPostings.length === 1 && expanded === "category" && (
             <div class="choice-options">
-              <CategoryPicker categories={categories} direction={s.amount < 0 ? "out" : "in"} onPick={(a) => patch({ category: { to: a, from: catPostings[0]?.account } }, `Moved to ${leaf(a)}`)} />
+              <CategoryPicker categories={categories} suggested={jevChoices} direction={s.amount < 0 ? "out" : "in"} onPick={(a) => patch({ category: { to: a, from: catPostings[0]?.account } }, `Moved to ${leaf(a)}`)} />
             </div>
           )}
           <div class="card flat stack" style={{ gap: 8 }}>

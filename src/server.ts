@@ -19,7 +19,7 @@ import {
   type BankAccountAssignment,
 } from "./services/bank-imports";
 import { SimplefinError } from "./importers/simplefin";
-import { categorize, createRule, listReview, listRules, resolveReview } from "./services/categorize";
+import { categorize, createRule, listReview, listRules, resolveReview, uncategorizedIds } from "./services/categorize";
 import { addAccount, addEntity, listEntities, updateAccount, updateEntity } from "./services/entities";
 import { listBudgets, recordTransfer, recordValuation, setBudgets } from "./services/ledger";
 import { budgetReport, pnl } from "./services/reports";
@@ -288,11 +288,28 @@ Object.assign(routes, {
       { status: 201 },
     );
   },
-  /** body: {retry?: true, includeLowConfidence?: true, limit?: n}. retry re-asks Jev about pending review items. */
+  /**
+   * body: {retry?, includeLowConfidence?, limit?, wmmaIds?}. retry re-asks Jev about pending review
+   * items; wmmaIds limits the run to those transactions (re-asking even ones Jev was unsure about)
+   * and reports per-transaction outcomes.
+   */
   "POST /api/v1/categorize": async (req, identity, ctx) => {
     const b = ((await jsonBody(req)) ?? {}) as Record<string, unknown>;
     const limit = typeof b.limit === "number" && b.limit > 0 ? Math.min(Math.floor(b.limit), 1000) : undefined;
-    return Response.json(await categorize(ctx, identity.login, { ...(b.retry ? { retry: { includeLowConfidence: Boolean(b.includeLowConfidence) } } : {}), ...(limit ? { limit } : {}) }));
+    let ids: Set<string> | undefined;
+    if (b.wmmaIds !== undefined) {
+      if (!Array.isArray(b.wmmaIds) || b.wmmaIds.some((x) => typeof x !== "string")) bad("wmmaIds must be an array of strings");
+      if ((b.wmmaIds as string[]).length > 50) bad("at most 50 wmmaIds per request");
+      ids = new Set(b.wmmaIds as string[]);
+    }
+    const retry = ids ? { includeLowConfidence: true } : b.retry ? { includeLowConfidence: Boolean(b.includeLowConfidence) } : undefined;
+    return Response.json(
+      await categorize(ctx, identity.login, { ...(retry ? { retry } : {}), ...(limit ? { limit } : {}), ...(ids ? { wmmaIds: ids, outcomes: true } : {}) }),
+    );
+  },
+  "GET /api/v1/categorize/uncategorized": async (req, _id, ctx) => {
+    const entity = new URL(req.url, "http://localhost").searchParams.get("entity");
+    return Response.json({ ids: await uncategorizedIds(ctx, entity) });
   },
 } satisfies Record<string, Handler>);
 

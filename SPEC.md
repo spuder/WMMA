@@ -94,7 +94,7 @@ Each entity type ships a default Income/Expenses tree whose leaves match its tax
 - `s_corp_1120s` — Form 1120-S lines
 - `partnership_1065` — Form 1065 lines (partnerships issuing K-1s)
 - `schedule_e` — Schedule E rental lines
-- `personal` — a simple personal tree
+- `personal` — Monarch's default categories (Housing, Bills & Utilities, Auto & Transport, …), shown under Monarch's names
 
 Templates only organize categories so reports line up with forms. WMMA does not file taxes.
 
@@ -161,6 +161,8 @@ REST and MCP call the same service layer. All writes: journal write → `audit.l
 | GET | `/review` | review queue with Jev's top choices |
 | POST | `/review/:id` | accept or change (counts as a swipe) |
 | POST | `/categorize` | run rules + Jev over uncategorized transactions not in the queue; `{retry: true}` also re-asks Jev about queued items with no suggestion (`includeLowConfidence`, `limit` optional) |
+| | | `{wmmaIds: [...]}` (≤ 50) runs just those transactions, re-asking Jev even where it was unsure, and returns per-transaction `outcomes` |
+| GET | `/categorize/uncategorized` | ids of uncategorized transactions, newest first (`?entity=` optional) |
 | GET/POST | `/rules` | list / create |
 | GET/PUT | `/mappings` | view / edit |
 | POST | `/imports` | upload a file (ynab-csv, qfx, csv, reihub) |
