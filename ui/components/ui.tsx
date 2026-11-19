@@ -182,7 +182,9 @@ export function CellMenu({
     if (!open && ref.current) {
       const r = ref.current.getBoundingClientRect();
       const below = window.innerHeight - r.bottom;
-      setPlace({ up: below < 400 && r.top > below, right: r.left + width > window.innerWidth - 16 });
+      // Right-align only when opening rightward would overflow and leftward fits; toolbar menus on the left must not slide under the sidebar.
+      const minLeft = (document.querySelector(".sidebar")?.getBoundingClientRect().right ?? 0) + 16;
+      setPlace({ up: below < 400 && r.top > below, right: r.left + width > window.innerWidth - 16 && r.right - width >= minLeft });
     }
     setOpen((o) => !o);
   };

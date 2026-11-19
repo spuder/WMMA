@@ -711,7 +711,6 @@ mark.fz { background: transparent; color: var(--accent-text); font-weight: 700; 
 .cellmenu.tool .cellmenu-btn { min-height: 38px; padding: 6px 12px; border-color: var(--line-strong); background: var(--surface); font-weight: 550; font-size: 14px; }
 .cellmenu.tool .cellmenu-btn:hover { background: var(--surface-2); }
 .cellmenu.tool .cellmenu-btn > svg { opacity: 1; }
-.cellmenu.tool .cellmenu-pop { left: auto; right: 0; transform-origin: top right; }
 .tool-ico { display: inline-flex; width: 16px; height: 16px; color: var(--muted); }
 .tool-ico svg { width: 100%; height: 100%; }
 
