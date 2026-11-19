@@ -14,6 +14,7 @@ import {
   resolveDuplicate,
   previewSimplefinAccounts,
   saveSimplefinAccountMappings,
+  simplefinStatus,
   syncSimplefin,
   type BankAccountAssignment,
 } from "./services/bank-imports";
@@ -220,6 +221,7 @@ const routes: Record<string, Handler> = {
     return Response.json(await syncSimplefin(ctx, identity.login, opts));
   },
 
+  "GET /api/v1/simplefin/status": async (_req, _identity, ctx) => Response.json(await simplefinStatus(ctx)),
   "GET /api/v1/simplefin/accounts": async (_req, _identity, ctx) => {
     const saved = ctx.db.query("SELECT value FROM settings WHERE key = ?").get("simplefin.account_mappings") as { value: string } | null;
     return Response.json({ accounts: await previewSimplefinAccounts(ctx), mappings: saved ? JSON.parse(saved.value) : {} });

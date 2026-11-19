@@ -24,7 +24,8 @@ export async function getSettings(ctx: ServiceContext): Promise<SettingsView> {
     // unreadable secrets file: report as not configured from the UI
   }
   return {
-    settings: Object.fromEntries(rows.map((r) => [r.key, r.value])),
+    // The cached SimpleFIN account list is served by /simplefin/status, not with every settings read.
+    settings: Object.fromEntries(rows.filter((r) => r.key !== "simplefin.accounts_snapshot").map((r) => [r.key, r.value])),
     jev: {
       configured: Boolean(ctx.config.jev.apiKey || uiKey),
       source: ctx.config.jev.apiKey ? "env" : uiKey ? "ui" : null,
