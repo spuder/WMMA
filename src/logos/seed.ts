@@ -1,8 +1,8 @@
 /**
  * Built-in payee -> website domain hints, used before any per-payee override is set.
  *
- * Only mainstream national brands and the largest banks and credit unions (including the
- * big Utah ones) belong here: this file ships to every install. Local businesses, other
+ * Only mainstream national brands, the largest banks and credit unions and a few of the
+ * biggest Utah-based chains belong here: this file ships to every install. Local businesses, other
  * regional chains and anything specific to one household are per-install data,
  * set from the transaction sheet, by an AI client (set_payee_logo) or with
  * `wmma logos import <file.json>`, and stored in that install's database.
@@ -25,6 +25,12 @@ export const MERCHANT_DOMAINS: Record<string, string> = {
   costco: "costco.com",
   "^target": "target.com",
   kroger: "kroger.com",
+  "^smith s$": "smithsfoodanddrug.com",
+  "^smiths$": "smithsfoodanddrug.com",
+  "smith s food": "smithsfoodanddrug.com",
+  "smiths food": "smithsfoodanddrug.com",
+  "smith s marketplace": "smithsfoodanddrug.com",
+  "smiths marketplace": "smithsfoodanddrug.com",
   safeway: "safeway.com",
   albertsons: "albertsons.com",
   "trader joe s": "traderjoes.com",
@@ -70,6 +76,7 @@ export const MERCHANT_DOMAINS: Record<string, string> = {
   etsy: "etsy.com",
   temu: "temu.com",
   shein: "shein.com",
+  gnc: "gnc.com",
 
   // ---- fuel, auto, insurance, rides
   chevron: "chevron.com",
@@ -83,6 +90,10 @@ export const MERCHANT_DOMAINS: Record<string, string> = {
   "flying j": "pilotflyingj.com",
   "pilot travel": "pilotflyingj.com",
   "love s travel": "loves.com",
+  maverik: "maverik.com",
+  sinclair: "sinclairoil.com",
+  "^holiday$": "holidayoil.com",
+  "holiday oil": "holidayoil.com",
   autozone: "autozone.com",
   "o reilly": "oreillyauto.com",
   "jiffy lube": "jiffylube.com",
@@ -139,6 +150,9 @@ export const MERCHANT_DOMAINS: Record<string, string> = {
   "hbo max": "max.com",
   peacock: "peacocktv.com",
   "paramount plus": "paramountplus.com",
+  "^discovery$": "discoveryplus.com",
+  "discovery plus": "discoveryplus.com",
+  discoveryplus: "discoveryplus.com",
   spotify: "spotify.com",
   youtube: "youtube.com",
   google: "google.com",
@@ -154,6 +168,8 @@ export const MERCHANT_DOMAINS: Record<string, string> = {
   adobe: "adobe.com",
   dropbox: "dropbox.com",
   openai: "openai.com",
+  tailscale: "tailscale.com",
+  kickstarter: "kickstarter.com",
   chatgpt: "openai.com",
   usps: "usps.com",
   "us postal service": "usps.com",
@@ -181,6 +197,13 @@ export const MERCHANT_DOMAINS: Record<string, string> = {
   "irs treas": "irs.gov",
   "us treasury": "treasury.gov",
   "planet fitness": "planetfitness.com",
+  "vasa fitness": "vasafitness.com",
+  "great clips": "greatclips.com",
+  "fantastic sams": "fantasticsams.com",
+  "fantastic sam s": "fantasticsams.com",
+  "^fat cats$": "fatcatsfun.com",
+  fatcats: "fatcatsfun.com",
+  "^vasa$": "vasafitness.com",
 
   // ---- banks, cards, payment apps, brokerages
   venmo: "venmo.com",

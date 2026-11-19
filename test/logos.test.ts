@@ -40,6 +40,27 @@ describe("payee -> logo resolution", () => {
     expect(r("springfield chevron")).toEqual({ domain: "chevron.com" });
     expect(r("google fiber")).toEqual({ domain: "fiber.google.com" });
     expect(r("pineapple express")).toEqual(null);
+    expect(r("gnc")).toEqual({ domain: "gnc.com" });
+    expect(r("maverik")).toEqual({ domain: "maverik.com" });
+    expect(r("tailscale inc")).toEqual({ domain: "tailscale.com" });
+    expect(r("vasa fitness")).toEqual({ domain: "vasafitness.com" });
+    expect(r("vasa")).toEqual({ domain: "vasafitness.com" });
+    expect(r("vasa museum")).toBeNull();
+    expect(r("discovery")).toEqual({ domain: "discoveryplus.com" });
+    expect(r("tn discoveryplus discovery help")).toEqual({ domain: "discoveryplus.com" });
+    expect(r("discovery toys")).toBeNull();
+    expect(r("great clips")).toEqual({ domain: "greatclips.com" });
+    expect(r("fantastic sam s")).toEqual({ domain: "fantasticsams.com" });
+    expect(r("fantastic sams")).toEqual({ domain: "fantasticsams.com" });
+    expect(r("fat cats")).toEqual({ domain: "fatcatsfun.com" });
+    expect(r("fatcats clinton clinton ut")).toEqual({ domain: "fatcatsfun.com" });
+    expect(r("fat cats pizza")).toBeNull();
+    expect(r("hooper sinclair")).toEqual({ domain: "sinclairoil.com" });
+    expect(r("kickstarter")).toEqual({ domain: "kickstarter.com" });
+    expect(r("holiday")).toEqual({ domain: "holidayoil.com" });
+    expect(r("holiday lake point ut")).toBeNull();
+    expect(r("smith s")).toEqual({ domain: "smithsfoodanddrug.com" });
+    expect(r("smiths marketplace")).toEqual({ domain: "smithsfoodanddrug.com" });
   });
   test("anchored patterns only match the whole payee", () => {
     expect(r("eleven")).toEqual({ domain: "7-eleven.com" });
