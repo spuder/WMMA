@@ -32,7 +32,7 @@ See [SPEC.md](SPEC.md) for the full design and milestones.
 
 ## Status
 
-- **M1 skeleton:** Bun/TypeScript service, `Money` module, journal writer, Tailscale identity auth, hledger-web (read-only, localhost), Docker image and Compose file.
+- **M1 skeleton:** Bun/TypeScript service, `Money` module, journal writer, Tailscale identity auth, hledger-web (read-only, localhost), Docker image (published to `ghcr.io/spuder/wmma`) and Compose file.
 - **M2 YNAB import:** API and register-CSV importers. Re-running adds nothing; the result reports per-account balances against YNAB.
 - **M7 web UI:** mobile-first app (dashboard, swipe review, activity, reports, accounts, imports, settings) served by the same binary.
 - **M6 REST API + MCP:** transaction search/edit/split, mappings with regeneration, cash-flow / spending / net-worth reports, settings (Jev key stored encrypted), and an MCP server with 9 read and 9 write tools.
@@ -115,26 +115,28 @@ This runs WMMA in Docker and a small identity proxy on your computer. The proxy
 stands in for Tailscale Serve during local testing. The container port is
 published on host loopback, and the proxy also listens on `127.0.0.1`; this
 setup is only for local development, not deployment.
-Docker must be installed and running. The example image targets `linux/amd64`
-because that is the architecture hledger publishes.
+Docker must be installed and running. The image is `linux/amd64` only, because
+that is the architecture hledger publishes (Apple Silicon runs it under emulation).
 
-Build the local-testing image and create a persistent data volume:
+Pull the image and create persistent volumes:
 
 ```sh
-docker build --platform linux/amd64 -f Dockerfile.example -t wmma:example .
+docker pull ghcr.io/spuder/wmma:latest
 docker volume create wmma-example-data
 docker volume create wmma-example-secrets
 ```
 
-Start the app in one terminal:
+Start the app in one terminal. `WMMA_HOST=0.0.0.0` lets the published port
+reach the app, which otherwise listens only on the container's localhost:
 
 ```sh
 docker run --rm --name wmma-example \
   -p 127.0.0.1:3000:3000 \
+  -e WMMA_HOST=0.0.0.0 \
   -e WMMA_ALLOWED_USERS=test@example.com \
   -v wmma-example-data:/data \
   -v wmma-example-secrets:/var/lib/wmma-secrets \
-  wmma:example
+  ghcr.io/spuder/wmma:latest
 ```
 
 In a second terminal, start the local identity proxy:
@@ -227,18 +229,20 @@ REST: `POST /api/v1/imports/ynab-api` (JSON options), `POST /api/v1/imports` (mu
 
 ## Run with Docker Compose
 
-WMMA is only reachable through [Tailscale Serve](https://tailscale.com/kb/1312/serve). The `wmma` container shares the Tailscale sidecar's network and listens on `127.0.0.1`; no ports are published.
+WMMA is only reachable through [Tailscale Serve](https://tailscale.com/kb/1312/serve), set up by [docktail](https://github.com/marvinvr/docktail). Run docktail on the Docker host first; the `docktail.*` labels in `compose.yaml` make it serve WMMA as the Tailscale service `svc:wmma` on port 443. No ports are published.
 
 ```sh
 cp .env.example .env        # fill in, or use op:// references
-op run --env-file=.env -- docker compose up -d --build
+op run --env-file=.env -- docker compose up -d
 ```
+
+`compose.yaml` pulls the prebuilt image `ghcr.io/spuder/wmma` from GitHub Container Registry, built by [`.github/workflows/docker.yml`](.github/workflows/docker.yml).
+Tags: `latest` (current `main`), `sha-<commit>` for every push to `main`, and `X.Y.Z` / `X.Y` for `vX.Y.Z` release tags. Pin one of those in `compose.yaml` if you'd rather update on your own schedule. To update: `docker compose pull && docker compose up -d`.
 
 Then open `https://wmma.<your-tailnet>.ts.net`. Only Tailscale users in `WMMA_ALLOWED_USERS` get in. Data lives in `./data` (back it up yourself).
 
 | Variable | Purpose |
 | --- | --- |
-| `TS_AUTHKEY` | Tailscale auth key for the sidecar |
 | `WMMA_ALLOWED_USERS` | comma-separated Tailscale login names (required) |
 | `WMMA_TZ` | timezone, default `UTC` |
 | `WMMA_DATA_DIR` | default `/data` |

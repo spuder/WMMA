@@ -1,39 +1,30 @@
-# WMMA behind Tailscale Serve.
+# WMMA behind docktail (https://github.com/marvinvr/docktail).
 #
-# The wmma container shares the tailscale container's network namespace and
-# listens on 127.0.0.1 only, so the ONLY way in is Tailscale Serve, which sets
-# the Tailscale-User-* identity headers WMMA trusts (SPEC §2). No ports are
-# published to the host.
+# Requires a docktail container already running on this Docker host. The labels
+# below make docktail run `tailscale serve --service=svc:wmma`, which serves
+# https://wmma.<your-tailnet>.ts.net and stamps the Tailscale-User-Login /
+# Tailscale-User-Name headers WMMA authenticates on (overwriting any copies a
+# client sends), so WMMA_ALLOWED_USERS applies (SPEC §2).
+#
+# WMMA listens on 0.0.0.0 (WMMA_HOST) so docktail can reach the container IP.
+# No ports are published, so the only paths in are docktail and anything on
+# this stack's private Docker network or the Docker host itself. Do not add a
+# `ports:` mapping or put other containers on this network: the identity header
+# is trusted as-is on those paths.
 #
 # Deployment secrets come from the environment, e.g. via 1Password:
 #   op run --env-file=.env -- docker compose up -d
+#
+# The image comes from GitHub Container Registry. To run a local build instead:
+#   docker build -t ghcr.io/spuder/wmma:latest . && docker compose up -d
 
 services:
-  tailscale:
-    image: tailscale/tailscale:v1.104.7
-    hostname: wmma
-    environment:
-      TS_AUTHKEY: ${TS_AUTHKEY:?set TS_AUTHKEY}
-      TS_STATE_DIR: /var/lib/tailscale
-      TS_SERVE_CONFIG: /config/serve.json
-      TS_USERSPACE: "false"
-    volumes:
-      - tailscale-state:/var/lib/tailscale
-      - ./deploy/tailscale/serve.json:/config/serve.json:ro
-    devices:
-      - /dev/net/tun:/dev/net/tun
-    cap_add:
-      - NET_ADMIN
-    restart: unless-stopped
-
   wmma:
-    build: .
-    image: wmma:local
-    network_mode: service:tailscale
-    depends_on:
-      - tailscale
+    image: ghcr.io/spuder/wmma:latest   # or pin a release / sha-<commit> tag
+    container_name: wmma
     init: true
     environment:
+      WMMA_HOST: 0.0.0.0
       WMMA_ALLOWED_USERS: ${WMMA_ALLOWED_USERS:?set WMMA_ALLOWED_USERS}
       WMMA_TZ: ${WMMA_TZ:-UTC}
       JEV_API_KEY: ${JEV_API_KEY:-}
@@ -47,7 +38,11 @@ services:
       - ./data:/data
       - wmma-secret-key:/var/lib/wmma-secrets
     restart: unless-stopped
+    labels:
+      - "docktail.service.enable=true"
+      - "docktail.service.name=wmma"
+      - "docktail.service.port=3000"
+      - "docktail.service.service-port=443"
 
 volumes:
-  tailscale-state:
   wmma-secret-key:

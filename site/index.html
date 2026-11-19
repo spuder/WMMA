@@ -351,8 +351,8 @@
           <p class="kicker">Self-host</p>
           <h2>One container, on your&nbsp;tailnet.</h2>
           <ol class="steps">
-            <li><b>Configure.</b> Copy <code>.env.example</code> to <code>.env</code>, then add a Tailscale auth key and the logins allowed in.</li>
-            <li><b>Start.</b> Docker Compose runs WMMA next to a Tailscale sidecar. No ports are published.</li>
+            <li><b>Configure.</b> Copy <code>.env.example</code> to <code>.env</code>, then add the Tailscale logins allowed in.</li>
+            <li><b>Start.</b> Docker Compose pulls the image and <a href="https://github.com/marvinvr/docktail">docktail</a> serves it on your tailnet. No ports are published.</li>
             <li><b>Open.</b> Visit <code>https://wmma.&lt;your-tailnet&gt;.ts.net</code> on your phone or laptop.</li>
           </ol>
           <p class="muted">Full setup, imports and the CLI are in the <a href="https://github.com/spuder/WMMA#readme">README on GitHub</a>. Data lives in <code>./data</code>. Back it up like any other folder. Secrets can come from 1Password with <code>op run</code>.</p>
@@ -361,8 +361,8 @@
           <div class="code-head"><span>Terminal</span><button type="button" data-copy="install">Copy</button></div>
 <pre id="install"><code>git clone https://github.com/spuder/WMMA.git
 cd WMMA
-cp .env.example .env    # TS_AUTHKEY, WMMA_ALLOWED_USERS
-docker compose up -d --build</code></pre>
+cp .env.example .env    # WMMA_ALLOWED_USERS
+docker compose up -d</code></pre>
           <div class="code-foot"><span>Coming from YNAB?</span> <code>wmma import ynab-api --include-budgets</code></div>
         </div>
       </div>
