@@ -21,7 +21,7 @@ export function More() {
         <div class="list">
           {links.map((l) => (
             <a class="item tap" href={l.href}>
-              <div class="avatar" style={{ color: "var(--accent)" }}>
+              <div class="avatar" style={{ color: "var(--accent-text)" }}>
                 <span style={{ width: 22, height: 22, display: "inline-flex" }}>
                   <l.icon />
                 </span>

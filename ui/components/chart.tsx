@@ -36,10 +36,10 @@ function readTheme(): Theme {
     out: v("--out"),
     warn: v("--warn"),
     dark,
-    // Calm, distinguishable categorical palette (works on both themes).
+    // Bright, distinguishable categorical palette (matches --c0…--c7 in styles.css).
     palette: dark
-      ? ["#47c08f", "#6aa8f0", "#f1b34a", "#f0876a", "#b493f0", "#ef7fb0", "#4fc6c0", "#a7b06a", "#9aa0a6"]
-      : ["#1f7a5a", "#3b74c4", "#c98a12", "#c4512f", "#7b5cc4", "#c2477f", "#1f8f8a", "#7d8a3a", "#7a7f86"],
+      ? ["#6aa3ff", "#ff8a5c", "#3fcc97", "#b993f7", "#f5c35a", "#f283b2", "#4cc4d8", "#a5bc5f", "#9a9894"]
+      : ["#4f8ef7", "#ff7a45", "#2fb886", "#a77bf3", "#f2b33d", "#ec6aa0", "#33b3c9", "#8ea64a", "#a39e98"],
   };
 }
 
@@ -83,7 +83,8 @@ export function Chart({ option, class: cls = "chart", onClick }: { option: (t: T
         backgroundColor: theme.surface,
         borderColor: theme.line,
         textStyle: { color: theme.ink, fontSize: 13 },
-        extraCssText: "border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.12);",
+        padding: [8, 12],
+        extraCssText: "border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);",
       },
     };
     inst.current.setOption({ ...base, ...option(theme), tooltip: { ...(base["tooltip"] as object), ...((option(theme)["tooltip"] as object) ?? {}) } }, true);

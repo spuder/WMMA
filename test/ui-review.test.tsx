@@ -89,6 +89,7 @@ describe("swipe review on a phone", () => {
           refreshReview: () => void refreshes++,
           categories: ["Expenses:Food:Dining", "Expenses:Food:Groceries", "Expenses:Shopping", "Income:Salary"],
           reloadEntities: () => {},
+          userName: null,
         }}
       >
         <Review />

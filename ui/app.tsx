@@ -18,6 +18,8 @@ interface AppState {
   refreshReview: () => void;
   categories: string[];
   reloadEntities: () => void;
+  /** Display name from Tailscale, when it has one. */
+  userName: string | null;
 }
 
 export const App = createContext<AppState>(null as never);
@@ -76,7 +78,7 @@ export function EntitySwitcher() {
                 <span>{e.name} <span class="muted small">· {e.type === "personal" ? "Personal" : e.type === "combined" ? "Everything" : "Business"}</span></span>
               </span>
               {entity === e.slug && (
-                <span style={{ color: "var(--accent)", width: 20, height: 20, display: "inline-flex" }}>
+                <span style={{ color: "var(--accent-text)", width: 20, height: 20, display: "inline-flex" }}>
                   <Icon.check />
                 </span>
               )}

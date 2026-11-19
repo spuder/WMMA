@@ -11,7 +11,7 @@ const greeting = () => {
 };
 
 export function Dashboard() {
-  const { entity, reviewCount } = useApp();
+  const { entity, reviewCount, userName } = useApp();
   const [edited, setEdited] = useState<Record<string, Txn>>({});
   const accounts = useApi<{ accounts: any[] }>("/accounts");
   const m = thisMonth();
@@ -39,9 +39,9 @@ export function Dashboard() {
           data: series.map((s) => s.v),
           smooth: 0.35,
           symbol: "none",
-          lineStyle: { width: 2.5, color: t.accent },
+          lineStyle: { width: 2, color: t.in },
           areaStyle: {
-            color: { type: "linear", x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: `${t.accent}55` }, { offset: 1, color: `${t.accent}00` }] },
+            color: { type: "linear", x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: `${t.in}40` }, { offset: 1, color: `${t.in}00` }] },
           },
         },
       ],
@@ -58,7 +58,7 @@ export function Dashboard() {
           type: "pie",
           radius: ["62%", "88%"],
           padAngle: 2,
-          itemStyle: { borderRadius: 6, borderColor: t.surface, borderWidth: 2 },
+          itemStyle: { borderRadius: 4, borderColor: t.surface, borderWidth: 2 },
           label: { show: false },
           data: cats.slice(0, 8).map((c) => ({ name: `${catEmoji(c.account)} ${leaf(c.account)}`, value: c.amount_cents })),
         },
@@ -71,26 +71,37 @@ export function Dashboard() {
   const bars = useCallback(
     (t: Theme) => ({
       grid: { left: 4, right: 4, top: 24, bottom: 0, containLabel: true },
-      legend: { top: 0, right: 0, itemWidth: 10, itemHeight: 10, textStyle: { color: t.muted } },
+      legend: { top: 0, right: 0, icon: "circle", itemWidth: 8, itemHeight: 8, textStyle: { color: t.muted } },
       tooltip: { trigger: "axis", valueFormatter: (v: number) => money(v, true) },
       xAxis: { type: "category", data: months.map((x) => monthName(x.month)), axisLine: { lineStyle: { color: t.line } }, axisTick: { show: false }, axisLabel: { color: t.muted } },
-      yAxis: { type: "value", splitLine: { lineStyle: { color: t.line, type: "dashed" } }, axisLabel: { color: t.muted, formatter: (v: number) => compact(v) } },
+      yAxis: { type: "value", splitLine: { lineStyle: { color: t.line } }, axisLabel: { color: t.muted, formatter: (v: number) => compact(v) } },
       series: [
-        { name: "Income", type: "bar", data: months.map((x) => x.income_cents), itemStyle: { color: t.in, borderRadius: [6, 6, 0, 0] }, barMaxWidth: 18 },
-        { name: "Spending", type: "bar", data: months.map((x) => x.expenses_cents), itemStyle: { color: t.out, borderRadius: [6, 6, 0, 0] }, barMaxWidth: 18 },
+        { name: "Income", type: "bar", data: months.map((x) => x.income_cents), itemStyle: { color: t.in, borderRadius: [4, 4, 0, 0] }, barMaxWidth: 16 },
+        { name: "Spending", type: "bar", data: months.map((x) => x.expenses_cents), itemStyle: { color: t.out, borderRadius: [4, 4, 0, 0] }, barMaxWidth: 16 },
       ],
     }),
     [trend.data],
   );
 
+  const income = pnl.data ? pnl.data.income.reduce((a: number, l: any) => a + l.amount_cents, 0) : null;
+  const spending = pnl.data ? pnl.data.expenses.reduce((a: number, l: any) => a + l.amount_cents, 0) : null;
+  const net: number | null = pnl.data?.net_cents ?? null;
+  const spentShare = income && spending !== null ? Math.min(100, Math.round((spending / income) * 100)) : spending ? 100 : 0;
+  const firstName = userName?.trim().split(/\s+/)[0];
+
   return (
     <div class="stack">
       <div class="topbar">
-        <div>
-          <div class="muted small">{greeting()}</div>
-          <h1>{monthName(m, { month: "long", year: "numeric" })}</h1>
-        </div>
+        <h1>Dashboard</h1>
         <EntitySwitcher />
+      </div>
+
+      <div class="greeting">
+        <h2>
+          {greeting()}
+          {firstName ? `, ${firstName}` : ""}!
+        </h2>
+        <div class="muted">{new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}</div>
       </div>
 
       {nw.error && <ErrorBox error={nw.error} />}
@@ -110,50 +121,78 @@ export function Dashboard() {
 
       <div class="grid">
         <div class="card hero span-7">
-          <div class="upper">Net worth</div>
+          <div class="card-hd">
+            <h2>Net worth</h2>
+            <a class="card-link" href="#/networth">
+              View all <Icon.chevron />
+            </a>
+          </div>
           {nw.loading ? (
             <Loading h={44} />
           ) : (
-            <>
+            <div class="row wrap" style={{ alignItems: "baseline", columnGap: 12, rowGap: 0 }}>
               <div class="big num">{money(last, true)}</div>
               <span class={`delta ${delta >= 0 ? "up" : "down"}`}>
-                {delta >= 0 ? "▲" : "▼"} {money(Math.abs(delta), true)} <span style={{ fontWeight: 500, opacity: 0.8 }}>this month</span>
+                {delta >= 0 ? "↑" : "↓"} {money(Math.abs(delta), true)} <span style={{ fontWeight: 500, opacity: 0.8 }}>this month</span>
               </span>
-            </>
+            </div>
           )}
           <Chart option={spark} class="chart" />
         </div>
 
         <div class="span-5 stack">
-          <div class="grid-2">
-            <Tile label="Income" cents={pnl.data ? pnl.data.income.reduce((a: number, l: any) => a + l.amount_cents, 0) : null} tone="in" />
-            <Tile label="Spending" cents={pnl.data ? pnl.data.expenses.reduce((a: number, l: any) => a + l.amount_cents, 0) : null} />
+          <div class="card flow-card">
+            <div class="card-hd">
+              <h2>This month</h2>
+              <a class="card-link" href="#/cashflow">
+                Cash flow <Icon.chevron />
+              </a>
+            </div>
+            {pnl.loading ? (
+              <Loading h={120} />
+            ) : (
+              <>
+                <div class="flow-stats">
+                  <div>
+                    <div class="label">Income</div>
+                    <div class="value num in">{money(income ?? 0, true)}</div>
+                  </div>
+                  <div>
+                    <div class="label">Spending</div>
+                    <div class="value num">{money(spending ?? 0, true)}</div>
+                  </div>
+                </div>
+                <div class="flow-bar" role="img" aria-label={`Spent ${spentShare}% of income`}>
+                  <span style={{ width: `${spentShare}%` }} />
+                </div>
+                <div class="spread flow-left">
+                  <span class="muted">{net !== null && net < 0 ? "Overspent" : "Left over"}</span>
+                  <strong class={`num ${net !== null && net < 0 ? "neg" : "in"}`}>{money(Math.abs(net ?? 0), true)}</strong>
+                </div>
+              </>
+            )}
           </div>
-          <Tile label="Left over this month" cents={pnl.data?.net_cents ?? null} tone={pnl.data && pnl.data.net_cents < 0 ? "out" : "in"} wide />
           {reviewCount > 0 && (
-            <button class="card row tap" style={{ textAlign: "left", cursor: "pointer", background: "var(--accent)", color: "var(--accent-ink)", borderColor: "transparent" }} onClick={() => go("/review")}>
-              <span style={{ width: 28, height: 28, display: "inline-flex" }}>
+            <button class="card review-cta" onClick={() => go("/review")}>
+              <span class="review-cta-icon">
                 <Icon.swipe />
               </span>
-              <span style={{ flex: 1 }}>
-                <strong style={{ display: "block", fontSize: 16 }}>
-                  {reviewCount} to review
+              <span class="review-cta-text">
+                <strong>
+                  {reviewCount} {reviewCount === 1 ? "transaction" : "transactions"} to review
                 </strong>
-                <span style={{ opacity: 0.85, fontSize: 13 }}>Swipe to categorize</span>
+                <span class="muted small">Swipe to categorize</span>
               </span>
-              <Icon.chevron />
+              <span class="btn primary sm">Review</span>
             </button>
           )}
         </div>
 
         <div class="card span-5">
-          <div class="spread">
-            <div>
-              <h2>Spending</h2>
-              <div class="sub">This month by category</div>
-            </div>
-            <a class="small" style={{ color: "var(--accent)", fontWeight: 600 }} href="#/reports?tab=spending">
-              Details
+          <div class="card-hd">
+            <h2>Spending</h2>
+            <a class="card-link" href="#/reports?tab=spending">
+              View all <Icon.chevron />
             </a>
           </div>
           {spend.loading ? (
@@ -161,21 +200,21 @@ export function Dashboard() {
           ) : cats.length === 0 ? (
             <div class="empty">No spending yet this month</div>
           ) : (
-            <div class="row" style={{ alignItems: "center", gap: 6 }}>
+            <div class="row" style={{ alignItems: "center", gap: 10 }}>
               <div style={{ position: "relative", width: "46%", flex: "none" }}>
                 <Chart option={donut} class="chart" />
                 <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", pointerEvents: "none", textAlign: "center" }}>
                   <div>
                     <div class="muted tiny">Total</div>
-                    <div class="num" style={{ fontWeight: 750, fontSize: 17 }}>{compact(cats.reduce((a, c) => a + c.amount_cents, 0))}</div>
+                    <div class="num" style={{ fontWeight: 600, fontSize: 18 }}>{compact(cats.reduce((a, c) => a + c.amount_cents, 0))}</div>
                   </div>
                 </div>
               </div>
               <div class="list" style={{ flex: 1, minWidth: 0 }}>
                 {cats.slice(0, 5).map((c, i) => (
-                  <div class="spread small" style={{ padding: "5px 0" }}>
+                  <div class="spread small" style={{ padding: "6px 0" }}>
                     <span class="row" style={{ gap: 8, minWidth: 0 }}>
-                      <span style={{ width: 9, height: 9, borderRadius: 3, flex: "none", background: `var(--c${i})` }} />
+                      <span style={{ width: 8, height: 8, borderRadius: 4, flex: "none", background: `var(--c${i})` }} />
                       <CatName account={c.account} label={leaf(c.account)} />
                     </span>
                     <span class="num muted">{c.share}%</span>
@@ -187,20 +226,24 @@ export function Dashboard() {
         </div>
 
         <div class="card span-7">
-          <h2>Income vs spending</h2>
-          <div class="sub">Last 6 months</div>
+          <div class="card-hd">
+            <h2>Income vs spending</h2>
+            <span class="muted small">Last 6 months</span>
+          </div>
           {trend.loading ? <Loading h={220} /> : <Chart option={bars} class="chart" />}
         </div>
 
-        <div class="card span-12">
-          <div class="spread">
-            <h2>Recent activity</h2>
-            <a class="small" style={{ color: "var(--accent)", fontWeight: 600 }} href="#/transactions">
-              See all
+        <div class="card flush span-12">
+          <div class="card-hd">
+            <h2>Recent transactions</h2>
+            <a class="card-link" href="#/transactions">
+              All transactions <Icon.chevron />
             </a>
           </div>
           {recent.loading ? (
-            <Loading h={200} />
+            <div style={{ padding: 18 }}>
+              <Loading h={200} />
+            </div>
           ) : (recent.data?.transactions ?? []).length === 0 ? (
             <div class="empty">No transactions yet. <a href="#/imports">Import a bank statement</a> to see activity here.</div>
           ) : (
@@ -214,15 +257,6 @@ export function Dashboard() {
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-function Tile({ label, cents, tone }: { label: string; cents: number | null; tone?: "in" | "out"; wide?: boolean }) {
-  return (
-    <div class="card tile">
-      <div class="label">{label}</div>
-      {cents === null ? <Loading h={28} /> : <div class={`value num ${tone === "in" ? "in" : tone === "out" ? "out" : ""}`}>{money(cents, true)}</div>}
     </div>
   );
 }
