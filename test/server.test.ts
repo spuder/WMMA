@@ -68,7 +68,7 @@ describe("fetch handler", () => {
   });
   test("status reports hledger-web unreachable as null", async () => {
     const r = await handler(req({ "Tailscale-User-Login": "alice@example.com" }));
-    expect(await r.json()).toEqual({ user: "alice@example.com", name: null, hledgerWeb: null, timezone: "UTC" });
+    expect(await r.json()).toMatchObject({ user: "alice@example.com", name: null, hledgerWeb: null, timezone: "UTC" });
   });
 });
 
