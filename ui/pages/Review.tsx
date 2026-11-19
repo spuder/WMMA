@@ -92,20 +92,21 @@ export function Review() {
   }, []);
   const settings = useApi<{ jev: { configured: boolean } }>("/settings");
   /** Progress of an "Ask Jev" run: how many were sent so far; null when idle. */
-  const [asking, setAsking] = useState<{ done: number; stop: boolean } | null>(null);
+  const [asking, setAsking] = useState<{ done: number; total: number; stop: boolean } | null>(null);
   const stopRef = useRef(false);
   /** Items that never got a Jev answer: queued before a key was set, or while Jev was down / out of credits. */
   const noSuggestion = (items ?? []).filter((i) => i.jev_choices.length === 0).length;
   // Small batches keep each request short (a proxy can cut off a long one); loop until done or Jev errors.
   const askJev = async () => {
     stopRef.current = false;
-    setAsking({ done: 0, stop: false });
+    const total = noSuggestion;
+    setAsking({ done: 0, total, stop: false });
     let done = 0;
     let categorized = 0;
     let suggested = 0;
     let error: string | null = null;
     // Bounded: an item Jev can't be asked about (no categories to offer) stays without a suggestion.
-    let batches = Math.ceil(noSuggestion / JEV_BATCH) + 1;
+    let batches = Math.ceil(total / JEV_BATCH) + 1;
     try {
       while (!stopRef.current && batches-- > 0) {
         const r = await api<{ considered: number; byRule: number; byJev: number; queued: number; errors: string[]; remaining?: number }>("/categorize", {
@@ -114,7 +115,12 @@ export function Review() {
         done += r.considered;
         categorized += r.byRule + r.byJev;
         suggested += r.errors.length ? 0 : r.queued;
-        setAsking({ done, stop: false });
+        setAsking((a) => ({ done, total, stop: a?.stop ?? false }));
+        // Refresh the deck as we go: cards gain suggestions, confident picks drop out.
+        if (r.considered) {
+          await loadItems();
+          refreshReview();
+        }
         if (r.errors.length) {
           error = r.errors[0]!;
           break;
@@ -315,10 +321,10 @@ export function Review() {
       </div>
       {error && <ErrorBox error={error} />}
       {!items && !error && <Loading h={420} />}
-      {items && noSuggestion > 0 && settings.data && (
+      {items && (noSuggestion > 0 || asking) && settings.data && (
         <div class="card flat row" style={{ gap: 12, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 200 }}>
-            <strong>{noSuggestion} without a suggestion</strong>
+            <strong>{asking ? "Asking Jev for suggestions" : `${noSuggestion} without a suggestion`}</strong>
             <div class="muted small">
               {settings.data.jev.configured
                 ? "These were queued before Jev was set up, or while it was unavailable or out of credits."
@@ -329,7 +335,7 @@ export function Review() {
             asking ? (
               <div class="row" style={{ gap: 8 }}>
                 <span class="muted small">
-                  Asking Jev… {asking.done} of {noSuggestion}
+                  Asking Jev… {Math.min(asking.done, asking.total)} of {asking.total}
                 </span>
                 <button class="btn ghost" disabled={asking.stop} onClick={() => ((stopRef.current = true), setAsking((a) => a && { ...a, stop: true }))}>
                   {asking.stop ? "Stopping…" : "Stop"}
