@@ -95,7 +95,7 @@ export function Imports() {
           </div>
           <div class="muted small">{KINDS.find((k) => k[0] === kind)![2]}</div>
           <label class="card flat row" style={{ cursor: "pointer", borderStyle: "dashed", justifyContent: "center", padding: 22 }}>
-            <span style={{ width: 22, height: 22, display: "inline-flex", color: "var(--accent)" }}>
+            <span style={{ width: 22, height: 22, display: "inline-flex", color: "var(--accent-text)" }}>
               <Icon.upload />
             </span>
             <span style={{ fontWeight: 600 }}>{file ? file.name : "Choose file"}</span>
@@ -146,7 +146,7 @@ export function Imports() {
             ) : settings.data?.simplefin.configured ? (
               <div class="muted small">Choose which accounts to add and assign them to businesses or personal finances in Settings.</div>
             ) : (
-              <div class="small">Connect SimpleFIN in <a href="#/settings" style={{ color: "var(--accent)", fontWeight: 650 }}>Settings</a> before syncing.</div>
+              <div class="small">Connect SimpleFIN in <a href="#/settings" style={{ color: "var(--accent-text)", fontWeight: 650 }}>Settings</a> before syncing.</div>
             )}
             {!settings.loading && settings.data?.simplefin.configured && !settings.data.simplefin.accountsConfigured && <a class="btn block" href="#/settings">Set up SimpleFIN accounts in Settings</a>}
             <button class="btn block" disabled={busy !== null || settings.loading || !settings.data?.simplefin.configured || !settings.data.simplefin.accountsConfigured} onClick={() => action("sf", "/sync/simplefin", {}, "SimpleFIN")}>

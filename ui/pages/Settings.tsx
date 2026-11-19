@@ -122,7 +122,7 @@ export function Settings() {
         <div class="card span-6 stack">
           <div>
             <h2>Jev categorization</h2>
-            <div class="sub">Suggests categories for new transactions; confident picks are applied automatically. Get your Jev API key from <a href="https://console.typesafe.ai/home" target="_blank" rel="noreferrer" style={{ color: "var(--accent)", fontWeight: 650 }}>TypeSafe AI ↗</a>.</div>
+            <div class="sub">Suggests categories for new transactions; confident picks are applied automatically. Get your Jev API key from <a href="https://console.typesafe.ai/home" target="_blank" rel="noreferrer" style={{ color: "var(--accent-text)", fontWeight: 650 }}>TypeSafe AI ↗</a>.</div>
           </div>
           {s.loading ? (
             <Loading h={80} />
@@ -176,7 +176,7 @@ export function Settings() {
                   {s.data.simplefin.configured ? `Connected · ${s.data.simplefin.source === "env" ? "from environment" : "set here"}` : "Not configured"}
                 </span>
               </div>
-              <div class="small">1. Add the banks you want to connect in <a href="https://beta-bridge.simplefin.org/my-account" target="_blank" rel="noreferrer" style={{ color: "var(--accent)", fontWeight: 650 }}>your SimpleFIN Bridge account</a>.</div>
+              <div class="small">1. Add the banks you want to connect in <a href="https://beta-bridge.simplefin.org/my-account" target="_blank" rel="noreferrer" style={{ color: "var(--accent-text)", fontWeight: 650 }}>your SimpleFIN Bridge account</a>.</div>
               {s.data.simplefin.canStoreInUi ? (
                 <>
                   <div class="small">2. In SimpleFIN Bridge, create and copy a Setup Token. Paste it below; WMMA exchanges it for an Access URL and stores that URL encrypted.</div>

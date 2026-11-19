@@ -19,8 +19,8 @@ import { Settings } from "./pages/Settings";
 import { Transactions } from "./pages/Transactions";
 
 const NAV = [
-  { path: "/", label: "Home", icon: Icon.home, tone: "home" },
-  { path: "/transactions", label: "Activity", icon: Icon.list, tone: "activity" },
+  { path: "/", label: "Home", deskLabel: "Dashboard", icon: Icon.home, tone: "home" },
+  { path: "/transactions", label: "Activity", deskLabel: "Transactions", icon: Icon.list, tone: "activity" },
   { path: "/review", label: "Review", icon: Icon.swipe, tone: "review" },
   { path: "/cashflow", label: "Cash Flow", icon: Icon.bars, tone: "cashflow", desktopOnly: true },
   { path: "/reports", label: "Reports", icon: Icon.pie, tone: "reports" },
@@ -34,6 +34,13 @@ const NAV = [
   { path: "/imports", label: "Imports", icon: Icon.upload, tone: "imports", desktopOnly: true },
   { path: "/settings", label: "Settings", icon: Icon.gear, tone: "settings", desktopOnly: true },
 ];
+/** Sidebar order (Monarch's): overview pages first, then planning, then admin after a divider. */
+const SIDEBAR = ["/", "/accounts", "/transactions", "/review", "/cashflow", "/reports", "/budget", "/recurring", "/investments", "/networth", "/forecast", "|", "/imports", "/settings"];
+
+const initialsOf = (s: string) => {
+  const words = s.replace(/@.*/, "").split(/[\s._-]+/).filter(Boolean);
+  return ((words[0]?.[0] ?? "") + (words[1]?.[0] ?? "")).toUpperCase() || "?";
+};
 
 function Shell() {
   const me = useApi<{ user: string; name: string | null }>("/status");
@@ -119,29 +126,31 @@ function Shell() {
   const active = (p: string) => (p === "/" ? path === "/" : path.startsWith(p) || (p === "/more" && ["/accounts", "/imports", "/settings", "/cashflow", "/budget", "/recurring", "/investments", "/networth", "/forecast"].includes(path)));
 
   return (
-    <App.Provider value={{ entity, setEntity, entities, reviewCount, refreshReview, categories, reloadEntities: ents.reload }}>
+    <App.Provider value={{ entity, setEntity, entities, reviewCount, refreshReview, categories, reloadEntities: ents.reload, userName: me.data?.name ?? null }}>
       <div class="app">
         <nav class="sidebar" aria-label="Main">
           <div class="brand">
             <Icon.logo /> WMMA
           </div>
-          {NAV.filter((n) => !n.mobileOnly).map((n) => (
-            <a href={`#${n.path}`} class={`navlink nav-${n.tone}${active(n.path) ? " active" : ""}`}>
-              <span class="nav-icon"><n.icon /></span>
-              {n.label}
-              {n.path === "/review" && reviewCount > 0 && <span class="badge">{reviewCount}</span>}
-            </a>
-          ))}
-          <div style={{ marginTop: "auto" }} class="muted tiny">
-            Where My Money At
-          </div>
+          {SIDEBAR.map((p) => {
+            if (p === "|") return <div class="nav-sep" role="separator" />;
+            const n = NAV.find((x) => x.path === p)!;
+            return (
+              <a href={`#${n.path}`} class={`navlink nav-${n.tone}${active(n.path) ? " active" : ""}`} aria-current={active(n.path) ? "page" : undefined}>
+                <span class="nav-icon"><n.icon /></span>
+                {n.deskLabel ?? n.label}
+                {n.path === "/review" && reviewCount > 0 && <span class="badge">{reviewCount}</span>}
+              </a>
+            );
+          })}
+          <div style={{ marginTop: "auto" }} />
           <div class="identity" title={me.data?.user}>
-            <span class="identity-dot" />
+            <span class="identity-dot" aria-hidden="true">{initialsOf(me.data?.name || me.data?.user || "")}</span>
             <span><strong>{me.data?.name || me.data?.user}</strong><small>Signed in with Tailscale</small></span>
           </div>
         </nav>
         <div class="identity identity-mobile" title={me.data?.user}>
-          <span class="identity-dot" />
+          <span class="identity-dot" aria-hidden="true">{initialsOf(me.data?.name || me.data?.user || "")}</span>
           <span><strong>{me.data?.name || me.data?.user}</strong><small>Signed in with Tailscale</small></span>
         </div>
         <main class="main">

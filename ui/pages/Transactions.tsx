@@ -427,7 +427,7 @@ export function Transactions({ query }: { query: URLSearchParams }) {
       {error && <ErrorBox error={error} />}
       {!rows && !error && <Loading h={360} />}
       {rows && (
-        <div class="card" style={{ paddingTop: 4 }}>
+        <div class="card flush">
           <TxnList
             rows={shown}
             accounts={accounts}
@@ -565,7 +565,7 @@ function TxnSheet({ id, account, onClose, onChanged }: { id: string; account: Ac
                       <span class="business-icon compact" style={businessStyle(e.slug, e.color)}>{e.type === "personal" ? "👤" : <Icon.folder />}</span>
                       {e.name}
                     </span>
-                    {e.slug === entity && <span style={{ color: "var(--accent)", display: "inline-flex" }}><Icon.check /></span>}
+                    {e.slug === entity && <span style={{ color: "var(--accent-text)", display: "inline-flex" }}><Icon.check /></span>}
                   </button>
                 ))}
               </div>}

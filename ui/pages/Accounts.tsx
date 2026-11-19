@@ -264,11 +264,11 @@ export function Accounts() {
                           <span>Transferred in {money(a.contributed_cents ?? 0)}</span>
                           {a.website_url ? (
                             <>
-                              <a href={a.website_url} target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>Investment website ↗</a>
+                              <a href={a.website_url} target="_blank" rel="noreferrer" style={{ color: "var(--accent-text)" }}>Investment website ↗</a>
                               <button class="btn ghost small" style={{ height: 24, padding: "0 4px" }} onClick={() => setSheet({ website: a })}>Edit link</button>
                             </>
                           ) : (
-                            <button class="btn ghost small" style={{ height: 24, padding: "0 4px", color: "var(--accent)" }} onClick={() => setSheet({ website: a })}>Add website</button>
+                            <button class="btn ghost small" style={{ height: 24, padding: "0 4px", color: "var(--accent-text)" }} onClick={() => setSheet({ website: a })}>Add website</button>
                           )}
                         </div>
                       )}
@@ -279,12 +279,12 @@ export function Accounts() {
                         {a.balance}
                       </span>
                       {a.kind === "investment" && (
-                        <button class="btn ghost small" style={{ height: 24, padding: "0 4px", color: "var(--accent)" }} onClick={() => setSheet({ contribution: a })}>
+                        <button class="btn ghost small" style={{ height: 24, padding: "0 4px", color: "var(--accent-text)" }} onClick={() => setSheet({ contribution: a })}>
                           Record contribution
                         </button>
                       )}
                       {["investment", "vehicle", "real_estate", "other_asset"].includes(a.kind) && (
-                        <button class="btn ghost small" style={{ height: 24, padding: "0 4px", color: "var(--accent)" }} onClick={() => setSheet({ valuation: a })}>
+                        <button class="btn ghost small" style={{ height: 24, padding: "0 4px", color: "var(--accent-text)" }} onClick={() => setSheet({ valuation: a })}>
                           Update value
                         </button>
                       )}
