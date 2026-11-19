@@ -344,6 +344,57 @@ describe.skipIf(!hledgerWebBin)("categorization pipeline (M4 done-when)", () => 
     }
   });
 
+  test("apply a category to similar transactions, optionally with a rule for future imports", async () => {
+    const handler = createFetchHandler(ctx);
+    const saved = ctx.jev;
+    ctx.jev = null; // keep the new transactions uncategorized
+    try {
+      await importQfx(ctx, me, {
+        filename: "aug.qfx",
+        content: qfx("1001", [
+          ["L1", "2026-08-01", "-20.00", "BRIGHT HARDWARE #1"],
+          ["L2", "2026-08-02", "-21.00", "BRIGHT HARDWARE #2"],
+          ["L3", "2026-08-03", "-22.00", "Bright Hardware #3"],
+        ]),
+      });
+    } finally {
+      ctx.jev = saved ?? null;
+    }
+    const id = (payee: string) => listReview(ctx).find((i) => i.payee === payee)!.wmma_id;
+    const [a, b, c] = [id("BRIGHT HARDWARE #1"), id("BRIGHT HARDWARE #2"), id("Bright Hardware #3")];
+    const send = (method: string, path: string, body?: unknown) =>
+      handler(new Request(`http://x/api/v1${path}`, { method, headers: auth, ...(body ? { body: JSON.stringify(body) } : {}) }));
+    // One of them already has a different category.
+    expect((await send("PATCH", `/transactions/${c}`, { category: { to: "Expenses:Shopping" } })).status).toBe(200);
+    expect((await send("PATCH", `/transactions/${a}`, { category: { to: "Expenses:Housing:HomeImprovement" } })).status).toBe(200);
+
+    const sim = (await (await send("GET", `/transactions/${a}/similar`)).json()) as any;
+    expect(sim.payeeKey).toBe("bright hardware");
+    expect(sim.transactions.map((t: any) => t.wmma_id).sort()).toEqual([b, c].sort());
+    expect(sim.rule).toBeNull();
+
+    const r1 = (await (await send("POST", `/transactions/${a}/similar`, { category: "Expenses:Housing:HomeImprovement", createRule: true })).json()) as any;
+    expect(r1.updated).toEqual([b]); // the Shopping one is left alone by default
+    expect(r1.ruleCreated).toBe(true);
+    expect(r1.rule.match).toEqual({ payeeKey: "bright hardware" });
+    const r2 = (await (await send("POST", `/transactions/${a}/similar`, { category: "Expenses:Housing:HomeImprovement", includeCategorized: true, createRule: true })).json()) as any;
+    expect(r2).toMatchObject({ updated: [c], ruleCreated: false });
+    const cats = (await ctx.hledger.transactions())
+      .filter((t) => t.tdescription.toUpperCase().startsWith("BRIGHT HARDWARE"))
+      .map((t) => [t.tpostings.find((p) => p.paccount.startsWith("Expenses:"))!.paccount, new Map(t.ttags).get("cat_by")]);
+    expect(cats).toEqual(Array(3).fill(["Expenses:Housing:HomeImprovement", "manual"]));
+    expect(listReview(ctx).some((i) => i.payee.toUpperCase().startsWith("BRIGHT"))).toBe(false);
+
+    // Future imports from the payee get the category from the rule.
+    const next = await importQfx(ctx, me, { filename: "sep.qfx", content: qfx("1001", [["L9", "2026-09-01", "-30.00", "BRIGHT HARDWARE #9"]]) });
+    expect(next.categorization).toMatchObject({ byRule: 1, jevCalls: 0 });
+
+    expect((await send("DELETE", `/rules/${r1.rule.id}`)).status).toBe(200);
+    const rules = (await (await send("GET", "/rules")).json()) as any;
+    expect(rules.rules.some((r: any) => r.id === r1.rule.id)).toBe(false);
+    expect((await send("POST", `/transactions/${a}/similar`, { category: "Expenses:Uncategorized" })).status).toBe(400);
+  });
+
   test.skipIf(!hledgerBin)("journals pass hledger check --strict after rewrites", () => {
     const r = Bun.spawnSync([hledgerBin!, "-f", ctx.store.paths.main, "check", "--strict"], { env: { ...process.env, LANG: "C.UTF-8" } });
     expect(r.stderr.toString()).toBe("");
