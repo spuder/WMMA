@@ -3,7 +3,7 @@
  * files (SPEC §2). Writes are serialised and atomic (temp file + rename), so
  * hledger-web never sees a half-written journal.
  */
-import { mkdir, open, readdir, readFile, rename, rm, stat } from "node:fs/promises";
+import { mkdir, open, readdir, readFile, rename, rm, stat, utimes } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import * as M from "../money";
 import type { Money } from "../money";
@@ -77,8 +77,15 @@ export async function atomicWrite(path: string, content: string): Promise<void> 
     throw e;
   }
   await fh.close();
+  // hledger-web reloads a journal only when its mtime is newer than its last read. The kernel
+  // stamps mtimes from a coarse clock that can lag a few ms, so a write right after a read could
+  // look older and be missed until the next write. Stamp it slightly ahead from the precise clock.
+  const ahead = (Date.now() + MTIME_LEAD_MS) / 1000;
+  await utimes(tmp, ahead, ahead);
   await rename(tmp, path);
 }
+
+const MTIME_LEAD_MS = 100;
 
 export function validateSlug(slug: string): void {
   if (!SLUG_RE.test(slug)) throw new Error(`invalid account slug ${JSON.stringify(slug)}`);
