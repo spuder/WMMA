@@ -301,6 +301,49 @@ describe.skipIf(!hledgerWebBin)("categorization pipeline (M4 done-when)", () => 
     expect(bad.status).toBe(400);
   });
 
+  test("re-run Jev: only Jev's own picks; confident answers move them, unsure ones never remove a category", async () => {
+    const handler = createFetchHandler(ctx);
+    const { ids } = (await (await handler(new Request("http://x/api/v1/categorize/jev", { headers: auth }))).json()) as { ids: string[] };
+    const txns = await ctx.hledger.transactions();
+    const byId = new Map(txns.map((t) => [new Map(t.ttags).get("wmma_id"), t]));
+    expect(ids.length).toBeGreaterThan(0);
+    for (const id of ids) expect(new Map(byId.get(id)!.ttags).get("cat_by")).toBe("jev");
+    // Rule- and swipe-categorized transactions are never offered.
+    const manual = txns.filter((t) => ["rule", "swipe", "manual"].includes(new Map(t.ttags).get("cat_by") ?? "")).map((t) => new Map(t.ttags).get("wmma_id"));
+    expect(manual.length).toBeGreaterThan(0);
+    for (const id of manual) expect(ids).not.toContain(id);
+
+    const rerun = async (body: unknown) => (await (await handler(new Request("http://x/api/v1/categorize/rerun", { method: "POST", headers: auth, body: JSON.stringify(body) }))).json()) as any;
+    const id = ids[0]!;
+    const from = byId.get(id)!.tpostings.find((p) => p.paccount.startsWith("Expenses:"))!.paccount;
+    const saved = ctx.jev;
+    const answering = (choice: string, confidence: number) =>
+      new JevClient({
+        apiKey: "k",
+        fetch: (async () => Response.json({ answers: { category: { type: "choice", choice, probabilities: { [choice]: confidence }, confidence } } })) as unknown as typeof fetch,
+      });
+    try {
+      ctx.jev = answering("Expenses:Shopping", 0.5);
+      expect(await rerun({ wmmaIds: [id] })).toMatchObject({ considered: 1, kept: 1, changed: 0 });
+      ctx.jev = answering(from, 0.97);
+      expect(await rerun({ wmmaIds: [id] })).toMatchObject({ considered: 1, confirmed: 1 });
+      ctx.jev = answering("Expenses:Shopping", 0.95);
+      const r = await rerun({ wmmaIds: [id] });
+      expect(r).toMatchObject({ considered: 1, changed: 1 });
+      expect(r.outcomes[id]).toMatchObject({ from, to: "Expenses:Shopping" });
+      const after = (await ctx.hledger.transactions()).find((t) => new Map(t.ttags).get("wmma_id") === id)!;
+      expect(after.tpostings.map((p) => p.paccount)).toContain("Expenses:Shopping");
+      expect(new Map(after.ttags).get("jev_conf")).toBe("0.95");
+      // Manual ids are ignored even when sent.
+      expect((await rerun({ wmmaIds: manual })).considered).toBe(0);
+      ctx.jev = null;
+      const off = await handler(new Request("http://x/api/v1/categorize/rerun", { method: "POST", headers: auth, body: JSON.stringify({ wmmaIds: [id] }) }));
+      expect(off.status).toBe(409);
+    } finally {
+      ctx.jev = saved ?? null;
+    }
+  });
+
   test.skipIf(!hledgerBin)("journals pass hledger check --strict after rewrites", () => {
     const r = Bun.spawnSync([hledgerBin!, "-f", ctx.store.paths.main, "check", "--strict"], { env: { ...process.env, LANG: "C.UTF-8" } });
     expect(r.stderr.toString()).toBe("");

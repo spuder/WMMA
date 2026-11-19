@@ -357,37 +357,72 @@ export function Transactions({ query }: { query: URLSearchParams }) {
   const openId = query.get("id");
   const { refreshReview } = useApp();
   const settings = useApi<{ jev: { configured: boolean } }>("/settings");
-  const [jevRun, setJevRun] = useState<{ done: number; total: number; stop: boolean } | null>(null);
+  /** A Jev run over many transactions: "uncat" sends uncategorized ones, "rerun" re-asks about Jev's own picks. */
+  const [jevRun, setJevRun] = useState<{ kind: "uncat" | "rerun"; done: number; total: number; stop: boolean } | null>(null);
+  /** "Re-run Jev" asks first, showing how many transactions it would touch. */
+  const [rerunIds, setRerunIds] = useState<string[] | null>(null);
   const jevStop = useRef(false);
-  /** Re-ask Jev about every uncategorized transaction (this profile's, if one is picked), a few per request. */
-  const sendAllToJev = async () => {
+  const entityQs = entity ? `?entity=${encodeURIComponent(entity)}` : "";
+  const runJev = async (kind: "uncat" | "rerun", ids: string[]) => {
     jevStop.current = false;
-    let categorized = 0;
-    let suggested = 0;
+    setRerunIds(null);
+    const counts = { categorized: 0, suggested: 0, changed: 0, confirmed: 0, kept: 0 };
     let error: string | null = null;
+    setJevRun({ kind, done: 0, total: ids.length, stop: false });
     try {
-      const { ids } = await api<{ ids: string[] }>(`/categorize/uncategorized${entity ? `?entity=${encodeURIComponent(entity)}` : ""}`);
-      setJevRun({ done: 0, total: ids.length, stop: false });
       for (let i = 0; i < ids.length && !jevStop.current; i += JEV_BATCH) {
-        const r = await api<{ errors: string[]; outcomes?: Record<string, { category?: string; choices?: unknown[] }> }>("/categorize", {
-          body: { wmmaIds: ids.slice(i, i + JEV_BATCH) },
-        });
-        for (const o of Object.values(r.outcomes ?? {})) o.category ? categorized++ : o.choices?.length ? suggested++ : null;
-        setJevRun((a) => ({ done: Math.min(i + JEV_BATCH, ids.length), total: ids.length, stop: a?.stop ?? false }));
-        if (categorized) load(0);
-        if (r.errors.length) {
-          error = r.errors[0]!;
+        const batch = ids.slice(i, i + JEV_BATCH);
+        let errors: string[];
+        let moved = false;
+        if (kind === "uncat") {
+          const r = await api<{ errors: string[]; outcomes?: Record<string, { category?: string; choices?: unknown[] }> }>("/categorize", { body: { wmmaIds: batch } });
+          for (const o of Object.values(r.outcomes ?? {})) o.category ? counts.categorized++ : o.choices?.length ? counts.suggested++ : null;
+          moved = Object.values(r.outcomes ?? {}).some((o) => o.category);
+          errors = r.errors;
+        } else {
+          const r = await api<{ errors: string[]; changed: number; confirmed: number; kept: number }>("/categorize/rerun", { body: { wmmaIds: batch } });
+          counts.changed += r.changed;
+          counts.confirmed += r.confirmed;
+          counts.kept += r.kept;
+          moved = r.changed > 0;
+          errors = r.errors;
+        }
+        setJevRun((a) => ({ kind, done: Math.min(i + JEV_BATCH, ids.length), total: ids.length, stop: a?.stop ?? false }));
+        if (moved) load(0);
+        if (errors.length) {
+          error = errors[0]!;
           break;
         }
       }
     } catch (e) {
       error = (e as Error).message;
     }
-    const summary = [categorized ? `${categorized} categorized` : null, suggested ? `${suggested} have suggestions in Review` : null].filter(Boolean).join(" · ");
+    const parts =
+      kind === "uncat"
+        ? [counts.categorized ? `${counts.categorized} categorized` : null, counts.suggested ? `${counts.suggested} have suggestions in Review` : null]
+        : [counts.changed ? `${counts.changed} moved to a better category` : null, counts.confirmed ? `${counts.confirmed} confirmed` : null, counts.kept ? `${counts.kept} kept (Jev unsure)` : null];
+    const summary = parts.filter(Boolean).join(" · ");
     toast(error ? `${error}${summary ? ` · ${summary} before that` : ""}` : summary || "Jev had nothing new to add");
     setJevRun(null);
     load(0);
     refreshReview();
+  };
+  const sendAllToJev = async () => {
+    try {
+      const { ids } = await api<{ ids: string[] }>(`/categorize/uncategorized${entityQs}`);
+      await runJev("uncat", ids);
+    } catch (e) {
+      toast((e as Error).message);
+    }
+  };
+  const askRerun = async () => {
+    try {
+      const { ids } = await api<{ ids: string[] }>(`/categorize/jev${entityQs}`);
+      if (ids.length === 0) toast("Jev hasn't categorized any transactions yet");
+      else setRerunIds(ids);
+    } catch (e) {
+      toast((e as Error).message);
+    }
   };
 
   useEffect(() => {
@@ -455,6 +490,11 @@ export function Transactions({ query }: { query: URLSearchParams }) {
             {l}
           </button>
         ))}
+        {settings.data?.jev.configured && (
+          <button class="chip" disabled={!!jevRun} onClick={askRerun} title="Ask Jev again about transactions it categorized">
+            ↻ Re-run Jev
+          </button>
+        )}
         {accountFilter && (
           <button class="chip active txn-filter" onClick={() => go(route({ account: null }))} aria-label="Clear account filter">
             🏦 {filteredAccount?.name ?? leaf(accountFilter)} <Icon.x />
@@ -462,26 +502,50 @@ export function Transactions({ query }: { query: URLSearchParams }) {
         )}
       </div>
       {error && <ErrorBox error={error} />}
-      {filter === "uncat" && settings.data?.jev.configured && (shown.length > 0 || jevRun) && (
+      {jevRun ? (
         <div class="card flat row" style={{ gap: 12, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 200 }}>
-            <strong>{jevRun ? "Asking Jev" : "Send to Jev"}</strong>
+            <strong>{jevRun.kind === "rerun" ? "Re-running Jev" : "Asking Jev"}</strong>
             <div class="muted small">
-              {jevRun
-                ? `${jevRun.done} of ${jevRun.total} sent`
-                : "Re-asks Jev about every transaction that still needs a category, including ones it wasn't sure about before."}
+              {jevRun.done} of {jevRun.total} sent
             </div>
           </div>
-          {jevRun ? (
-            <button class="btn ghost" disabled={jevRun.stop} onClick={() => ((jevStop.current = true), setJevRun((a) => a && { ...a, stop: true }))}>
-              {jevRun.stop ? "Stopping…" : "Stop"}
+          <button class="btn ghost" disabled={jevRun.stop} onClick={() => ((jevStop.current = true), setJevRun((a) => a && { ...a, stop: true }))}>
+            {jevRun.stop ? "Stopping…" : "Stop"}
+          </button>
+        </div>
+      ) : rerunIds ? (
+        <div class="card flat row" style={{ gap: 12, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <strong>Re-run Jev on {rerunIds.length} transaction{rerunIds.length === 1 ? "" : "s"}?</strong>
+            <div class="muted small">
+              Only ones Jev categorized{entity ? " in this profile" : ""}. Anything you, a rule or an import categorized is left alone. Confident answers replace the
+              category; unsure ones keep it.
+            </div>
+          </div>
+          <div class="row" style={{ gap: 8 }}>
+            <button class="btn ghost" onClick={() => setRerunIds(null)}>
+              Cancel
             </button>
-          ) : (
+            <button class="btn primary" onClick={() => runJev("rerun", rerunIds)}>
+              Re-run
+            </button>
+          </div>
+        </div>
+      ) : (
+        filter === "uncat" &&
+        settings.data?.jev.configured &&
+        shown.length > 0 && (
+          <div class="card flat row" style={{ gap: 12, flexWrap: "wrap" }}>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <strong>Send to Jev</strong>
+              <div class="muted small">Re-asks Jev about every transaction that still needs a category, including ones it wasn't sure about before.</div>
+            </div>
             <button class="btn" onClick={sendAllToJev}>
               Send all to Jev
             </button>
-          )}
-        </div>
+          </div>
+        )
       )}
       {!rows && !error && <Loading h={360} />}
       {rows && (
@@ -525,6 +589,25 @@ function TxnSheet({ id, account, onClose, onChanged }: { id: string; account: Ac
   const [jevChoices, setJevChoices] = useState<Array<{ account: string; probability: number }>>([]);
   const [asking, setAsking] = useState(false);
   useEffect(() => setJevChoices([]), [id]);
+  const rerunOne = async () => {
+    setAsking(true);
+    try {
+      const r = await api<{ errors: string[]; outcomes: Record<string, { from: string; to?: string; confidence?: number }> }>("/categorize/rerun", { body: { wmmaIds: [id] } });
+      const o = r.outcomes[id];
+      if (r.errors.length) toast(r.errors[0]!);
+      else if (o?.to && o.to !== o.from) {
+        const next = await api<Txn>(`/transactions/${encodeURIComponent(id)}`);
+        setT(next);
+        onChanged(next);
+        toast(`Jev moved it to ${leaf(o.to)}`);
+      } else if (o?.to) toast(`Jev still says ${leaf(o.to)}`);
+      else toast(`Jev isn't sure: kept ${o ? leaf(o.from) : "the category"}`);
+    } catch (e) {
+      toast((e as Error).message);
+    } finally {
+      setAsking(false);
+    }
+  };
   const askJev = async () => {
     setAsking(true);
     try {
@@ -613,6 +696,11 @@ function TxnSheet({ id, account, onClose, onChanged }: { id: string; account: Ac
                 <strong style={{ color: s.uncategorized ? "var(--warn)" : undefined }}>{s.uncategorized ? "Choose a category" : <CatName account={catPostings[0]!.account} />}</strong>
               </span>
               <Icon.chevron />
+            </button>
+          )}
+          {catPostings.length === 1 && !s.uncategorized && t.tags["cat_by"] === "jev" && settings.data?.jev.configured && (
+            <button class="btn block" disabled={asking} onClick={rerunOne}>
+              {asking ? "Asking Jev…" : "Re-run Jev"}
             </button>
           )}
           {catPostings.length === 1 && s.uncategorized && settings.data?.jev.configured && (
