@@ -40,6 +40,7 @@ services:
       JEV_API_KEY: ${JEV_API_KEY:-}
       JEV_BASE_URL: ${JEV_BASE_URL:-}
       JEV_MODEL: ${JEV_MODEL:-}
+      JEV_TIMEOUT_MS: ${JEV_TIMEOUT_MS:-}
       # Optional legacy migration key; new SimpleFIN connections use Settings.
       WMMA_SECRET_KEY: ${WMMA_SECRET_KEY:-}
       SIMPLEFIN_SYNC_CRON: ${SIMPLEFIN_SYNC_CRON:-}

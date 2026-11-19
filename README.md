@@ -258,7 +258,7 @@ The same `compose.yaml` works as a [Dockhand](https://github.com/Finsys/dockhand
 | `WMMA_DATA_DIR` | default `/data` |
 | `YNAB_TOKEN` | YNAB personal access token (for `import ynab-api`) |
 | `SIMPLEFIN_SYNC_CRON` | SimpleFIN sync schedule (default `0 6 * * *`); connect accounts in Settings |
-| `JEV_API_KEY` | Jev (TypeSafe) API key; optional `JEV_BASE_URL`, `JEV_MODEL` |
+| `JEV_API_KEY` | Jev (TypeSafe) API key; optional `JEV_BASE_URL`, `JEV_MODEL`, `JEV_TIMEOUT_MS` (per request, default 30000) |
 | `WMMA_SECRET_KEY` | Optional legacy migration key; new deployments generate a key in the persistent `wmma-secret-key` volume |
 
 ## Website
